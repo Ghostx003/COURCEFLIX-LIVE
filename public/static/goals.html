@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="green">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CourseFlix - Goals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* --- THEME & ACCENT COLOR VARIABLES (Copied from index.html) --- */
+        html { background-color: #000000; overflow-x: hidden; }
+        :root {
+            --bg-primary: #f9fafb; --bg-secondary: #ffffff; --bg-tertiary: #f3f4f6;
+            --text-primary: #1f2937; --text-secondary: #6b7280; --text-on-accent: #ffffff;
+            --border-primary: #e5e7eb; --border-secondary: #d1d5db; --accent-danger: #ef4444;
+            --status-review: #f59e0b; --status-practice: #3b82f6;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+        html[data-theme="dark"] {
+            --bg-primary: #0b0f19; --bg-secondary: #131826; --bg-tertiary: #1e293b;
+            --text-primary: #f8fafc; --text-secondary: #94a3b8;
+            --border-primary: rgba(255, 255, 255, 0.08); --border-secondary: rgba(255, 255, 255, 0.15);
+            --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        }
+        html[data-accent="green"] {
+            --accent-primary: #16a34a; --accent-hover: #15803d;
+            --accent-primary_translucent: rgba(34, 197, 94, 0.4);
+            --accent-glow: rgba(16, 185, 129, 0.2);
+        }
+
+        /* Ambient Background Effect */
+        html[data-theme="dark"] body::before {
+            content: ''; position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 40%);
+            opacity: 0.15; z-index: -1; pointer-events: none; animation: pulse-glow 15s ease-in-out infinite alternate;
+        }
+        @keyframes pulse-glow { 0% { transform: scale(0.8) translate(5%, 5%); } 100% { transform: scale(1.1) translate(-5%, -5%); } }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent;
+            background-color: var(--bg-primary); color: var(--text-primary);
+            margin: 0; display: flex; flex-direction: column; min-height: 100vh;
+        }
+
+        /* --- NAVBAR --- */
+        nav {
+            display: flex; align-items: center; padding: 0.8rem 1.5rem;
+            background-color: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); 
+            flex-shrink: 0; z-index: 100;
+        }
+        nav h1 { margin: 0; font-size: 1.25rem; font-weight: 700; cursor: pointer; color: var(--text-primary); text-decoration: none; display: flex; align-items: center; gap: 8px;}
+        .nav-links { margin-right: auto; margin-left: 20px; display: flex; gap: 0.5rem; }
+        .nav-link { 
+            color: var(--text-secondary); text-decoration: none; font-weight: 600; font-size: 0.95rem;
+            padding: 6px 10px; border-radius: 8px; transition: background-color 0.2s, color 0.2s;
+        }
+        .nav-link:hover { color: var(--text-primary); background-color: var(--bg-tertiary); }
+        .nav-link.active { color: var(--accent-primary); }
+        
+        .primary-btn {
+            background-color: var(--accent-primary); color: var(--text-on-accent); border: none;
+            padding: 10px 18px; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer;
+            transition: background-color 0.2s; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .primary-btn:hover { background-color: var(--accent-hover); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 2rem; width: 100%; flex-grow: 1; display: flex; flex-direction: column; }
+        
+        /* --- WIZARD UI --- */
+        .wizard-step { display: none; flex-direction: column; gap: 1.5rem; animation: fadeIn 0.3s ease; }
+        .wizard-step.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .wizard-title { font-size: 1.8rem; font-weight: 700; margin: 0 0 0.5rem 0; }
+        .wizard-subtitle { font-size: 1rem; color: var(--text-secondary); margin: 0 0 1.5rem 0; }
+        
+        .input-group { display: flex; flex-direction: column; gap: 0.5rem; }
+        .input-group label { font-weight: 600; font-size: 1rem; }
+        .input-field { 
+            background: var(--bg-secondary); border: 1px solid var(--border-primary); 
+            color: var(--text-primary); padding: 12px 16px; border-radius: 8px; font-size: 1rem; font-family: inherit;
+        }
+        .input-field:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-primary_translucent); }
+        
+        /* Subjects List */
+        .subject-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .subject-card { 
+            background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 10px; 
+            padding: 1rem; cursor: pointer; transition: all 0.2s ease; position: relative;
+        }
+        .subject-card:hover { border-color: var(--accent-primary); transform: translateY(-2px); }
+        .subject-card.selected { border-color: var(--accent-primary); background-color: var(--accent-primary_translucent); }
+        .subject-name { font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; }
+        .subject-card.selected .subject-name::after { content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: var(--accent-primary); }
+        
+        .faculty-dropdown { 
+            width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border-secondary); 
+            color: var(--text-primary); padding: 8px; border-radius: 6px; font-size: 0.9rem; margin-top: 0.5rem; cursor: pointer;
+        }
+        .faculty-dropdown:focus { outline: none; border-color: var(--accent-primary); }
+        
+        /* Lecture Allocation */
+        .allocation-list { display: flex; flex-direction: column; gap: 1rem; }
+        .allocation-item { 
+            display: flex; align-items: center; justify-content: space-between; 
+            background: var(--bg-secondary); padding: 1rem; border-radius: 10px; border: 1px solid var(--border-primary);
+        }
+        .allocation-name { font-weight: 600; font-size: 1.1rem; }
+        .allocation-controls { display: flex; align-items: center; gap: 1rem; }
+        .alloc-btn { 
+            background: var(--bg-tertiary); border: 1px solid var(--border-secondary); color: var(--text-primary); 
+            width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;
+        }
+        .alloc-btn:hover { background: var(--border-secondary); }
+        .alloc-val { font-size: 1.2rem; font-weight: 700; width: 30px; text-align: center; }
+
+        .smart-alloc-btn { background: var(--bg-tertiary); color: var(--accent-primary); border: 1px solid var(--accent-primary); margin-top: 1rem; }
+
+        .error-msg { color: var(--accent-danger); font-size: 0.9rem; font-weight: 500; display: none; margin-top: 0.5rem; }
+
+        /* --- DASHBOARD UI --- */
+        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        
+        .section-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 1rem 0; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-primary); padding-bottom: 0.5rem; }
+        
+        /* Continue Learning Card */
+        .continue-card { 
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--accent-primary_translucent); border-radius: 16px; padding: 1.5rem;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;
+            box-shadow: 0 10px 25px -5px var(--accent-glow); position: relative; overflow: hidden; cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .continue-card:hover { transform: translateY(-3px); box-shadow: 0 15px 35px -5px var(--accent-glow); }
+        .continue-info { position: relative; z-index: 2; flex-grow: 1; }
+        .continue-label { font-size: 0.85rem; color: var(--accent-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
+        .continue-course { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 500; }
+        .continue-title { font-size: 1.8rem; font-weight: 700; margin: 0 0 1rem 0; color: var(--text-primary); }
+        .play-btn-large { 
+            background: var(--accent-primary); color: white; width: 60px; height: 60px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.4);
+        }
+
+        /* Upcoming List */
+        .upcoming-list { display: flex; flex-direction: column; gap: 1rem; }
+        .lecture-item { 
+            background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px;
+            padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; cursor: pointer;
+            transition: all 0.2s; position: relative;
+        }
+        .lecture-item:hover { border-color: var(--border-secondary); background: var(--bg-tertiary); transform: translateX(5px); }
+        .lecture-time { font-size: 0.95rem; font-weight: 700; color: var(--accent-primary); width: 80px; flex-shrink: 0; text-align: center; background: var(--accent-primary_translucent); padding: 4px 8px; border-radius: 6px;}
+        .lecture-details { flex-grow: 1; }
+        .lecture-course { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.2rem; font-weight: 500;}
+        .lecture-title { font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--text-primary); }
+        .lecture-duration-badge { font-size: 0.85rem; color: var(--text-secondary); background: var(--bg-primary); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-primary); }
+        .drag-handle { color: var(--text-secondary); cursor: grab; font-size: 1.2rem; padding: 10px; margin-left: auto; opacity: 0.5; transition: opacity 0.2s; }
+        .lecture-item:hover .drag-handle { opacity: 1; }
+        .lecture-item.dragging { opacity: 0.5; background: var(--bg-tertiary); }
+        .drag-over { border: 2px dashed var(--accent-primary) !important; transform: scale(1.02); }
+
+        .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+        .empty-state i { font-size: 4rem; color: var(--border-secondary); margin-bottom: 1rem; }
+        
+        .loading-screen { position: fixed; inset: 0; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; z-index: 1000; flex-direction: column; gap: 1rem; }
+        .spinner { width: 40px; height: 40px; border: 4px solid var(--border-primary); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+    if (window.self !== window.top) {
+        const nav = document.querySelector('nav');
+        if (nav) nav.style.display = 'none';
+        document.querySelectorAll('a').forEach(a => {
+            const href = a.getAttribute('href');
+            if (href && href.includes('index.html')) {
+                a.href = '#';
+                a.onclick = (e) => { e.preventDefault(); window.parent.postMessage({ action: 'switchView', viewId: 'dashboard-view' }, '*'); };
+            }
+        });
+    }
+});
+</script>
+</head>
+<body>
+    <nav>
+        <a href="../index.html" style="text-decoration: none;" onclick="sessionStorage.removeItem('courseflixState')"><h1>📚 CourseFlix</h1></a>
+        <div class="nav-links">
+            <a href="../index.html" class="nav-link" onclick="sessionStorage.removeItem('courseflixState')">Dashboard</a>
+            <a href="#" class="nav-link active">Goals</a>
+        </div>
+    </nav>
+
+    <div class="loading-screen" id="loading">
+        <div class="spinner"></div>
+        <h3>Loading Goals...</h3>
+    </div>
+
+    <div class="container" id="app-container" style="display: none;">
+        <!-- WIZARD STEP 1: Subjects Count & Selection -->
+        <div class="wizard-step" id="step-1">
+            <div>
+                <h2 class="wizard-title">Plan Your Day</h2>
+                <p class="wizard-subtitle">How many subjects do you want to study today?</p>
+                <div class="input-group">
+                    <input type="number" id="subject-count-input" class="input-field" min="1" max="10" value="2" style="max-width: 200px;">
+                </div>
+            </div>
+            
+            <div style="margin-top: 1rem;">
+                <h3 style="margin-bottom: 1rem;">Select Subjects</h3>
+                <div class="subject-list" id="subject-list-container">
+                    <!-- Subject cards will be injected here -->
+                </div>
+                <div class="error-msg" id="step-1-error">Please select exactly <span id="req-sub-count">2</span> subjects.</div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+                <button class="primary-btn" id="next-to-step-2">Next Step <i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+
+        <!-- WIZARD STEP 2: Lecture Allocation -->
+        <div class="wizard-step" id="step-2">
+            <div>
+                <h2 class="wizard-title">Lecture Allocation</h2>
+                <p class="wizard-subtitle">How many total lectures do you want to study?</p>
+                <div class="input-group">
+                    <input type="number" id="total-lectures-input" class="input-field" min="1" max="20" value="4" style="max-width: 200px;">
+                </div>
+            </div>
+            
+            <div style="margin-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3>Allocate Lectures per Subject</h3>
+                    <button class="primary-btn smart-alloc-btn" id="smart-alloc-btn"><i class="fas fa-magic"></i> Smart Split</button>
+                </div>
+                <div class="allocation-list" id="allocation-list-container">
+                    <!-- Allocation items will be injected here -->
+                </div>
+                <div class="error-msg" id="step-2-error">Total allocated lectures must equal <span id="req-lec-count">4</span>. Current: <span id="cur-lec-count">0</span></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 2rem;">
+                <button class="primary-btn" style="background: var(--bg-tertiary); color: var(--text-primary);" id="back-to-step-1"><i class="fas fa-arrow-left"></i> Back</button>
+                <button class="primary-btn" id="generate-playlist-btn"><i class="fas fa-play-circle"></i> Create Playlist</button>
+            </div>
+        </div>
+
+        <!-- DASHBOARD VIEW -->
+        <div class="wizard-step" id="dashboard-view">
+            <div class="dashboard-header">
+                <div>
+                    <h2 class="wizard-title">Your Goals Playlist</h2>
+                    <p class="wizard-subtitle" id="dashboard-date">Today</p>
+                </div>
+                <button class="primary-btn" id="create-new-btn"><i class="fas fa-plus"></i> New Playlist</button>
+            </div>
+
+            <div id="playlist-stats-container" style="display: flex; gap: 1rem; margin-bottom: 2rem;"></div>
+
+            <div id="continue-container">
+                <!-- Continue learning card here -->
+            </div>
+
+            <div>
+                <h3 class="section-title"><i class="fas fa-list-ul"></i> Upcoming Lectures</h3>
+                <div class="upcoming-list" id="upcoming-list-container">
+                    <!-- Upcoming lectures here -->
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem;">
+                <h3 class="section-title" style="cursor: pointer; border-bottom-color: var(--border-secondary);" onclick="const c = document.getElementById('finished-list-container'); c.style.display = c.style.display === 'none' ? 'flex' : 'none'; this.querySelector('.fa-chevron-down, .fa-chevron-up').classList.toggle('fa-chevron-up'); this.querySelector('.fa-chevron-down, .fa-chevron-up').classList.toggle('fa-chevron-down');">
+                    <i class="fas fa-check-double" style="color: var(--text-secondary);"></i> <span style="color: var(--text-secondary);">Finished Lectures</span> <i class="fas fa-chevron-down" style="margin-left: auto; font-size: 1rem; color: var(--text-secondary);"></i>
+                </h3>
+                <div class="upcoming-list" id="finished-list-container" style="display: none; padding-top: 1rem;">
+                    <!-- Finished lectures here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATABASE HELPERS ---
+        const DB_NAME = 'CourseFlixDB';
+        const DB_VERSION = 12;
+        const STORE_NAME = 'courses';
+        const PROGRESS_STORE = 'progress';
+
+        let db;
+        let courses = [];
+        let courseProgress = {};
+        let groupedSubjects = {}; // { "Computer Network": [course1, course2] }
+
+        // State
+        let selectedSubjects = []; // [{ groupName, courseId }]
+        let allocatedLectures = {}; // { courseId: number }
+        let generatedPlaylist = []; // [ { courseId, lecturePath, title, duration, timeStr } ]
+
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                const checkParent = setInterval(() => {
+                    if (window.parent && window.parent.appDbInitialized) {
+                        clearInterval(checkParent);
+                        const request = indexedDB.open(DB_NAME, DB_VERSION);
+                        request.onerror = () => reject("Error opening DB");
+                        request.onsuccess = () => { db = request.result; resolve(); };
+                    }
+                }, 100);
+            });
+        }
+
+        function getStore(storeName, mode) {
+            return db.transaction(storeName, mode).objectStore(storeName);
+        }
+
+        function getSubfolderFacultyName(course, fullPath) {
+            if (!fullPath) return course.facultyName || 'Unknown Faculty';
+            const parts = fullPath.split('/');
+            for (let i = parts.length; i > 0; i--) {
+                const currentPath = parts.slice(0, i).join('/');
+                if (course.subCourseData && course.subCourseData[currentPath] && course.subCourseData[currentPath].facultyName) {
+                    return course.subCourseData[currentPath].facultyName;
+                }
+            }
+            return course.facultyName || 'Unknown Faculty';
+        }
+
+        function isSubfolderIgnored(course, fullPath) {
+            if (course.isIgnored) return true;
+            if (!fullPath) return false;
+            const parts = fullPath.split('/');
+            for (let i = parts.length; i > 0; i--) {
+                const currentPath = parts.slice(0, i).join('/');
+                if (course.subCourseData && course.subCourseData[currentPath] && course.subCourseData[currentPath].isIgnored) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        async function loadData() {
+            const allCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
+            const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
+            
+            courses = allCourses || [];
+            courseProgress = {};
+            (allProgress || []).forEach(p => courseProgress[p.id] = p);
+            
+            groupedSubjects = {};
+            courses.forEach(course => {
+                if (course.isIgnored) return;
+
+                let baseName = course.title;
+                if (!groupedSubjects[baseName]) groupedSubjects[baseName] = new Set();
+                
+                if (course.chapters && course.chapters.length > 0) {
+                    course.chapters.forEach(ch => {
+                        if (!isSubfolderIgnored(course, ch.name)) {
+                            groupedSubjects[baseName].add(getSubfolderFacultyName(course, ch.name));
+                        }
+                    });
+                } else {
+                    groupedSubjects[baseName].add(course.facultyName || 'Unknown Faculty');
+                }
+            });
+            
+            Object.keys(groupedSubjects).forEach(key => {
+                if (groupedSubjects[key].size === 0) delete groupedSubjects[key];
+            });
+        }
+
+        function renderSubjectsList() {
+            const container = $('subject-list-container');
+            container.innerHTML = '';
+            
+            Object.keys(groupedSubjects).forEach(baseName => {
+                const faculties = Array.from(groupedSubjects[baseName]);
+                const card = document.createElement('div');
+                card.className = 'subject-card';
+                card.dataset.basename = baseName;
+                
+                let facultyHtml = '';
+                if (faculties.length > 1) {
+                    facultyHtml = `<select class="faculty-dropdown" onclick="event.stopPropagation()">
+                        ${faculties.map(f => `<option value="${f}">${f}</option>`).join('')}
+                    </select>`;
+                } else {
+                    facultyHtml = `<div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;" data-faculty="${faculties[0]}">${faculties[0]}</div>`;
+                }
+
+                card.innerHTML = `
+                    <div class="subject-name">${baseName}</div>
+                    ${facultyHtml}
+                `;
+
+                card.onclick = () => {
+                    const isSelected = card.classList.contains('selected');
+                    const maxCount = parseInt($('subject-count-input').value) || 1;
+                    
+                    if (!isSelected && document.querySelectorAll('.subject-card.selected').length >= maxCount) {
+                        $('step-1-error').style.display = 'block';
+                        $('step-1-error').textContent = `You can only select up to ${maxCount} subjects.`;
+                        return;
+                    }
+                    
+                    $('step-1-error').style.display = 'none';
+                    card.classList.toggle('selected');
+                };
+
+                container.appendChild(card);
+            });
+        }
+
+        const $ = id => document.getElementById(id);
+        
+        function showStep(stepId) {
+            document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+            $(stepId).classList.add('active');
+        }
+
+        function renderAllocationList() {
+            const container = $('allocation-list-container');
+            container.innerHTML = '';
+            
+            selectedSubjects.forEach(sub => {
+                const title = sub.groupName;
+                
+                if (!allocatedLectures[title]) allocatedLectures[title] = 0;
+
+                const item = document.createElement('div');
+                item.className = 'allocation-item';
+                item.innerHTML = `
+                    <div class="allocation-name">${title} (${sub.facultyName})</div>
+                    <div class="allocation-controls">
+                        <button class="alloc-btn dec-btn" data-id="${title}"><i class="fas fa-minus"></i></button>
+                        <div class="alloc-val" id="alloc-val-${title}">${allocatedLectures[title]}</div>
+                        <button class="alloc-btn inc-btn" data-id="${title}"><i class="fas fa-plus"></i></button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            document.querySelectorAll('.inc-btn').forEach(btn => btn.onclick = (e) => {
+                const id = e.currentTarget.dataset.id;
+                allocatedLectures[id]++;
+                $(`alloc-val-${id}`).textContent = allocatedLectures[id];
+                validateAllocation();
+            });
+            document.querySelectorAll('.dec-btn').forEach(btn => btn.onclick = (e) => {
+                const id = e.currentTarget.dataset.id;
+                if (allocatedLectures[id] > 0) {
+                    allocatedLectures[id]--;
+                    $(`alloc-val-${id}`).textContent = allocatedLectures[id];
+                    validateAllocation();
+                }
+            });
+        }
+
+        function validateAllocation() {
+            const totalRequired = parseInt($('total-lectures-input').value) || 1;
+            const currentTotal = Object.values(allocatedLectures).reduce((a, b) => a + b, 0);
+            const err = $('step-2-error');
+            
+            if (currentTotal !== totalRequired) {
+                err.style.display = 'block';
+                $('req-lec-count').textContent = totalRequired;
+                $('cur-lec-count').textContent = currentTotal;
+                return false;
+            }
+            err.style.display = 'none';
+            return true;
+        }
+
+        $('smart-alloc-btn').onclick = () => {
+            const totalRequired = parseInt($('total-lectures-input').value) || 1;
+            const subCount = selectedSubjects.length;
+            if (subCount === 0) return;
+
+            let remaining = totalRequired;
+            selectedSubjects.forEach((sub, idx) => {
+                const share = Math.floor(remaining / (subCount - idx));
+                allocatedLectures[sub.groupName] = share;
+                remaining -= share;
+                $(`alloc-val-${sub.groupName}`).textContent = share;
+            });
+            validateAllocation();
+        };
+
+        function getUncompletedLectures(baseName, facultyName, limit) {
+            let uncompleted = [];
+            let globalIdx = 0;
+            
+            const matchingCourses = courses.filter(c => c.title === baseName && !c.isIgnored);
+            
+            for (const course of matchingCourses) {
+                if (uncompleted.length >= limit) break;
+                
+                if (course.chapters) {
+                    course.chapters.forEach(ch => {
+                        if (uncompleted.length >= limit) return;
+                        if (isSubfolderIgnored(course, ch.name)) return;
+                        if (getSubfolderFacultyName(course, ch.name) !== facultyName) return;
+                        
+                        if (ch.lectures) {
+                            ch.lectures.forEach(lec => {
+                                if (uncompleted.length >= limit) return;
+                                
+                                const progId = `${course.id}_${lec.id}`;
+                                const prog = courseProgress[progId];
+                                
+                                if (!prog || !prog.completed) {
+                                    uncompleted.push({
+                                        courseId: course.id,
+                                        courseTitle: course.title,
+                                        lectureId: lec.id,
+                                        title: lec.title || lec.name || lec.displayName || `Lecture ${globalIdx+1}`,
+                                        duration: lec.duration || 3600,
+                                        chName: ch.name,
+                                        facultyName: facultyName
+                                    });
+                                }
+                                globalIdx++;
+                            });
+                        }
+                    });
+                } else {
+                    if ((course.facultyName || 'Unknown Faculty') !== facultyName) continue;
+                    
+                    if (course.lectures) {
+                        course.lectures.forEach(lec => {
+                            if (uncompleted.length >= limit) return;
+                            
+                            const progId = `${course.id}_${lec.id}`;
+                            const prog = courseProgress[progId];
+                            
+                            if (!prog || !prog.completed) {
+                                uncompleted.push({
+                                    courseId: course.id,
+                                    courseTitle: course.title,
+                                    lectureId: lec.id,
+                                    title: lec.title || lec.name || lec.displayName || `Lecture ${globalIdx+1}`,
+                                    duration: lec.duration || 3600,
+                                    facultyName: facultyName
+                                });
+                            }
+                            globalIdx++;
+                        });
+                    }
+                }
+            }
+            return uncompleted;
+        }
+
+        async function generatePlaylist() {
+            if (!validateAllocation()) return;
+
+            generatedPlaylist = [];
+            selectedSubjects.forEach(sub => {
+                const count = allocatedLectures[sub.groupName];
+                if (count > 0) {
+                    const lecs = getUncompletedLectures(sub.groupName, sub.facultyName, count);
+                    generatedPlaylist = generatedPlaylist.concat(lecs);
+                }
+            });
+            
+            localStorage.setItem('courseflix_goals_playlist', JSON.stringify(generatedPlaylist));
+            renderDashboard();
+            showStep('dashboard-view');
+        }
+
+        // --- DASHBOARD RENDERING ---
+        function formatTime(date) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // --- DRAG AND DROP ---
+        let draggedIndex = null;
+
+        function handleDragStart(e) {
+            draggedIndex = parseInt(this.dataset.index);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', draggedIndex);
+            this.style.opacity = '0.4';
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+        
+        function handleDragEnter(e) {
+            e.preventDefault();
+            this.classList.add('drag-over');
+        }
+        
+        function handleDragLeave(e) {
+            this.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.stopPropagation();
+            this.classList.remove('drag-over');
+            const targetIndex = parseInt(this.dataset.index);
+            
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                const item = generatedPlaylist.splice(draggedIndex, 1)[0];
+                generatedPlaylist.splice(targetIndex, 0, item);
+                localStorage.setItem('courseflix_goals_playlist', JSON.stringify(generatedPlaylist));
+                renderDashboard();
+            }
+            return false;
+        }
+        
+        function handleDragEnd(e) {
+            this.style.opacity = '1';
+            document.querySelectorAll('.lecture-item, .continue-card').forEach(el => el.classList.remove('drag-over'));
+        }
+
+        function renderDashboard() {
+            $('dashboard-date').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+            
+            const continueContainer = $('continue-container');
+            const upcomingContainer = $('upcoming-list-container');
+            const finishedContainer = $('finished-list-container');
+            continueContainer.innerHTML = '';
+            upcomingContainer.innerHTML = '';
+            if (finishedContainer) finishedContainer.innerHTML = '';
+
+            const statsContainer = $('playlist-stats-container');
+            if (statsContainer) statsContainer.innerHTML = '';
+
+            if (!generatedPlaylist || generatedPlaylist.length === 0) {
+                upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><h2>All goals completed!</h2><p>Great job today.</p></div>';
+                return;
+            }
+
+            let totalDuration = 0;
+            let totalWatched = 0;
+
+            // Calculate overall progress first
+            generatedPlaylist.forEach(lec => {
+                const durSecs = lec.duration && typeof lec.duration === 'number' ? lec.duration : 3600;
+                totalDuration += durSecs;
+                
+                const progId = `${lec.courseId}_${lec.lectureId}`;
+                const prog = courseProgress[progId];
+                if (prog) {
+                    if (prog.completed) {
+                        totalWatched += durSecs;
+                    } else if (prog.currentTime) {
+                        totalWatched += prog.currentTime;
+                    }
+                }
+            });
+
+            const timeLeftSecs = Math.max(0, totalDuration - totalWatched);
+            const timeLeftH = Math.floor(timeLeftSecs / 3600);
+            const timeLeftM = Math.floor((timeLeftSecs % 3600) / 60);
+            const timeLeftStr = `${timeLeftH}h ${timeLeftM}m`;
+
+            let completionPercentage = totalDuration > 0 ? Math.round((totalWatched / totalDuration) * 100) : 0;
+            if (completionPercentage > 100) completionPercentage = 100;
+
+            let percentageColor = 'var(--accent-danger)'; // Red
+            if (completionPercentage > 50) {
+                percentageColor = 'var(--accent-primary)'; // Green
+            } else if (completionPercentage >= 25) {
+                percentageColor = 'var(--status-review)'; // Yellow
+            }
+
+            if (statsContainer) {
+                statsContainer.innerHTML = `
+                    <div style="background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; padding: 1rem 1.5rem; flex: 1; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                        <div style="color: var(--text-secondary); font-size: 0.9rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem;">Time Left</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);"><i class="far fa-clock" style="color: var(--accent-primary); margin-right: 8px;"></i>${timeLeftStr}</div>
+                    </div>
+                    <div style="background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; padding: 1rem 1.5rem; flex: 1; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                        <div style="color: var(--text-secondary); font-size: 0.9rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem;">Playlist Progress</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: ${percentageColor}; display: flex; align-items: center;">
+                            <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${percentageColor}; margin-right: 10px;"></div>
+                            ${completionPercentage}%
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Scheduling logic
+            let currentTime = new Date();
+            let firstUncompletedIdx = -1;
+
+            generatedPlaylist.forEach((lec, idx) => {
+                if (firstUncompletedIdx !== -1) return;
+                const progId = `${lec.courseId}_${lec.lectureId}`;
+                const prog = courseProgress[progId];
+                let isCompleted = false;
+                if (prog) {
+                    const durSecs = lec.duration && typeof lec.duration === 'number' ? lec.duration : 3600;
+                    if (prog.completed) isCompleted = true;
+                    else if (prog.currentTime >= durSecs && durSecs > 0) isCompleted = true;
+                }
+                if (!isCompleted) firstUncompletedIdx = idx;
+            });
+
+            if (firstUncompletedIdx === -1 && generatedPlaylist.length > 0) {
+                upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color: var(--accent-primary);"></i><h2>All goals completed!</h2><p>Great job today.</p></div>';
+            }
+
+            generatedPlaylist.forEach((lec, idx) => {
+                const durSecs = lec.duration && typeof lec.duration === 'number' ? lec.duration : 3600;
+                
+                // Calculate individual progress
+                const progId = `${lec.courseId}_${lec.lectureId}`;
+                const prog = courseProgress[progId];
+                let watchedTime = 0;
+                if (prog) {
+                    if (prog.completed) watchedTime = durSecs;
+                    else if (prog.currentTime) watchedTime = prog.currentTime;
+                }
+                let lecPercentage = durSecs > 0 ? Math.round((watchedTime / durSecs) * 100) : 0;
+                if (lecPercentage > 100) lecPercentage = 100;
+                
+                let isCompleted = lecPercentage === 100;
+
+                let lecPercentageColor = 'var(--text-secondary)';
+                if (lecPercentage > 0) {
+                    if (lecPercentage > 50) lecPercentageColor = 'var(--accent-primary)';
+                    else if (lecPercentage >= 25) lecPercentageColor = 'var(--status-review)';
+                    else lecPercentageColor = 'var(--accent-danger)';
+                }
+
+                let startTimeStr = "Completed";
+                if (!isCompleted) {
+                    startTimeStr = formatTime(currentTime);
+                    currentTime = new Date(currentTime.getTime() + (durSecs - watchedTime) * 1000);
+                }
+
+                // Format duration string
+                const h = Math.floor(durSecs / 3600);
+                const m = Math.floor((durSecs % 3600) / 60);
+                const durStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+                const course = courses.find(c => c.id === parseInt(lec.courseId));
+                let thumbSrc = null;
+                if (course) {
+                    if (lec.chName && course.subCourseData && course.subCourseData[lec.chName] && course.subCourseData[lec.chName].thumbnail) {
+                        thumbSrc = course.subCourseData[lec.chName].thumbnail;
+                    } else if (course.thumbnail) {
+                        thumbSrc = course.thumbnail;
+                    }
+                }
+
+                const thumbHtml = thumbSrc ? `<img src="${thumbSrc}" style="width: 100%; height: 100%; object-fit: cover;">` : `<i class="fas fa-book" style="font-size: 2rem; color: rgba(255,255,255,0.5);"></i>`;
+
+                let facultyNameToDisplay = 'Unknown Faculty';
+                if (lec.facultyName && lec.facultyName !== 'undefined') {
+                    facultyNameToDisplay = lec.facultyName;
+                } else if (course) {
+                    facultyNameToDisplay = lec.chName ? getSubfolderFacultyName(course, lec.chName) : (course.facultyName || 'Unknown Faculty');
+                }
+
+                if (idx === firstUncompletedIdx) {
+                    // Continue Card
+                    continueContainer.innerHTML = `
+                        <div class="continue-card" draggable="true" data-index="${idx}" onclick="playLecture('${lec.courseId}', '${lec.lectureId}')">
+                            <div style="width: 200px; height: 160px; background-color: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; margin-right: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
+                                <div style="width: 100%; flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
+                                    ${thumbHtml}
+                                </div>
+                                <div style="padding: 12px 14px; font-weight: 700; font-size: 1rem; color: #fff; height: 50px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    ${lec.courseTitle}
+                                </div>
+                            </div>
+                            <div class="continue-info">
+                                <div class="continue-label">Continue Watching</div>
+                                <h3 class="continue-title" style="margin-bottom: 0.5rem;">${lec.title}</h3>
+                                <div style="display: flex; gap: 0.75rem; align-items: center; color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
+                                    <div style="border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem;"><i class="far fa-clock"></i> ${durStr}</div>
+                                    <div style="color: ${lecPercentageColor}; font-weight: 700; font-size: 0.85rem;">${lecPercentage}%</div>
+                                    <span>•</span>
+                                    <span>${lec.courseTitle}</span>
+                                    <span>•</span>
+                                    <span>${facultyNameToDisplay}</span>
+                                </div>
+                            </div>
+                            <div class="play-btn-large">
+                                <i class="fas fa-play" style="margin-left: 4px;"></i>
+                            </div>
+                        </div>
+                    `;
+                    const cardEl = continueContainer.querySelector('.continue-card');
+                    cardEl.addEventListener('dragstart', handleDragStart);
+                    cardEl.addEventListener('dragover', handleDragOver);
+                    cardEl.addEventListener('dragenter', handleDragEnter);
+                    cardEl.addEventListener('dragleave', handleDragLeave);
+                    cardEl.addEventListener('drop', handleDrop);
+                    cardEl.addEventListener('dragend', handleDragEnd);
+                } else {
+                    // Upcoming or Finished list
+                    const item = document.createElement('div');
+                    item.className = 'lecture-item';
+                    item.dataset.index = idx;
+                    const opacityStyle = isCompleted ? 'opacity: 0.5;' : '';
+                    const strikeStyle = isCompleted ? 'text-decoration: line-through;' : '';
+                    if (isCompleted) {
+                        item.style.pointerEvents = 'none';
+                        item.style.borderColor = 'var(--border-secondary)';
+                    } else {
+                        item.draggable = true;
+                    }
+                    
+                    item.innerHTML = `
+                        <div style="width: 130px; height: 100px; background-color: var(--bg-secondary); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3); ${opacityStyle}">
+                            <div style="width: 100%; flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
+                                ${thumbHtml}
+                            </div>
+                            <div style="padding: 6px 10px; font-weight: 700; font-size: 0.8rem; color: #fff; height: 32px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ${strikeStyle}">
+                                ${lec.courseTitle}
+                            </div>
+                        </div>
+                        <div class="lecture-time" style="${isCompleted ? 'background: transparent; border: 1px solid var(--accent-primary); color: var(--accent-primary);' : ''}">${isCompleted ? '<i class="fas fa-check"></i>' : startTimeStr}</div>
+                        <div class="lecture-details" style="${opacityStyle}">
+                            <h4 class="lecture-title" style="margin: 0 0 0.3rem 0; font-size: 1.05rem; font-weight: 600; ${strikeStyle}">${lec.title}</h4>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; ${strikeStyle}">
+                                <span>${lec.courseTitle}</span>
+                                <span>•</span>
+                                <span>${facultyNameToDisplay}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1rem; ${opacityStyle}">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 12px;"><i class="far fa-clock"></i> ${durStr}</div>
+                            ${isCompleted ? `<div style="font-size: 0.9rem; font-weight: 700; color: var(--accent-primary); width: 40px; text-align: right;"><i class="fas fa-check-circle"></i></div>` : (lecPercentage > 0 ? `<div style="font-size: 0.9rem; font-weight: 700; color: ${lecPercentageColor}; width: 40px; text-align: right;">${lecPercentage}%</div>` : '')}
+                        </div>
+                        ${isCompleted ? '' : '<i class="fas fa-grip-vertical drag-handle" title="Drag to reorder subjects" style="color: var(--text-tertiary); margin-left: 1rem; cursor: grab;"></i>'}
+                    `;
+                    item.onclick = (e) => {
+                        // Prevent click if they are just dragging
+                        if (e.target.closest('.drag-handle')) return;
+                        if (!isCompleted && idx > firstUncompletedIdx) {
+                            alert("Complete the previous lecture in order to gain access to this!");
+                        } else if (!isCompleted) {
+                            playLecture(lec.courseId, lec.lectureId);
+                        }
+                    };
+                    
+                    if (!isCompleted) {
+                        item.addEventListener('dragstart', handleDragStart);
+                        item.addEventListener('dragover', handleDragOver);
+                        item.addEventListener('dragenter', handleDragEnter);
+                        item.addEventListener('dragleave', handleDragLeave);
+                        item.addEventListener('drop', handleDrop);
+                        item.addEventListener('dragend', handleDragEnd);
+                        upcomingContainer.appendChild(item);
+                    } else if (finishedContainer) {
+                        finishedContainer.appendChild(item);
+                    }
+                }
+            });
+        }
+
+        window.playLecture = function(courseId, lectureId) {
+            window.location.href = `../index.html?playGoalsPlaylist=true&playCourse=${courseId}&playLecture=${lectureId}`;
+        };
+
+        // --- EVENT LISTENERS ---
+        $('subject-count-input').onchange = (e) => {
+            const span = $('req-sub-count');
+            if (span) span.textContent = e.target.value;
+            const max = parseInt(e.target.value);
+            const selected = document.querySelectorAll('.subject-card.selected');
+            if (selected.length > max) {
+                for (let i = max; i < selected.length; i++) {
+                    selected[i].classList.remove('selected');
+                }
+            }
+        };
+
+        $('next-to-step-2').onclick = () => {
+            const max = parseInt($('subject-count-input').value);
+            const selected = document.querySelectorAll('.subject-card.selected');
+            if (selected.length < 1) {
+                $('step-1-error').style.display = 'block';
+                $('step-1-error').innerHTML = `Please select exactly <span id="req-sub-count">${max}</span> subjects.`;
+                return;
+            }
+            if (selected.length !== max) {
+                $('step-1-error').style.display = 'block';
+                $('step-1-error').innerHTML = `Please select exactly <span id="req-sub-count">${max}</span> subjects.`;
+                return;
+            }
+            
+            selectedSubjects = [];
+            selected.forEach(card => {
+                const baseName = card.dataset.basename;
+                const dropdown = card.querySelector('.faculty-dropdown');
+                let facultyName;
+                if (dropdown) {
+                    facultyName = dropdown.value;
+                } else {
+                    facultyName = card.querySelector('div[data-faculty]').dataset.faculty;
+                }
+                selectedSubjects.push({ groupName: baseName, facultyName: facultyName });
+            });
+
+            allocatedLectures = {};
+            selectedSubjects.forEach(s => allocatedLectures[s.courseId] = 0);
+            
+            renderAllocationList();
+            showStep('step-2');
+        };
+
+        $('back-to-step-1').onclick = () => showStep('step-1');
+        $('generate-playlist-btn').onclick = generatePlaylist;
+
+        $('create-new-btn').onclick = () => {
+            if(confirm("Are you sure you want to delete the current playlist and create a new one?")) {
+                localStorage.removeItem('courseflix_goals_playlist');
+                generatedPlaylist = [];
+                document.querySelectorAll('.subject-card.selected').forEach(el => el.classList.remove('selected'));
+                renderSubjectsList();
+                showStep('step-1');
+            }
+        };
+
+        // --- INIT ---
+        window.onload = async () => {
+            try {
+                await initDB();
+                await loadData();
+                $('loading').style.display = 'none';
+                
+                // Always render subjects list so it's ready if they delete the playlist
+                renderSubjectsList();
+                
+                // On load, restore the playlist exactly as it is so the user can use the Eye icon to hide/unhide completed lectures
+                const saved = localStorage.getItem('courseflix_goals_playlist');
+                if (saved) {
+                    generatedPlaylist = JSON.parse(saved);
+
+                    if (generatedPlaylist.length > 0) {
+                        $('app-container').style.display = 'flex';
+                        renderDashboard();
+                        showStep('dashboard-view');
+                        return;
+                    }
+                }
+                
+                $('app-container').style.display = 'flex';
+                showStep('step-1');
+                
+            } catch (e) {
+                console.error(e);
+                $('loading').innerHTML = `<h3>Error loading data</h3><p>${e.message || e}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>
+<script>console.log("goals loaded");</script>
