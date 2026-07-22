@@ -3075,6 +3075,7 @@ window.initCourseFlix = async function() {
                                 const cleanL = { ...l };
                                 delete cleanL.handle;
                                 return cleanL;
+                    return cleanC;
                             });
                             return cleanC;
                         });
@@ -3082,11 +3083,27 @@ window.initCourseFlix = async function() {
                     
                     if(course.handle) cleanCourse.folderName = course.handle.name;
                     
-                    // Backup custom subfolder handles (only names, handles don't serialize)
+                    // Backup custom subfolder handles and extract subcourse thumbnails
                     if(cleanCourse.subCourseData) {
+                        const newSubData = {};
+                        let subIdx = 0;
                         for(const sub in cleanCourse.subCourseData) {
-                            delete cleanCourse.subCourseData[sub].handle;
+                            const subObj = { ...cleanCourse.subCourseData[sub] };
+                            delete subObj.handle;
+                            if (subObj.thumbnail && typeof subObj.thumbnail === 'string' && subObj.thumbnail.startsWith('data:')) {
+                                try {
+                                    const subThumbBlob = base64ToBlob(subObj.thumbnail);
+                                    const subThumbFilename = `sub_${course.id}_${subIdx++}.png`;
+                                    zip.folder('sub_thumbnails').file(subThumbFilename, subThumbBlob);
+                                    subObj.thumbnailFilename = subThumbFilename;
+                                    delete subObj.thumbnail;
+                                } catch (e) {
+                                    console.warn("Could not backup sub-course thumbnail for", sub, e);
+                                }
+                            }
+                            newSubData[sub] = subObj;
                         }
+                        cleanCourse.subCourseData = newSubData;
                     }
                     
                     if (course.thumbnail) {
@@ -3133,6 +3150,26 @@ window.initCourseFlix = async function() {
                 // Export Doubts, History, and localStorage
                 const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
                 const allHistory = await new Promise(r => getStore(HISTORY_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
+                const serializableHistory = [];
+                if (Array.isArray(allHistory)) {
+                    let histIdx = 0;
+                    for (const hist of allHistory) {
+                        const cleanHist = { ...hist };
+                        if (hist.thumbnail && typeof hist.thumbnail === 'string' && hist.thumbnail.startsWith('data:')) {
+                            try {
+                                const histThumbBlob = base64ToBlob(hist.thumbnail);
+                                const histThumbFilename = `hist_${hist.id || histIdx}_${histIdx}.png`;
+                                zip.folder('history_thumbnails').file(histThumbFilename, histThumbBlob);
+                                cleanHist.thumbnailFilename = histThumbFilename;
+                                delete cleanHist.thumbnail;
+                            } catch (e) {
+                                console.warn("Could not backup history thumbnail for", hist.id, e);
+                            }
+                        }
+                        histIdx++;
+                        serializableHistory.push(cleanHist);
+                    }
+                }
                 const localStoreData = { ...localStorage };
 
                 // Backup ProgressAppDB assignmentFiles
@@ -3190,18 +3227,17 @@ window.initCourseFlix = async function() {
                     dpps: serializableDpps,
                     progressAppFiles: progressFiles,
                     doubts: allDoubts,
-                    history: allHistory,
+                    history: serializableHistory,
                     localStorage: localStoreData,
                     version: 3,
                     exportedAt: new Date().toISOString()
                 };
 
-                zip.file("backup.json", JSON.stringify(backupData, null, 2));
+                zip.file("backup.json", JSON.stringify(backupData));
                 const zipBlob = await zip.generateAsync({ type: "blob" });
                 downloadBlob(zipBlob, `CourseFlix_Backup_${new Date().toISOString().split('T')[0]}.zip`);
                 showToast("Export successful!");
 
-            } catch (err) {
                 console.error("Export failed:", err);
                 showToast("Export failed. Check the console for errors.", true);
             } finally {
@@ -3347,6 +3383,17 @@ window.initCourseFlix = async function() {
                         const thumbFile = zip.file(`thumbnails/${course.thumbnailFilename}`);
                         if (thumbFile) newCourse.thumbnail = await blobToDataURL(await thumbFile.async('blob'));
                     }
+                    if (newCourse.subCourseData) {
+                        for (const sub in newCourse.subCourseData) {
+                            const subObj = newCourse.subCourseData[sub];
+                            if (subObj.thumbnailFilename) {
+                                const subThumbFile = zip.file(`sub_thumbnails/${subObj.thumbnailFilename}`);
+                                if (subThumbFile) {
+                                    subObj.thumbnail = await blobToDataURL(await subThumbFile.async('blob'));
+                                }
+                            }
+                        }
+                    }
                     await new Promise(r => getStore(STORE_NAME, 'readwrite').put(newCourse).onsuccess = r);
                 }
 
@@ -3391,7 +3438,14 @@ window.initCourseFlix = async function() {
                 
                 if (backupData.history) {
                     for (const hist of backupData.history) {
-                        await new Promise(r => getStore(HISTORY_STORE, 'readwrite').put(hist).onsuccess = r);
+                        const newHist = { ...hist };
+                        if (hist.thumbnailFilename) {
+                            const histThumbFile = zip.file(`history_thumbnails/${hist.thumbnailFilename}`);
+                            if (histThumbFile) {
+                                newHist.thumbnail = await blobToDataURL(await histThumbFile.async('blob'));
+                            }
+                        }
+                        await new Promise(r => getStore(HISTORY_STORE, 'readwrite').put(newHist).onsuccess = r);
                     }
                 }
                 
@@ -5936,23 +5990,6 @@ window.initCourseFlix = async function() {
                     renderContinueView();
                 });
             }
-            
-            function checkAndTriggerBackup() {
-                const lastBackupStr = localStorage.getItem('lastBackupDate');
-                const todayStr = new Date().toLocaleDateString();
-                
-                if (lastBackupStr !== todayStr) {
-                    const exportBtn = document.getElementById('export-btn');
-                    if (exportBtn) {
-                        exportBtn.click();
-                        localStorage.setItem('lastBackupDate', todayStr);
-                        showToast('Automated daily backup triggered.');
-                    }
-                }
-            }
-            
-            checkAndTriggerBackup();
-            setInterval(checkAndTriggerBackup, 60 * 60 * 1000); // Check every hour
             
             async function handleRoute() {
                 const hash = window.location.hash.substring(1);
