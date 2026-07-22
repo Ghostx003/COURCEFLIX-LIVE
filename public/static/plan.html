@@ -258,13 +258,10 @@ window.addEventListener('DOMContentLoaded', () => {
                         <h1 id="today-date" class="text-xl font-bold text-main"></h1>
                         <p id="today-day" class="text-sm text-subtle font-medium"></p>
                     </div>
+                    <button data-action="toggleMode" id="mode-toggle-btn" class="p-2 ml-1 rounded-full hover:bg-tertiary transition-colors text-subtle hover:text-main" title="Toggle Mode">
+                        <i class="fas fa-th-large text-lg"></i>
+                    </button>
                     <div class="flex items-center border-l border-secondary pl-3 ml-1 space-x-2">
-                        <button data-action="startScanToSync" title="Scan QR to Sync" class="p-2 rounded-full hover:bg-tertiary transition-colors sm:hidden text-subtle">
-                            <i class="fas fa-camera"></i>
-                        </button>
-                        <button data-action="generateSyncCode" title="Show QR to Sync" class="p-2 rounded-full hover:bg-tertiary transition-colors hidden sm:block text-subtle">
-                            <i class="fas fa-qrcode"></i>
-                        </button>
                         <div id="p2p-status" class="hidden">
                             <div id="p2p-status-indicator" class="disconnected" title="Sync Status"></div>
                         </div>
@@ -491,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             masteryThresholdPercent: 80,
             activityDurations: {},
             deadline: null,
+            mode: 'advanced',
         },
         ui: { 
             currentModal: null, 
@@ -1015,7 +1013,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
-    const renderSubjects = () => { const key = formatDateKey(new Date()); const items = state.studyData[key] || []; DOM.subjectsList.innerHTML = ''; DOM.subjectsDoneList.innerHTML = ''; const active = items.filter(s => !s.completed); const done = items.filter(s => s.completed); if (items.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">No schedule for today. Click 'Generate'.</p>`; else if (active.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">All tasks complete! Great work! 🎉</p>`; active.forEach(item => DOM.subjectsList.innerHTML += createItemHTML(item)); done.forEach(item => DOM.subjectsDoneList.innerHTML += createItemHTML(item)); DOM.completedSubjectsContainer.classList.toggle('hidden', done.length === 0); };
+    const renderSubjects = () => { const modeBtn = document.getElementById('mode-toggle-btn'); if (modeBtn) { modeBtn.innerHTML = state.settings.mode === 'basic' ? '<i class="fas fa-list text-lg"></i>' : '<i class="fas fa-th-large text-lg"></i>'; modeBtn.title = state.settings.mode === 'basic' ? 'Switch to Adv Mode' : 'Switch to Basic Mode'; } const key = formatDateKey(new Date()); const items = state.studyData[key] || []; DOM.subjectsList.innerHTML = ''; DOM.subjectsDoneList.innerHTML = ''; const active = items.filter(s => !s.completed); const done = items.filter(s => s.completed); if (items.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">No schedule for today. Click 'Generate'.</p>`; else if (active.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">All tasks complete! Great work! 🎉</p>`; active.forEach(item => DOM.subjectsList.innerHTML += createItemHTML(item)); done.forEach(item => DOM.subjectsDoneList.innerHTML += createItemHTML(item)); DOM.completedSubjectsContainer.classList.toggle('hidden', done.length === 0); };
     const createItemHTML = (item) => { if (item.type === 'break') return createBreakHTML(item); return createSubjectHTML(item); };
     const createBreakHTML = (item) => { const endTime = calculateEndTime(new Date(item.startTime), item.durationHours); const timeRangeString = `${formatTime(new Date(item.startTime))} - ${formatTime(endTime)}`; return ` <div class="break-item rounded-xl p-3 sm:p-4 flex items-center gap-3 border border-secondary shadow-sm ${item.completed ? 'completed opacity-60' : ''}" data-item-id="${item.id}" draggable="true"> <span class="drag-handle text-subtle" title="Drag to reorder">${createDragIcon()}</span> <div data-action="toggleMainCompletion" data-item-id="${item.id}" class="custom-checkbox w-7 h-7 rounded-md cursor-pointer flex-shrink-0 ${item.completed ? 'completed' : ''}"></div> <div class="flex items-center gap-2 flex-grow min-w-0"> <i class="fas fa-coffee text-xl text-subtle"></i> <div class="flex flex-col items-start"> <span class="font-bold text-main cursor-pointer hover:opacity-75 truncate" data-action="editBreakText" data-item-id="${item.id}" title="Click to edit reason">${item.text || 'Break'}</span> <span class="text-sm text-subtle" title="Click to edit duration" data-action="openModal" data-modal="edit-hours-modal" data-item-id="${item.id}">${timeRangeString} (${formatHoursAndMinutes(item.durationHours)})</span> </div> </div> <button data-action="deleteItem" data-item-id="${item.id}" class="text-subtle font-bold text-lg px-2 rounded-full hover:bg-red-500/20 hover:text-red-500">&times;</button> </div>`; };
     const createSubjectHTML = (subject) => {
@@ -1036,53 +1034,61 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     const createSubTasksHTML = (subject) => {
+        const isBasic = state.settings.mode === 'basic';
         let html = '<div class="space-y-2 pt-3">';
         let cumulativeTime = new Date(subject.startTime);
         
-        const tasksToRender = subject.subTasks;
+        const tasksToRender = isBasic ? (subject.customTasks || []) : subject.subTasks;
 
         tasksToRender.forEach((task, originalIndex) => {
-            const isStarred = (state.progress[subject.name]?.[task.topic] || []).includes(task.activity);
-            const key = `${subject.id}:${originalIndex}`;
+            const isStarred = !isBasic && (state.progress[subject.name]?.[task.topic] || []).includes(task.activity);
+            const key = isBasic ? `custom:${subject.id}:${originalIndex}` : `${subject.id}:${originalIndex}`;
             const isSelected = state.ui.selectedSubTasks.has(key);
-            const isCounter = !!state.counterData[subject.name]?.columns[task.activity];
+            const isCounter = !isBasic && !!state.counterData[subject.name]?.columns[task.activity];
 
             const taskStartTime = new Date(cumulativeTime.getTime());
-            const taskEndTime = calculateEndTime(taskStartTime, task.hours);
+            const taskEndTime = calculateEndTime(taskStartTime, task.hours || 0);
             const timeRangeString = `${formatTime(taskStartTime)} - ${formatTime(taskEndTime)}`;
             cumulativeTime = taskEndTime;
 
             const arrowButtons = `<div class="flex items-center" style="width: 3rem; height: 1.5rem;"><button data-action="cycleTopic" data-direction="-1" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="btn btn-secondary !p-0 h-6 w-6 flex items-center justify-center rounded-r-none" title="Previous Topic">&lt;</button><button data-action="cycleTopic" data-direction="1" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="btn btn-secondary !p-0 h-6 w-6 flex items-center justify-center rounded-l-none border-l-0" title="Next Topic">&gt;</button></div>`;
             const placeholder = `<div style="width: 3rem; height: 1.5rem;"></div>`;
             
-            const showArrows = task.activity !== 'LEC' && task.topic !== '__subject_wide__';
+            const showArrows = !isBasic && task.activity !== 'LEC' && task.topic !== '__subject_wide__';
 
-            html += `<div class="flex items-center gap-3 p-1 transition-colors duration-200 ${isSelected ? 'subtask-selected' : ''}" data-subtask-key="${key}" draggable="true" data-action="selectSubTaskRow">
-                <div data-action="toggleSubTaskCompletion" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="custom-checkbox w-4 h-4 rounded-sm cursor-pointer shrink-0 ${task.completed ? 'completed' : ''}"></div>
-                ${showArrows ? arrowButtons : placeholder}
+            html += `<div class="flex items-center gap-3 p-1 transition-colors duration-200 ${isSelected ? 'subtask-selected' : ''}" data-subtask-key="${key}" draggable="true" data-action="${isBasic ? 'selectCustomTaskRow' : 'selectSubTaskRow'}">
+                <div data-action="${isBasic ? 'toggleCustomTaskCompletion' : 'toggleSubTaskCompletion'}" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="custom-checkbox w-4 h-4 rounded-sm cursor-pointer shrink-0 ${task.completed ? 'completed' : ''}"></div>
+                ${isBasic ? '<div class="w-1 flex-shrink-0"></div>' : (showArrows ? arrowButtons : placeholder)}
                 <span class="subtask-label flex-grow text-sm text-main ${task.completed ? 'completed' : ''} min-w-0 break-words">${task.text}</span>
                 <div class="subtask-controls">
-                    <span class="subtask-time">${timeRangeString}</span>
+                    ${!isBasic ? `<span class="subtask-time">${timeRangeString}</span>
                     <button data-action="editSubTaskDuration" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="subtask-duration-btn" title="Edit duration">${formatHoursAndMinutesCompact(task.hours)}</button>
                     ${!isCounter ? `
                     <button data-action="markProgress" data-subject-name="${subject.name}" data-topic="${task.topic}" data-activity="${task.activity}" class="h-6 w-6 flex items-center justify-center rounded-md transition-colors hover:bg-tertiary" title="Mark as complete forever"><i class="fas fa-star text-base ${isStarred ? 'text-yellow-400' : 'text-subtle hover:text-yellow-300'}"></i></button>
-                    ` : `<div class="h-6 w-6"></div>`}
-                    <button data-action="cycleSubTaskStatus" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="status-btn status-${(task.status||'none').toLowerCase()}">${task.status||'None'}</button>
-                    <button data-action="deleteSubTask" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="h-6 w-6 flex items-center justify-center rounded-md text-subtle font-bold text-xl transition-colors hover:bg-red-500/20 hover:text-red-500">&times;</button>
+                    ` : `<div class="h-6 w-6"></div>`}` : ''}
+                    <button data-action="${isBasic ? 'cycleCustomTaskStatus' : 'cycleSubTaskStatus'}" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="status-btn status-${(task.status||'none').toLowerCase()}">${task.status||'None'}</button>
+                    <button data-action="${isBasic ? 'deleteCustomTask' : 'deleteSubTask'}" data-item-id="${subject.id}" data-task-index="${originalIndex}" class="h-6 w-6 flex items-center justify-center rounded-md text-subtle font-bold text-xl transition-colors hover:bg-red-500/20 hover:text-red-500">&times;</button>
                 </div>
             </div>`;
         });
         
         html += `</div> 
-        <div class="flex items-center justify-between mt-4 gap-2">
-            <div class="flex items-center gap-2">
+        <div class="flex items-center justify-between mt-4 gap-3 flex-wrap">
+            <div class="flex items-center gap-2 flex-grow min-w-[200px]">
+                 ${isBasic ? `
+                     <div class="relative flex items-center flex-grow bg-tertiary rounded-lg px-4 py-2 border border-secondary shadow-sm transition-colors focus-within:border-accent">
+                         <i class="fas fa-file-alt text-subtle mr-3 text-base"></i>
+                         <input type="text" id="add-custom-task-${subject.id}" data-subject-id="${subject.id}" data-new-task-status="None" class="w-full bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-base text-main placeholder-subtle font-medium outline-none h-6" placeholder="Add task (Tab to change status)">
+                     </div>
+                 ` : `
                  <button data-action="regenerateSubTasks" data-item-id="${subject.id}" class="btn btn-primary" title="Cycle through available activities">
                      <i class="fas fa-sync-alt mr-1"></i> Change
                  </button>
+                 `}
             </div>
             <div class="flex-shrink-0 flex items-center gap-2">
-                <button data-action="duplicateSubject" data-item-id="${subject.id}" class="btn btn-secondary py-1 px-3 text-xs"> <i class="fas fa-copy mr-1"></i> Duplicate </button>
-                <button data-action="deleteItem" data-item-id="${subject.id}" class="btn py-1 px-3 text-xs text-on-accent" style="background-color: var(--accent-danger);"> <i class="fas fa-trash-alt mr-1"></i> Delete </button>
+                <button data-action="duplicateSubject" data-item-id="${subject.id}" class="btn btn-secondary py-2 px-4 text-sm font-semibold rounded-lg flex items-center justify-center"> <i class="fas fa-copy mr-2"></i> Duplicate </button>
+                <button data-action="deleteItem" data-item-id="${subject.id}" class="btn py-2 px-4 text-sm font-semibold rounded-lg flex items-center justify-center" style="background-color: var(--accent-danger); color: white;"> <i class="fas fa-trash-alt mr-2"></i> Delete </button>
             </div>
         </div>`;
         return html;
@@ -1452,6 +1458,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- MAIN ACTIONS OBJECT ---
     const actions = {
+        toggleMode: (el) => {
+            state.settings.mode = state.settings.mode === 'basic' ? 'advanced' : 'basic';
+            enhancedSaveState();
+            render();
+        },
+        toggleCustomTaskCompletion: (el) => {
+            const subjectId = el.dataset.itemId;
+            const taskIndex = parseInt(el.dataset.taskIndex);
+            const key = formatDateKey(new Date());
+            const subject = state.studyData[key]?.find(s => s.id == subjectId);
+            if (subject && subject.customTasks && subject.customTasks[taskIndex]) {
+                subject.customTasks[taskIndex].completed = !subject.customTasks[taskIndex].completed;
+                enhancedSaveState();
+                render();
+            }
+        },
+        cycleCustomTaskStatus: (el) => {
+            const subjectId = el.dataset.itemId;
+            const taskIndex = parseInt(el.dataset.taskIndex);
+            const key = formatDateKey(new Date());
+            const subject = state.studyData[key]?.find(s => s.id == subjectId);
+            if (subject && subject.customTasks && subject.customTasks[taskIndex]) {
+                const currentStatus = subject.customTasks[taskIndex].status || 'None';
+                const currentIndex = ACTIVITY_TYPES.indexOf(currentStatus);
+                const nextIndex = (currentIndex + 1) % ACTIVITY_TYPES.length;
+                subject.customTasks[taskIndex].status = ACTIVITY_TYPES[nextIndex];
+                enhancedSaveState();
+                render();
+            }
+        },
+        deleteCustomTask: (el) => {
+            const subjectId = el.dataset.itemId;
+            const taskIndex = parseInt(el.dataset.taskIndex);
+            const key = formatDateKey(new Date());
+            const subject = state.studyData[key]?.find(s => s.id == subjectId);
+            if (subject && subject.customTasks && subject.customTasks[taskIndex]) {
+                subject.customTasks.splice(taskIndex, 1);
+                enhancedSaveState();
+                render();
+            }
+        },
+        selectCustomTaskRow: (el) => {
+            const key = el.dataset.subtaskKey;
+            if (state.ui.selectedSubTasks.has(key)) {
+                state.ui.selectedSubTasks.delete(key);
+            } else {
+                state.ui.selectedSubTasks.add(key);
+            }
+            render();
+        },
         showScheduleView: () => { state.ui.currentView = 'schedule'; render(); },
         showSummaryView: () => { state.ui.currentView = 'summary'; render(); },
         showProgressView: () => { state.ui.currentView = 'progress'; render(); },
@@ -2574,6 +2630,54 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.preventDefault();
                     window.open(window.location.href.split('#')[0] + hash, '_blank');
                 }
+            }
+        }
+    });
+
+    document.body.addEventListener('keydown', (e) => {
+        if (e.target.matches('input[id^="add-custom-task-"]')) {
+            const subjectId = e.target.dataset.subjectId;
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const text = e.target.value.trim();
+                if (text) {
+                    const key = formatDateKey(new Date());
+                    const schedule = state.studyData[key];
+                    const subject = schedule?.find(s => s.id == subjectId);
+                    if (subject) {
+                        if (!subject.customTasks) subject.customTasks = [];
+                        const status = e.target.dataset.newTaskStatus || 'None';
+                        subject.customTasks.push({ text, completed: false, status: status, hours: 0 });
+                        e.target.value = '';
+                        e.target.dataset.newTaskStatus = 'None';
+                        enhancedSaveState();
+                        render();
+                        // Refocus the input
+                        setTimeout(() => {
+                            const newInput = document.getElementById(`add-custom-task-${subjectId}`);
+                            if (newInput) newInput.focus();
+                        }, 50);
+                    }
+                }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                let currentStatus = e.target.dataset.newTaskStatus || 'None';
+                const currentIndex = ACTIVITY_TYPES.indexOf(currentStatus);
+                const nextIndex = (currentIndex + 1) % ACTIVITY_TYPES.length;
+                const nextStatus = ACTIVITY_TYPES[nextIndex];
+                e.target.dataset.newTaskStatus = nextStatus;
+                
+                const existingFeedback = e.target.parentElement.querySelector('.status-feedback-badge');
+                if (existingFeedback) existingFeedback.remove();
+                const badge = document.createElement('span');
+                badge.className = `status-feedback-badge status-btn status-${nextStatus.toLowerCase()} absolute right-2 top-1/2 transform -translate-y-1/2 text-xs pointer-events-none transition-all duration-300`;
+                badge.textContent = nextStatus;
+                e.target.parentElement.classList.add('relative');
+                e.target.parentElement.appendChild(badge);
+                setTimeout(() => {
+                    badge.classList.add('opacity-0');
+                    setTimeout(() => badge.remove(), 300);
+                }, 1500);
             }
         }
     });
