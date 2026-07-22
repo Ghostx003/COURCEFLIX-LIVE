@@ -50,6 +50,12 @@ export default function PlayerView() {
                     <div id="skip-intro-btn" style={{"position":"absolute","right":"24px","bottom":"85px","background":"rgba(0, 0, 0, 0.8)","color":"white","border":"1px solid var(--border-primary)","padding":"12px 16px","borderRadius":"8px","fontWeight":"600","cursor":"pointer","zIndex":"35","display":"none","transition":"opacity 0.3s","opacity":"0","boxShadow":"0 4px 12px rgba(0,0,0,0.5)"}}>
                         Skip Intro <i className="fas fa-forward" style={{"marginLeft":"8px"}}></i>
                     </div>
+                    <div id="smart-skip-btn" style={{"position":"absolute","right":"24px","bottom":"145px","background":"rgba(0, 0, 0, 0.8)","color":"white","border":"1px solid var(--border-primary)","padding":"12px 16px","borderRadius":"8px","fontWeight":"600","cursor":"pointer","zIndex":"35","display":"none","alignItems":"center","transition":"opacity 0.3s","opacity":"0","boxShadow":"0 4px 12px rgba(0,0,0,0.5)"}}>
+                        Skip 5 mins ahead <i className="fas fa-forward" style={{"marginLeft":"8px"}}></i>
+                    </div>
+                    <div id="smart-rewind-btn" style={{"position":"absolute","right":"24px","bottom":"145px","background":"rgba(0, 0, 0, 0.8)","color":"white","border":"1px solid var(--border-primary)","padding":"12px 16px","borderRadius":"8px","fontWeight":"600","cursor":"pointer","zIndex":"35","display":"none","alignItems":"center","transition":"opacity 0.3s","opacity":"0","boxShadow":"0 4px 12px rgba(0,0,0,0.5)"}}>
+                        Rewind Back? <i className="fas fa-undo" style={{"marginLeft":"8px"}}></i>
+                    </div>
                     <div className="video-controls-container">
                         <div className="timeline-container">
                             <input type="range" className="timeline" defaultValue="0" step="0.1" />

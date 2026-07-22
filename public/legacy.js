@@ -573,29 +573,43 @@ window.initCourseFlix = async function() {
             }, 10);
             
             if (viewId !== 'player-view') {
-                sessionStorage.removeItem('courseflixState');
+                if (pushState) {
+                    sessionStorage.removeItem('courseflixState');
+                }
+                if (typeof videoPlayer !== 'undefined' && videoPlayer) {
+                    videoPlayer.pause();
+                }
+                if (typeof brownNoiseAudio !== 'undefined' && brownNoiseAudio) {
+                    brownNoiseAudio.pause();
+                }
             }
         }
         
         async function loadCoursesFromDB() {
             const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
-            for (const course of storedCourses) {
-                const handle = course.handle;
-                if (handle && typeof handle.queryPermission === 'function') {
-                    try {
-                        course.isLinked = await handle.queryPermission({ mode: 'read' }) === 'granted';
-                    } catch (e) {
-                        console.warn(`Could not query permission for course "${course.title}". It might need to be relinked.`, e);
+            if (storedCourses && storedCourses.length > 0) {
+                await Promise.all(storedCourses.map(async (course) => {
+                    const handle = course.handle;
+                    if (handle && typeof handle.queryPermission === 'function') {
+                        try {
+                            course.isLinked = await handle.queryPermission({ mode: 'read' }) === 'granted';
+                        } catch (e) {
+                            course.isLinked = false;
+                        }
+                    } else {
                         course.isLinked = false;
                     }
-                } else {
-                    course.isLinked = false;
-                }
+                }));
             }
-            courses = storedCourses;
-            await renderCourseGrid();
+            courses = storedCourses || [];
+            const activeView = document.querySelector('.view.active');
+            if (!activeView || activeView.id === 'dashboard-view-el') {
+                renderCourseGrid();
+            } else {
+                setTimeout(() => renderCourseGrid(), 100);
+            }
             if (typeof syncCourseflixSubjects === 'function') {
-                await syncCourseflixSubjects();
+                syncCourseflixSubjects();
             }
         }
         
@@ -1519,10 +1533,12 @@ window.initCourseFlix = async function() {
         async function renderPlayer(courseId, lectureIdToPlay = null, originView = 'dashboard-view', startTime = null, subfolder = null) {
             isGoalsMode = false;
             currentGoalsLectures = [];
-            currentCourse = courses.find(c => c.id === parseInt(courseId));
+            currentCourse = courses.find(c => String(c.id) === String(courseId));
             currentSubfolder = subfolder;
             if (!currentCourse) return;
             switchView('player-view');
+            if (lectureMenu) lectureMenu.classList.remove('hidden');
+            if (sidebarToggleBtn) sidebarToggleBtn.classList.remove('collapsed');
             chapterListDiv.innerHTML = '<p style="text-align:center; padding: 20px;">Loading lectures...</p>';
             toggleCompletedBtn.classList.add('hidden');
             
@@ -1569,7 +1585,10 @@ window.initCourseFlix = async function() {
             let chaptersToDisplay = currentCourse.chapters;
 
             if (subfolder) {
-                chaptersToDisplay = chaptersToDisplay.filter(ch => ch.name === subfolder || ch.name.startsWith(subfolder + '/'));
+                const filtered = chaptersToDisplay.filter(ch => ch.name === subfolder || ch.name.startsWith(subfolder + '/') || subfolder.startsWith(ch.name + '/'));
+                if (filtered.length > 0) {
+                    chaptersToDisplay = filtered;
+                }
                 courseTitleMenu.textContent = `${currentCourse.title} - ${getSubfolderDisplayName(currentCourse, subfolder)}`;
                 // Only set back view to subcourse-view if we didn't come from doubts, continue, history, or search (preserve those origins)
                 if (originView !== 'doubts-detail-view' && originView !== 'continue-view' && originView !== 'history-view' && originView !== 'search-results-view' && originView !== 'progress-doubts' && originView !== 'intell-view') {
@@ -1907,18 +1926,10 @@ window.initCourseFlix = async function() {
                         // Try playing with sound first (works when user clicked/pressed key)
                         await videoPlayer.play();
                     } catch (err) {
-                        console.warn("Unmuted autoplay blocked, trying muted:", err.message);
-                        // Browser blocked unmuted play — start muted and auto-unmute after 1s
-                        videoPlayer.muted = true;
-                        try {
-                            await videoPlayer.play();
-                            // Playing muted succeeded — show unmute button instead of auto-unmuting
-                            unmuteBtn.classList.remove('hidden');
-                        } catch (err2) {
-                            // Even muted autoplay failed — show unmute button
-                            console.warn("Even muted autoplay failed:", err2.message);
-                            unmuteBtn.classList.remove('hidden');
-                        }
+                        console.warn("Autoplay blocked by browser. User interaction required to start unmuted:", err.message);
+                        // User requested NO muted autoplay fallback. Let it stay paused.
+                        showPlayIcon(centerPlayOverlay);
+                        playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
                     }
                 }, { once: true });
 
@@ -3547,13 +3558,14 @@ window.initCourseFlix = async function() {
                 e.preventDefault();
             }
         });
-        videoWrapper.addEventListener('dblclick', (e) => { if (e.target.closest('.video-controls-container') || e.target.closest('#media-viewer')) return; clearTimeout(clickTimer); clickTimer = null; const r=videoWrapper.getBoundingClientRect(),c=e.clientX-r.left;if(c<r.width/2){videoPlayer.currentTime-=10;showSeekIcon(leftSeekOverlay)}else{videoPlayer.currentTime+=10;showSeekIcon(rightSeekOverlay)}});
+        videoWrapper.addEventListener('dblclick', (e) => { if (e.target.closest('.video-controls-container') || e.target.closest('#media-viewer')) return; clearTimeout(clickTimer); clickTimer = null; const r=videoWrapper.getBoundingClientRect(),c=e.clientX-r.left;if(c<r.width/2){videoPlayer.currentTime-=10;showSeekIcon(leftSeekOverlay)}else{videoPlayer.currentTime+=10;showSeekIcon(rightSeekOverlay);if(window.triggerSmartSkipCheck) window.triggerSmartSkipCheck();}});
         videoWrapper.addEventListener('wheel', (e) => {
             if (e.target.closest('.video-controls-container') || e.target.closest('#media-viewer')) return;
             e.preventDefault();
             if (e.deltaY < 0) {
                 videoPlayer.currentTime += 10;
                 showSeekIcon(rightSeekOverlay);
+                if(window.triggerSmartSkipCheck) window.triggerSmartSkipCheck();
             } else if (e.deltaY > 0) {
                 videoPlayer.currentTime -= 10;
                 showSeekIcon(leftSeekOverlay);
@@ -3628,7 +3640,7 @@ window.initCourseFlix = async function() {
                 timeline.style.background = `linear-gradient(to right, var(--accent-primary) ${p}%, rgba(255, 255, 255, 0.3) ${p}%)`;
                 
                 const skipBtn = document.getElementById('skip-intro-btn');
-                if (currentTime <= 5 && videoPlayer.duration > 5) {
+                if (currentTime <= 25 && videoPlayer.duration > 25) {
                     skipBtn.style.display = 'block';
                     setTimeout(() => skipBtn.style.opacity = '1', 10);
                 } else {
@@ -3654,6 +3666,7 @@ window.initCourseFlix = async function() {
             timeline.max = videoPlayer.duration; 
         });
         timeline.addEventListener('input', (e) => videoPlayer.currentTime = e.target.value);
+        timeline.addEventListener('change', () => timeline.blur());
         fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => showToast(`Error: ${err.message}`, true)); else document.exitFullscreen(); });
         
         const speeds = [1, 1.25, 1.5, 1.6, 1.75, 1.85, 2, 2.25, 2.5, 3]; let currentSpeedIndex = 4; // Default 1.75x
@@ -3854,7 +3867,7 @@ window.initCourseFlix = async function() {
                         }
                     }
                     break;
-                case 'ArrowRight': if (view.id === 'player-view') videoPlayer.currentTime += 10; break;
+                case 'ArrowRight': if (view.id === 'player-view') { videoPlayer.currentTime += 10; if(window.triggerSmartSkipCheck) window.triggerSmartSkipCheck(); } break;
                 case 'ArrowLeft': if (view.id === 'player-view') videoPlayer.currentTime -= 10; break; 
                 case 'ArrowUp': 
                     if (view.id === 'player-view') {
@@ -5926,9 +5939,38 @@ window.initCourseFlix = async function() {
         // --- Init ---
         async function main() {
             if (!window.indexedDB || !window.showDirectoryPicker) { document.body.innerHTML = "<h1>Browser Not Supported</h1><p>Please use a modern browser like Google Chrome or Microsoft Edge that supports the File System Access API and IndexedDB.</p>"; return; }
+            
+            // Synchronously activate target view immediately to eliminate dashboard flash globally
+            const initialHash = window.location.hash ? window.location.hash.substring(1) : '';
+            const initialSavedState = sessionStorage.getItem('courseflixState');
+            let initialTargetView = 'dashboard-view';
+
+            let savedStateParsed = null;
+            if (initialSavedState) {
+                try { savedStateParsed = JSON.parse(initialSavedState); } catch(e) {}
+            }
+
+            if (savedStateParsed && savedStateParsed.view === 'player-view') {
+                initialTargetView = 'player-view';
+            } else if (initialHash) {
+                if (initialHash.startsWith('subcourse/')) {
+                    initialTargetView = 'subcourse-view';
+                } else if (initialHash.endsWith('-view')) {
+                    initialTargetView = initialHash;
+                }
+            } else if (savedStateParsed && savedStateParsed.view) {
+                initialTargetView = savedStateParsed.view;
+            }
+
+            if (typeof switchView === 'function') {
+                switchView(initialTargetView, false);
+            }
+
             await openDB();
-            await loadAllProgress();
-            await loadCoursesFromDB();
+            await Promise.all([
+                loadAllProgress(),
+                loadCoursesFromDB()
+            ]);
             
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('playGoalsPlaylist')) {
@@ -5959,11 +6001,9 @@ window.initCourseFlix = async function() {
                 } else {
                     const savedState = JSON.parse(savedStateJSON);
                     if (savedState.view === 'player-view' && savedState.courseId && savedState.lectureId) {
-                        if (savedState.sidebarCollapsed) {
-                            lectureMenu.classList.add('hidden');
-                            sidebarToggleBtn.classList.add('collapsed');
-                        }
-                        const courseExists = courses.some(c => c.id === savedState.courseId);
+                        if (lectureMenu) lectureMenu.classList.remove('hidden');
+                        if (sidebarToggleBtn) sidebarToggleBtn.classList.remove('collapsed');
+                        const courseExists = courses.some(c => String(c.id) === String(savedState.courseId));
                         if (courseExists) {
                           if (savedState.isGoalsPlaylist) {
                               await renderGoalsPlayer(savedState.courseId, savedState.lectureId);
@@ -6637,6 +6677,13 @@ window.initCourseFlix = async function() {
                 playbackSpeedInput.value = localStorage.getItem('defaultPlaybackSpeed') || '1.75';
                 if (autoplayPromptInput) autoplayPromptInput.value = localStorage.getItem('defaultAutoplayPrompt') || '3';
                 
+                const smartSkipCountInput = document.getElementById('settings-smart-skip-count');
+                const smartSkipMinInput = document.getElementById('settings-smart-skip-min');
+                const smartSkipSecInput = document.getElementById('settings-smart-skip-sec');
+                if (smartSkipCountInput) smartSkipCountInput.value = localStorage.getItem('smartSkipCount') || '7';
+                if (smartSkipMinInput) smartSkipMinInput.value = localStorage.getItem('smartSkipMin') || '5';
+                if (smartSkipSecInput) smartSkipSecInput.value = localStorage.getItem('smartSkipSec') || '0';
+                
                 const btnData = getCustomButtonsData()[0] || { name: '', url: '', hidden: false };
                 const customBtnNameInput = document.getElementById('settings-custom-btn-name');
                 const customBtnUrlInput = document.getElementById('settings-custom-btn-url');
@@ -6650,13 +6697,25 @@ window.initCourseFlix = async function() {
         }
         if (saveSettingsBtn) {
             saveSettingsBtn.addEventListener('click', () => {
-                localStorage.setItem('defaultSkipTime', skipTimeInput.value);
-                const speed = parseFloat(playbackSpeedInput.value) || 1.75;
+                const currentSkipTimeInput = document.getElementById('settings-skip-time');
+                const currentPlaybackSpeedInput = document.getElementById('settings-playback-speed');
+                const currentAutoplayPromptInput = document.getElementById('settings-autoplay-prompt');
+                
+                if (currentSkipTimeInput) localStorage.setItem('defaultSkipTime', currentSkipTimeInput.value);
+                const speed = currentPlaybackSpeedInput ? (parseFloat(currentPlaybackSpeedInput.value) || 1.75) : 1.75;
                 localStorage.setItem('defaultPlaybackSpeed', speed);
-                if (autoplayPromptInput) localStorage.setItem('defaultAutoplayPrompt', autoplayPromptInput.value);
+                if (currentAutoplayPromptInput) localStorage.setItem('defaultAutoplayPrompt', currentAutoplayPromptInput.value);
+                
                 window.activePlaybackRate = speed;
-                videoPlayer.playbackRate = speed;
-                speedBtn.textContent = `${speed}x`;
+                if (videoPlayer) videoPlayer.playbackRate = speed;
+                if (speedBtn) speedBtn.textContent = `${speed}x`;
+                
+                const smartSkipCountInput = document.getElementById('settings-smart-skip-count');
+                const smartSkipMinInput = document.getElementById('settings-smart-skip-min');
+                const smartSkipSecInput = document.getElementById('settings-smart-skip-sec');
+                if (smartSkipCountInput) localStorage.setItem('smartSkipCount', smartSkipCountInput.value);
+                if (smartSkipMinInput) localStorage.setItem('smartSkipMin', smartSkipMinInput.value);
+                if (smartSkipSecInput) localStorage.setItem('smartSkipSec', smartSkipSecInput.value);
                 
                 // Custom Button logic
                 const customBtnNameInput = document.getElementById('settings-custom-btn-name');
@@ -6699,6 +6758,85 @@ window.initCourseFlix = async function() {
                 videoPlayer.play().catch(e => console.error("Playback failed:", e));
                 skipIntroBtn.blur();
                 showToast(`Skipped ${skipTimeStr} minutes`);
+            });
+        }
+
+        // 2.5 Smart Skip / Rewind Feature
+        const smartSkipBtn = document.getElementById('smart-skip-btn');
+        const smartRewindBtn = document.getElementById('smart-rewind-btn');
+        let smartSkipHideTimer = null;
+        let smartRewindHideTimer = null;
+        let preSkipTime = null;
+        let skipTrackingCount = 0;
+        let skipTrackingTimer = null;
+
+        window.triggerSmartSkipCheck = function() {
+            if (!smartSkipBtn || !videoPlayer || videoPlayer.paused) return;
+            skipTrackingCount++;
+            
+            if (skipTrackingTimer) clearTimeout(skipTrackingTimer);
+            
+            const targetCount = parseInt(localStorage.getItem('smartSkipCount') || '7');
+            
+            if (skipTrackingCount >= targetCount) {
+                const targetMin = parseInt(localStorage.getItem('smartSkipMin') || '5');
+                const targetSec = parseInt(localStorage.getItem('smartSkipSec') || '0');
+                let timeText = [];
+                if (targetMin > 0) timeText.push(`${targetMin} mins`);
+                if (targetSec > 0) timeText.push(`${targetSec} secs`);
+                
+                smartSkipBtn.innerHTML = `Skip ${timeText.join(' ')} ahead <i class="fas fa-forward" style="margin-left:8px"></i>`;
+                
+                smartSkipBtn.style.display = 'flex';
+                setTimeout(() => smartSkipBtn.style.opacity = '1', 10);
+                
+                if (smartSkipHideTimer) clearTimeout(smartSkipHideTimer);
+                smartSkipHideTimer = setTimeout(() => {
+                    smartSkipBtn.style.opacity = '0';
+                    setTimeout(() => smartSkipBtn.style.display = 'none', 300);
+                }, 5000);
+                skipTrackingCount = 0; // Reset after showing
+            } else {
+                skipTrackingTimer = setTimeout(() => {
+                    skipTrackingCount = 0; // Reset if user stops skipping for 2 seconds
+                }, 2000);
+            }
+        };
+
+        if (smartSkipBtn && smartRewindBtn && videoPlayer) {
+
+            smartSkipBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                preSkipTime = videoPlayer.currentTime;
+                
+                const targetMin = parseInt(localStorage.getItem('smartSkipMin') || '5');
+                const targetSec = parseInt(localStorage.getItem('smartSkipSec') || '0');
+                const targetTime = (targetMin * 60) + targetSec;
+                
+                videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + targetTime);
+                
+                smartSkipBtn.style.opacity = '0';
+                setTimeout(() => smartSkipBtn.style.display = 'none', 300);
+                if (smartSkipHideTimer) clearTimeout(smartSkipHideTimer);
+                
+                smartRewindBtn.style.display = 'flex';
+                setTimeout(() => smartRewindBtn.style.opacity = '1', 10);
+                
+                if (smartRewindHideTimer) clearTimeout(smartRewindHideTimer);
+                smartRewindHideTimer = setTimeout(() => {
+                    smartRewindBtn.style.opacity = '0';
+                    setTimeout(() => smartRewindBtn.style.display = 'none', 300);
+                }, 5000);
+            });
+
+            smartRewindBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (preSkipTime !== null) {
+                    videoPlayer.currentTime = preSkipTime;
+                }
+                smartRewindBtn.style.opacity = '0';
+                setTimeout(() => smartRewindBtn.style.display = 'none', 300);
+                if (smartRewindHideTimer) clearTimeout(smartRewindHideTimer);
             });
         }
 

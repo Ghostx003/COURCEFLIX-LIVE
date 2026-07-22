@@ -1,7 +1,7 @@
 import React from 'react';
 export default function DashboardViewElView() {
   return (
-    <div id="dashboard-view-el" className="view active">
+    <div id="dashboard-view-el" className="view">
         <div style={{"padding":"10px 24px","display":"flex","justifyContent":"flex-end","alignItems":"center","gap":"10px","borderBottom":"1px solid var(--border-primary)","background":"var(--bg-primary)","flexWrap":"wrap"}}>
             <div id="search-bar-container" style={{"display":"flex","alignItems":"center","background":"var(--bg-tertiary)","border":"1px solid var(--border-secondary)","borderRadius":"20px","padding":"6px 14px","width":"220px","transition":"all 0.3s ease","marginRight":"auto","boxShadow":"0 2px 5px rgba(0,0,0,0.05)"}}>
                 <i className="fas fa-search" style={{"color":"var(--text-secondary)","marginRight":"8px","fontSize":"0.9rem"}}></i>

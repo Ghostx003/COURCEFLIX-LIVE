@@ -98,7 +98,7 @@ export default function App() {
         <div className="modal-content" style={{"maxWidth":"400px","color":"var(--text-primary)"}}>
             <button className="close-modal-btn" onClick={() => { document.getElementById('settings-modal-overlay').classList.add('hidden') }} style={{"position":"absolute","top":"1rem","right":"1rem","background":"none","border":"none","fontSize":"1.5rem","color":"var(--text-secondary)","cursor":"pointer"}} title="Close">&times;</button>
             <h2 style={{"marginBottom":"1rem","color":"var(--accent-primary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"0.5rem"}}>Settings</h2>
-            <div style={{"display":"flex","flexDirection":"column","gap":"1rem"}}>
+            <div style={{"display":"flex","flexDirection":"column","gap":"1rem","paddingBottom":"1rem"}}>
                 <div className="calc-input-group">
                     <label htmlFor="settings-skip-time">Default Skip Time (minutes)</label>
                     <input type="number" id="settings-skip-time" defaultValue="5" min="0" step="1" />
@@ -110,6 +110,23 @@ export default function App() {
                 <div className="calc-input-group">
                     <label htmlFor="settings-autoplay-prompt">Autoplay Prompt (minutes before end)</label>
                     <input type="number" id="settings-autoplay-prompt" defaultValue="3" min="0" step="1" />
+                </div>
+                <div style={{"borderTop":"1px solid var(--border-secondary)","margin":"0.5rem 0"}}></div>
+                <h3 style={{"fontSize":"1rem","color":"var(--accent-primary)","margin":"0"}}>Smart Skip Feature</h3>
+                <div className="calc-input-group">
+                    <label htmlFor="settings-smart-skip-count">Consecutive Skips to Trigger</label>
+                    <input type="number" id="settings-smart-skip-count" defaultValue="7" min="1" step="1" />
+                </div>
+                <div className="calc-input-group">
+                    <label>Amount to Skip</label>
+                    <div style={{"display":"flex","gap":"8px"}}>
+                        <div style={{"flex":1}}>
+                            <input type="number" id="settings-smart-skip-min" defaultValue="5" min="0" step="1" placeholder="Min" />
+                        </div>
+                        <div style={{"flex":1}}>
+                            <input type="number" id="settings-smart-skip-sec" defaultValue="0" min="0" max="59" step="1" placeholder="Sec" />
+                        </div>
+                    </div>
                 </div>
                 <div style={{"borderTop":"1px solid var(--border-secondary)","margin":"0.5rem 0"}}></div>
                 <h3 style={{"fontSize":"1rem","color":"var(--accent-primary)","margin":"0"}}>Custom Button</h3>
