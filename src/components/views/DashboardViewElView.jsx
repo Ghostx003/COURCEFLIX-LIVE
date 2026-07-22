@@ -7,6 +7,9 @@ export default function DashboardViewElView() {
                 <i className="fas fa-search" style={{"color":"var(--text-secondary)","marginRight":"8px","fontSize":"0.9rem"}}></i>
                 <input type="text" id="global-search-input" placeholder="" style={{"border":"none","background":"transparent","color":"var(--text-primary)","fontFamily":"inherit","fontSize":"0.85rem","width":"100%","outline":"none"}} autoComplete="off" />
             </div>
+            <a id="custom-dashboard-btn" href="#" target="_blank" rel="noopener noreferrer" className="primary-btn" style={{"padding":"6px 12px","fontSize":"0.85rem","textDecoration":"none","display":"none"}}>
+                <i className="fas fa-link" style={{"marginRight":"4px"}}></i> <span id="custom-dashboard-btn-text" style={{"maxWidth":"150px","overflow":"hidden","textOverflow":"ellipsis","whiteSpace":"nowrap"}}></span>
+            </a>
             <label htmlFor="course-sort-select" style={{"fontSize":"0.9rem","color":"var(--text-secondary)","fontWeight":"600"}}>Sort by:</label>
             <select id="course-sort-select" style={{"padding":"6px 12px","borderRadius":"6px","border":"1px solid var(--border-secondary)","background":"var(--bg-tertiary)","color":"var(--text-primary)","fontFamily":"inherit","fontSize":"0.85rem","fontWeight":"500","cursor":"pointer"}}>
                 <option value="custom">Custom (Drag & Drop)</option>

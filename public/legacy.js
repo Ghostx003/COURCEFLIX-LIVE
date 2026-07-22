@@ -2136,6 +2136,10 @@ window.initCourseFlix = async function() {
                         event.data.currentTime, 
                         event.data.subfolder
                     );
+                } else if (event.data.action === 'playGoalsPlaylist') {
+                    if (typeof renderGoalsPlayer === 'function') {
+                        await renderGoalsPlayer(event.data.courseId, event.data.lectureId);
+                    }
                 }
             }
         });

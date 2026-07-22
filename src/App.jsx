@@ -111,6 +111,20 @@ export default function App() {
                     <label htmlFor="settings-autoplay-prompt">Autoplay Prompt (minutes before end)</label>
                     <input type="number" id="settings-autoplay-prompt" defaultValue="3" min="0" step="1" />
                 </div>
+                <div style={{"borderTop":"1px solid var(--border-secondary)","margin":"0.5rem 0"}}></div>
+                <h3 style={{"fontSize":"1rem","color":"var(--accent-primary)","margin":"0"}}>Custom Button</h3>
+                <div className="calc-input-group">
+                    <label htmlFor="settings-custom-btn-name">Button Name</label>
+                    <input type="text" id="settings-custom-btn-name" placeholder="e.g. Unacademy" />
+                </div>
+                <div className="calc-input-group">
+                    <label htmlFor="settings-custom-btn-url">Button URL</label>
+                    <input type="text" id="settings-custom-btn-url" placeholder="https://..." />
+                </div>
+                <div style={{"display":"flex","alignItems":"center","gap":"8px","marginBottom":"0.5rem"}}>
+                    <input type="checkbox" id="settings-custom-btn-hide" />
+                    <label htmlFor="settings-custom-btn-hide" style={{"fontSize":"0.9rem","color":"var(--text-secondary)"}}>Hide this button</label>
+                </div>
                 <button id="save-settings-btn" className="primary-btn" style={{"width":"100%","justifyContent":"center"}}>Save Settings</button>
             </div>
         </div>

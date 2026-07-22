@@ -55,8 +55,9 @@ export default function Navbar() {
             <a href="#" className="nav-link" data-view="history-view"><i className="fas fa-history" style={{"marginRight":"4px"}}></i> History</a>
             <a href="#" className="nav-link" data-view="faculty-view"><i className="fas fa-chalkboard-teacher" style={{"marginRight":"4px"}}></i> Faculty</a>
             <a href="#" className="nav-link" data-view="goals-view"><i className="fas fa-bullseye" style={{"marginRight":"4px"}}></i> Goals</a>
-            <a href="#" className="nav-link" data-view="plan-view" style={{"backgroundColor":"#6d28d9","color":"white","marginLeft":"8px"}}><i className="fas fa-calendar-alt" style={{"marginRight":"4px"}}></i> Planner</a>
-            <a href="#" className="nav-link" data-view="progress-view" style={{"backgroundColor":"#1d4ed8","color":"white","marginLeft":"4px"}}><i className="fas fa-chart-line" style={{"marginRight":"4px"}}></i> Performance</a>
+            <a href="https://testflix-pro.vercel.app/app/test-dashboard" target="_blank" rel="noopener noreferrer" className="nav-link" style={{"backgroundColor":"#e11d48","color":"white","marginLeft":"8px","padding":"4px 8px","fontSize":"0.85rem","display":"inline-flex","alignItems":"center"}}><i className="fas fa-flask" style={{"marginRight":"4px"}}></i> Testflix</a>
+            <a href="#" className="nav-link" data-view="plan-view" style={{"backgroundColor":"#6d28d9","color":"white","marginLeft":"4px","padding":"4px 8px","fontSize":"0.85rem","display":"inline-flex","alignItems":"center"}}><i className="fas fa-calendar-alt" style={{"marginRight":"4px"}}></i> Planner</a>
+            <a href="#" className="nav-link" data-view="progress-view" style={{"backgroundColor":"#1d4ed8","color":"white","marginLeft":"4px","padding":"4px 8px","fontSize":"0.85rem","display":"inline-flex","alignItems":"center"}}><i className="fas fa-chart-line" style={{"marginRight":"4px"}}></i> Performance</a>
             <button id="theme-toggle-btn" className="nav-link" style={{"background":"none","border":"none","cursor":"pointer","display":"flex","alignItems":"center","padding":"8px"}} title="Toggle Pure Black Theme"><i className="fas fa-moon"></i></button>
         </div>
         
@@ -170,7 +171,7 @@ export default function Navbar() {
         </div>
 
         <div id="total-time-left-display" className="info-display"></div>
-        <button id="add-course-btn" className="primary-btn"><i className="fas fa-plus"></i> Add Course</button>
+        <button id="add-course-btn" className="primary-btn" style={{"padding":"6px 12px", "fontSize":"0.9rem"}}><i className="fas fa-plus"></i> Add Course</button>
     </nav>
   );
 }

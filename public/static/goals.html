@@ -862,7 +862,15 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         window.playLecture = function(courseId, lectureId) {
-            window.location.href = `../index.html?playGoalsPlaylist=true&playCourse=${courseId}&playLecture=${lectureId}`;
+            if (window.self !== window.top) {
+                window.parent.postMessage({
+                    action: 'playGoalsPlaylist',
+                    courseId: parseInt(courseId),
+                    lectureId: lectureId
+                }, '*');
+            } else {
+                window.location.href = `../index.html?playGoalsPlaylist=true&playCourse=${courseId}&playLecture=${lectureId}`;
+            }
         };
 
         // --- EVENT LISTENERS ---
