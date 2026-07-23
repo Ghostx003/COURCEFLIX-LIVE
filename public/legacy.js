@@ -1734,21 +1734,9 @@ window.initCourseFlix = async function() {
                      lectureLi.dataset.lectureId = lecture.id;
                      if (lecture.overrideCourseId) lectureLi.dataset.courseId = lecture.overrideCourseId;
 
-                     const pdfBtn = progress.pdfHandle
-                         ? `<button class="file-btn view-pdf-btn" title="${progress.pdfName || 'View Notes'}"><i class="fas fa-file-pdf"></i></button>`
-                         : `<button class="file-btn add-pdf-btn" title="Add Notes (PDF)"><i class="fas fa-plus"></i></button>`;
-
-                     const assignBtn = progress.assignmentHandle
-                         ? `<button class="file-btn view-assignment-btn" title="${progress.assignmentName || 'View Assignment'}"><i class="fas fa-file-alt"></i></button>`
-                         : `<button class="file-btn add-assignment-btn" title="Add Assignment"><i class="fas fa-plus"></i></button>`;
-
                      lectureLi.innerHTML = `
                          <div class="lecture-checkbox ${progress.completed ? 'completed' : ''}"><i class="fas fa-check"></i></div>
                          <div class="lecture-title ${progress.completed ? 'completed' : ''}" title="${lecture.displayName} (Double-click to rename)">${lecture.displayName}</div>
-                         <div class="file-controls">
-                             ${pdfBtn}
-                             ${assignBtn}
-                         </div>
                          <span class="lecture-duration">${formatTime(lecture.duration)}</span>
                          <button class="status-btn ${progress.status || ''}" data-lecture-name="${lecture.displayName}" data-duration="${lecture.duration}">
                              ${progress.status ? progress.status.toUpperCase() : 'STATUS'}
@@ -2025,13 +2013,21 @@ window.initCourseFlix = async function() {
 
         async function showMediaViewer(fileHandle, fileType, fileName, lectureProgress) {
             try {
-                let file = (fileHandle.getFile && typeof fileHandle.getFile === 'function') ? await fileHandle.getFile() : fileHandle;
-                if (activeFileUrl) URL.revokeObjectURL(activeFileUrl);
+                let file = (fileHandle && fileHandle.getFile && typeof fileHandle.getFile === 'function') ? await fileHandle.getFile() : fileHandle;
+                if (!file) return;
 
-                let blobToView = file; 
+                if (activeFileUrl) {
+                    try { URL.revokeObjectURL(activeFileUrl); } catch(e) {}
+                    activeFileUrl = null;
+                }
 
-                if (fileType.toLowerCase() === 'assignment' || fileType.toLowerCase() === 'dpp' || fileType.toLowerCase() === 'note') {
+                let blobToView;
+                if (file instanceof Blob) {
+                    blobToView = file;
+                } else if (file instanceof ArrayBuffer) {
                     blobToView = new Blob([file], { type: 'application/pdf' });
+                } else {
+                    blobToView = file;
                 }
 
                 activeFileUrl = URL.createObjectURL(blobToView);
@@ -2049,8 +2045,16 @@ window.initCourseFlix = async function() {
                     document.getElementById('notes-viewer-header').classList.remove('hidden');
                     document.getElementById('notes-no-content-message').classList.add('hidden');
                 } else {
-                    mediaViewerFrame.src = activeFileUrl;
-                    viewerTitle.textContent = fileName || file.name;
+                    const uploadPlaceholder = document.getElementById('media-viewer-upload-placeholder');
+                    if (uploadPlaceholder) {
+                        uploadPlaceholder.classList.add('hidden');
+                        uploadPlaceholder.style.display = 'none';
+                    }
+                    if (mediaViewerFrame) {
+                        mediaViewerFrame.style.display = 'block';
+                        mediaViewerFrame.src = activeFileUrl;
+                    }
+                    viewerTitle.textContent = fileName || file.name || (fileType.toLowerCase() === 'pdf' ? 'Notes.pdf' : 'DPP.pdf');
                     activeViewerFileType = fileType.toLowerCase();
                     activeViewerLectureId = lectureProgress ? lectureProgress.lectureId : null;
                     updateFileSwitcher(lectureProgress, activeViewerFileType);
@@ -2106,12 +2110,16 @@ window.initCourseFlix = async function() {
         function hideMediaViewer() {
             playerView.classList.remove('viewer-active');
             mediaViewer.classList.add('hidden');
+            mediaViewer.style.width = '0px';
             deleteViewerFileBtn.classList.remove('visible');
             if (activeFileUrl) {
-                URL.revokeObjectURL(activeFileUrl);
+                try { URL.revokeObjectURL(activeFileUrl); } catch(e) {}
                 activeFileUrl = null;
             }
-            mediaViewerFrame.removeAttribute('src'); mediaViewerFrame.srcdoc = '';
+            if (mediaViewerFrame) {
+                mediaViewerFrame.removeAttribute('src');
+                mediaViewerFrame.src = 'about:blank';
+            }
             activeViewerFileType = null;
             activeViewerLectureId = null;
             playerView.style.setProperty('--viewer-width', '0px');
@@ -3806,6 +3814,20 @@ window.initCourseFlix = async function() {
 
             const view = document.querySelector('.view.active'); 
             if (!view || !['player-view', 'dpp-view', 'notes-view', 'doubts-view'].includes(view.id)) return;
+
+            if (e.key === 'Escape' && view.id === 'player-view') {
+                const mediaViewer = document.getElementById('media-viewer');
+                const playerNotesSidebar = document.getElementById('player-notes-sidebar');
+                if (mediaViewer && !mediaViewer.classList.contains('hidden')) {
+                    hideMediaViewer();
+                    return;
+                }
+                if (playerNotesSidebar && playerView.classList.contains('notes-active')) {
+                    playerView.classList.remove('notes-active');
+                    playerNotesSidebar.classList.add('hidden');
+                    return;
+                }
+            }
             
             userInteracted = true; 
             userInteracted = true; 
@@ -3836,19 +3858,26 @@ window.initCourseFlix = async function() {
                     break;
                 case 's': if (view.id === 'player-view' && currentCourse && currentLectureLi) captureDoubt(); break;
                 case 'n': 
-                    if (view.id === 'player-view' && currentLectureLi) {
-                        const nextLi = getNextLectureLi(currentLectureLi);
-                        if (nextLi) playVideo(nextLi);
-                        else showToast('No next lecture available.');
+                    if (e.shiftKey) {
+                        if (view.id === 'player-view') window.togglePlayerNotesPanel();
+                    } else {
+                        if (view.id === 'player-view' && currentLectureLi) {
+                            const nextLi = getNextLectureLi(currentLectureLi);
+                            if (nextLi) playVideo(nextLi);
+                            else showToast('No next lecture available.');
+                        }
+                    }
+                    break;
+                case 'd':
+                    if (e.shiftKey) {
+                        if (view.id === 'player-view') window.togglePlayerDppPanel();
                     }
                     break;
                 case 'p': 
-                    if (e.shiftKey) {
-                        if (view.id === 'player-view' && currentLectureLi) {
-                            const prevLi = getPreviousLectureLi(currentLectureLi);
-                            if (prevLi) playVideo(prevLi);
-                            else showToast('No previous lecture available.');
-                        }
+                    if (view.id === 'player-view' && currentLectureLi) {
+                        const prevLi = getPreviousLectureLi(currentLectureLi);
+                        if (prevLi) playVideo(prevLi);
+                        else showToast('No previous lecture available.');
                     }
                     break;
                 case 'z':
@@ -3867,8 +3896,25 @@ window.initCourseFlix = async function() {
                         }
                     }
                     break;
-                case 'ArrowRight': if (view.id === 'player-view') { videoPlayer.currentTime += 10; if(window.triggerSmartSkipCheck) window.triggerSmartSkipCheck(); } break;
-                case 'ArrowLeft': if (view.id === 'player-view') videoPlayer.currentTime -= 10; break; 
+                case 'ArrowRight': 
+                    if (view.id === 'player-view') { 
+                        if (e.shiftKey) {
+                            window.cycleOrOpenRightSidePanel();
+                        } else {
+                            videoPlayer.currentTime += 10; 
+                            if(window.triggerSmartSkipCheck) window.triggerSmartSkipCheck(); 
+                        }
+                    } 
+                    break;
+                case 'ArrowLeft': 
+                    if (view.id === 'player-view') {
+                        if (e.shiftKey) {
+                            window.cycleOrOpenRightSidePanel();
+                        } else {
+                            videoPlayer.currentTime -= 10; 
+                        }
+                    } 
+                    break; 
                 case 'ArrowUp': 
                     if (view.id === 'player-view') {
                         videoPlayer.volume = Math.min(1, videoPlayer.volume + 0.01); 
@@ -6899,6 +6945,172 @@ window.initCourseFlix = async function() {
             progress.notes = playerNotesEditor.innerHTML;
             saveLectureProgress(progress);
         };
+
+        window.showMediaViewerPlaceholder = function(type, lectureId) {
+            const playerNotesSidebar = document.getElementById('player-notes-sidebar');
+            if (playerNotesSidebar && playerView.classList.contains('notes-active')) {
+                playerView.classList.remove('notes-active');
+                playerNotesSidebar.classList.add('hidden');
+            }
+
+            const uploadPlaceholder = document.getElementById('media-viewer-upload-placeholder');
+            const placeholderTitle = document.getElementById('placeholder-title');
+            const placeholderSubtitle = document.getElementById('placeholder-subtitle');
+
+            activeViewerFileType = type.toLowerCase();
+            activeViewerLectureId = lectureId;
+
+            if (type.toLowerCase() === 'pdf' || type.toLowerCase() === 'notes') {
+                if (viewerTitle) viewerTitle.textContent = 'Lecture Notes (PDF)';
+                if (placeholderTitle) placeholderTitle.textContent = 'Lecture Notes (PDF)';
+                if (placeholderSubtitle) placeholderSubtitle.textContent = 'Click or Drag & Drop a PDF Here';
+            } else {
+                if (viewerTitle) viewerTitle.textContent = 'DPP / Assignment (PDF)';
+                if (placeholderTitle) placeholderTitle.textContent = 'DPP (PDF)';
+                if (placeholderSubtitle) placeholderSubtitle.textContent = 'Click or Drag & Drop a PDF Here';
+            }
+
+            if (mediaViewerFrame) mediaViewerFrame.style.display = 'none';
+            if (uploadPlaceholder) {
+                uploadPlaceholder.classList.remove('hidden');
+                uploadPlaceholder.style.display = 'flex';
+            }
+
+            deleteViewerFileBtn.classList.remove('visible');
+
+            const preferredWidth = localStorage.getItem('viewerWidth') || '500px';
+            playerView.style.setProperty('--viewer-width', preferredWidth);
+            mediaViewer.style.width = preferredWidth;
+            playerView.classList.add('viewer-active');
+            mediaViewer.classList.remove('hidden');
+            mediaViewerToggleBtn.classList.add('hidden');
+        };
+
+        window.togglePlayerNotesPanel = function() {
+            if (!currentCourse || !currentLectureLi) return;
+            const lectureId = currentLectureLi.dataset.lectureId;
+            const progress = getLectureProgress(currentCourse.id, lectureId);
+
+            if (!mediaViewer.classList.contains('hidden') && (activeViewerFileType === 'pdf' || activeViewerFileType === 'notes')) {
+                hideMediaViewer();
+                return;
+            }
+
+            if (progress.pdfHandle) {
+                showMediaViewer(progress.pdfHandle, 'PDF', progress.pdfName || 'Notes.pdf', progress);
+            } else {
+                window.showMediaViewerPlaceholder('pdf', lectureId);
+            }
+        };
+
+        window.togglePlayerDppPanel = function() {
+            if (!currentCourse || !currentLectureLi) return;
+            const lectureId = currentLectureLi.dataset.lectureId;
+            const progress = getLectureProgress(currentCourse.id, lectureId);
+
+            if (!mediaViewer.classList.contains('hidden') && (activeViewerFileType === 'assignment' || activeViewerFileType === 'dpp')) {
+                hideMediaViewer();
+                return;
+            }
+
+            if (progress.assignmentHandle) {
+                showMediaViewer(progress.assignmentHandle, 'Assignment', progress.assignmentName || 'DPP.pdf', progress);
+            } else {
+                window.showMediaViewerPlaceholder('assignment', lectureId);
+            }
+        };
+
+        window.cycleOrOpenRightSidePanel = function() {
+            if (!currentCourse || !currentLectureLi) return;
+            const lectureId = currentLectureLi.dataset.lectureId;
+            const progress = getLectureProgress(currentCourse.id, lectureId);
+
+            if (!mediaViewer.classList.contains('hidden')) {
+                if (activeViewerFileType === 'pdf' || activeViewerFileType === 'notes') {
+                    if (progress.assignmentHandle) {
+                        showMediaViewer(progress.assignmentHandle, 'Assignment', progress.assignmentName || 'DPP.pdf', progress);
+                    } else {
+                        window.showMediaViewerPlaceholder('assignment', lectureId);
+                    }
+                } else {
+                    if (progress.pdfHandle) {
+                        showMediaViewer(progress.pdfHandle, 'PDF', progress.pdfName || 'Notes.pdf', progress);
+                    } else {
+                        window.showMediaViewerPlaceholder('pdf', lectureId);
+                    }
+                }
+            } else {
+                if (progress.pdfHandle) {
+                    showMediaViewer(progress.pdfHandle, 'PDF', progress.pdfName || 'Notes.pdf', progress);
+                } else if (progress.assignmentHandle) {
+                    showMediaViewer(progress.assignmentHandle, 'Assignment', progress.assignmentName || 'DPP.pdf', progress);
+                } else {
+                    window.showMediaViewerPlaceholder('pdf', lectureId);
+                }
+            }
+        };
+
+        const playerNotesBtn = document.getElementById('player-notes-btn');
+        const playerDppBtn = document.getElementById('player-dpp-btn');
+        if (playerNotesBtn) {
+            playerNotesBtn.addEventListener('click', () => {
+                window.togglePlayerNotesPanel();
+            });
+        }
+        if (playerDppBtn) {
+            playerDppBtn.addEventListener('click', () => {
+                window.togglePlayerDppPanel();
+            });
+        }
+
+        const uploadPlaceholder = document.getElementById('media-viewer-upload-placeholder');
+        if (uploadPlaceholder) {
+            uploadPlaceholder.addEventListener('click', () => {
+                if (!currentLectureLi) return;
+                const lectureId = currentLectureLi.dataset.lectureId;
+                if (activeViewerFileType === 'pdf' || activeViewerFileType === 'notes') {
+                    addPdfInput.dataset.lectureId = lectureId;
+                    addPdfInput.click();
+                } else {
+                    addAssignmentInput.dataset.lectureId = lectureId;
+                    addAssignmentInput.click();
+                }
+            });
+
+            uploadPlaceholder.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadPlaceholder.style.borderColor = 'var(--accent-primary)';
+                uploadPlaceholder.style.background = 'rgba(16, 185, 129, 0.1)';
+            });
+
+            uploadPlaceholder.addEventListener('dragleave', () => {
+                uploadPlaceholder.style.borderColor = 'var(--border-secondary)';
+                uploadPlaceholder.style.background = 'var(--bg-tertiary)';
+            });
+
+            uploadPlaceholder.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                uploadPlaceholder.style.borderColor = 'var(--border-secondary)';
+                uploadPlaceholder.style.background = 'var(--bg-tertiary)';
+
+                if (!currentLectureLi || !currentCourse) return;
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+
+                const lectureId = currentLectureLi.dataset.lectureId;
+                const progressData = getLectureProgress(currentCourse.id, lectureId);
+
+                if (activeViewerFileType === 'pdf' || activeViewerFileType === 'notes') {
+                    await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId: currentCourse.id, lectureId: lectureId });
+                    await renderPlayer(currentCourse.id, lectureId, lastView, null, currentSubfolder);
+                    await showMediaViewer(file, 'PDF', file.name, getLectureProgress(currentCourse.id, lectureId));
+                } else {
+                    await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId: currentCourse.id, lectureId: lectureId });
+                    await renderPlayer(currentCourse.id, lectureId, lastView, null, currentSubfolder);
+                    await showMediaViewer(file, 'Assignment', file.name, getLectureProgress(currentCourse.id, lectureId));
+                }
+            });
+        }
 
         if (playerNotesEditor) {
             playerNotesEditor.addEventListener('input', () => {

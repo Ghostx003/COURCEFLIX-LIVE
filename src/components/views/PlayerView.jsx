@@ -75,6 +75,8 @@ export default function PlayerView() {
                                     <span style={{"color":"var(--text-secondary)","fontSize":"0.85rem","marginLeft":"-4px"}}>x</span>
                                     <button id="apply-custom-speed" style={{"padding":"4px 10px","borderRadius":"4px","fontSize":"0.85rem","background":"var(--accent-primary)","color":"var(--text-on-accent)","border":"none","cursor":"pointer","fontWeight":"600"}}>Set</button>
                                 </div>
+                                <button className="control-btn" id="player-notes-btn" title="Notes (Shift+N)" style={{"marginRight":"6px","fontSize":"0.85rem","opacity":"0.85"}}><i className="fas fa-sticky-note"></i></button>
+                                <button className="control-btn" id="player-dpp-btn" title="DPP (Shift+D)" style={{"marginRight":"10px","fontSize":"0.85rem","opacity":"0.85"}}><i className="fas fa-book-open"></i></button>
                                 <button className="control-btn" id="speed-btn" style={{"marginRight":"0"}}>1x</button>
                                 <button className="control-btn" id="custom-speed-btn" title="Custom Speed" style={{"marginRight":"8px"}}><i className="fas fa-sliders-h" style={{"fontSize":"0.9rem"}}></i></button>
                                 <button className="control-btn" id="fullscreen-btn"><i className="fas fa-expand"></i></button>
@@ -94,6 +96,11 @@ export default function PlayerView() {
                     </div>
                 </div>
                 <iframe id="media-viewer-frame" src="about:blank"></iframe>
+                <div id="media-viewer-upload-placeholder" className="hidden" style={{"flexGrow":"1","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center","padding":"2.5rem 1.5rem","cursor":"pointer","textAlign":"center","border":"2px dashed var(--border-secondary)","margin":"1.5rem","borderRadius":"16px","background":"var(--bg-tertiary)","transition":"all 0.25s ease","boxSizing":"border-box"}}>
+                    <i id="placeholder-icon" className="fas fa-file-pdf" style={{"fontSize":"3.8rem","color":"var(--accent-primary)","marginBottom":"18px","filter":"drop-shadow(0 4px 12px rgba(16, 185, 129, 0.3))"}}></i>
+                    <h4 id="placeholder-title" style={{"margin":"0 0 8px 0","fontSize":"1.25rem","fontWeight":"700","color":"var(--text-primary)"}}>Lecture Notes (PDF)</h4>
+                    <p id="placeholder-subtitle" style={{"margin":"0","fontSize":"0.92rem","color":"var(--text-secondary)"}}>Click or Drag & Drop a PDF Here</p>
+                </div>
             </div>
             <button id="media-viewer-toggle-btn" className="hidden"><i className="fas fa-chevron-left"></i></button>
             <div id="player-notes-sidebar" className="hidden" style={{"width":"var(--notes-width)","minWidth":"0px","backgroundColor":"var(--bg-secondary)","borderLeft":"1px solid var(--border-primary)","position":"relative","zIndex":"50","display":"flex","flexDirection":"column","transition":"width 0.3s ease-in-out, opacity 0.3s"}}>

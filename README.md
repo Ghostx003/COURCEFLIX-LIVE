@@ -1,7 +1,8 @@
 <div align="center">
-  <img src="public/data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>dY</text></svg>" width="120" alt="CourseFlix Logo" />
   <h1>🚀 CourseFlix: The Ultimate Learning Ecosystem</h1>
   <p><strong>A Next-Generation, Hyper-Optimized Platform for Students & Lifelong Learners</strong></p>
+  <br />
+  <img src="public/dashboard-preview.png" width="100%" alt="CourseFlix Premium Glass Dashboard" style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.15);" />
 </div>
 
 ---
