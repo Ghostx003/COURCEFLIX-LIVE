@@ -49,6 +49,28 @@ export default function DashboardViewElView() {
             <a id="custom-dashboard-btn" href="#" target="_blank" rel="noopener noreferrer" className="primary-btn" style={{"padding":"7px 14px","fontSize":"0.85rem","textDecoration":"none","display":"none","borderRadius":"10px"}}>
                 <i className="fas fa-link" style={{"marginRight":"6px"}}></i> <span id="custom-dashboard-btn-text" style={{"maxWidth":"150px","overflow":"hidden","textOverflow":"ellipsis","whiteSpace":"nowrap"}}></span>
             </a>
+            <button 
+                id="completion-feature-btn" 
+                className="primary-btn completion-btn"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-completion-modal'))}
+                style={{
+                    "padding":"7px 14px",
+                    "fontSize":"0.85rem",
+                    "borderRadius":"10px",
+                    "background":"linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    "color":"#ffffff",
+                    "border":"1px solid rgba(255,255,255,0.2)",
+                    "cursor":"pointer",
+                    "display":"inline-flex",
+                    "alignItems":"center",
+                    "gap":"6px",
+                    "boxShadow":"0 4px 12px rgba(16, 185, 129, 0.3)",
+                    "transition":"all 0.25s ease"
+                }}
+                title="Open Completion Planner & Target Tracker"
+            >
+                <i className="fas fa-chart-pie"></i> Completion
+            </button>
             <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
                 <label htmlFor="course-sort-select" style={{"fontSize":"0.88rem","color":"var(--text-secondary)","fontWeight":"600"}}>Sort by:</label>
                 <select id="course-sort-select" style={{

@@ -20,6 +20,7 @@ import SearchResultsView from './components/views/SearchResultsView';
 import PlayerView from './components/views/PlayerView';
 import FacultyView from './components/views/FacultyView';
 import CompletionCalculatorModalModal from './components/modals/CompletionCalculatorModalModal';
+import CompletionModal from './components/modals/CompletionModal';
 import ModalOverlayModal from './components/modals/ModalOverlayModal';
 import ImportModalOverlayModal from './components/modals/ImportModalOverlayModal';
 import './index.css';
@@ -56,6 +57,7 @@ export default function App() {
       <PlayerView />
       <FacultyView />
       <CompletionCalculatorModalModal />
+      <CompletionModal />
       <ModalOverlayModal />
       <ImportModalOverlayModal />
       {/* Remaining fragments */}
