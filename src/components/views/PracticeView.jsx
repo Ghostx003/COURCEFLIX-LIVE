@@ -1,11 +1,6 @@
 import React, { useEffect } from 'react';
 
 export default function PracticeView() {
-  useEffect(() => {
-    if (typeof window.showFilteredCoursesView === 'function') {
-      window.showFilteredCoursesView('practice');
-    }
-  }, []);
 
   return (
     <div id="practice-view" className="view">

@@ -8,6 +8,29 @@ export default function Navbar() {
   const [isDDayPopoverOpen, setIsDDayPopoverOpen] = useState(false);
   const [hideIgnored, setHideIgnored] = useState(() => localStorage.getItem('courseflix_hide_ignored') === 'true');
   const [activeView, setActiveView] = useState(() => window.location.hash.replace('#', '') || 'home-view');
+  const [doubtsCount, setDoubtsCount] = useState(0);
+
+  useEffect(() => {
+    const updateDoubtsCount = () => {
+      try {
+        const doubts = JSON.parse(localStorage.getItem('doubtsDashboard') || '[]');
+        setDoubtsCount(doubts.length);
+      } catch (e) {
+        setDoubtsCount(0);
+      }
+    };
+    updateDoubtsCount();
+    
+    const handleStorage = (e) => {
+      if (e.key === 'doubtsDashboard') updateDoubtsCount();
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('doubtsUpdated', updateDoubtsCount);
+    return () => {
+        window.removeEventListener('storage', handleStorage);
+        window.removeEventListener('doubtsUpdated', updateDoubtsCount);
+    };
+  }, []);
 
   useEffect(() => {
     const handleHash = () => {
@@ -165,7 +188,28 @@ export default function Navbar() {
             </div>
             <a href="#" className="nav-link" data-view="dpp-view"><i className="fas fa-file-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>DPP</a>
             <a href="#" className="nav-link" data-view="notes-view"><i className="fas fa-sticky-note" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Notes</a>
-            <a href="#" className="nav-link" data-view="doubts-view"><i className="fas fa-question-circle" style={{"marginRight":"4px","color":"#f59e0b"}}></i> Doubts</a>
+            <a href="#" className="nav-link" data-view="doubts-view">
+                {doubtsCount > 0 ? (
+                    <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#f59e0b',
+                        color: 'black',
+                        borderRadius: '50%',
+                        width: '16px',
+                        height: '16px',
+                        fontSize: '0.65rem',
+                        fontWeight: 'bold',
+                        marginRight: '6px'
+                    }}>
+                        {doubtsCount}
+                    </span>
+                ) : (
+                    <i className="fas fa-question-circle" style={{"marginRight":"4px","color":"#f59e0b"}}></i>
+                )}
+                 Doubts
+            </a>
             <a href="#" className="nav-link" data-view="continue-view"><i className="fas fa-play-circle" style={{"marginRight":"4px","color":"#06b6d4"}}></i> Continue</a>
             <a href="#" className="nav-link" data-view="history-view"><i className="fas fa-history" style={{"marginRight":"4px"}}></i> History</a>
             <a href="#" className="nav-link" data-view="faculty-view"><i className="fas fa-chalkboard-teacher" style={{"marginRight":"4px"}}></i> Faculty</a>

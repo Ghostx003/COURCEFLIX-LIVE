@@ -1,11 +1,6 @@
 import React, { useEffect } from 'react';
 
 export default function ReviewView() {
-  useEffect(() => {
-    if (typeof window.showFilteredCoursesView === 'function') {
-      window.showFilteredCoursesView('review');
-    }
-  }, []);
 
   return (
     <div id="review-view" className="view">

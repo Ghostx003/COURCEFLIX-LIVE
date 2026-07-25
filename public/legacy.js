@@ -132,6 +132,8 @@ window.initCourseFlix = async function() {
         let currentGoalsLectures = [];
         let isCalendarMode = false;
         let currentCalendarLectures = [];
+        let isStudyTogetherMode = false;
+        let currentStudyTogetherStatus = null;
         let currentCalendarDate = null; // YYYY-MM-DD of the calendar view
         let courseProgress = {};
         let cachedHistory = null;
@@ -1805,9 +1807,12 @@ window.initCourseFlix = async function() {
             const courseIdsWithStatus = [...new Set(allItems.map(item => item.courseId))];
             const coursesToShow = courses.filter(c => courseIdsWithStatus.includes(c.id));
             
+            const studyTogetherBtn = coursesToShow.length > 1 ? `<button class="primary-btn study-together-btn" data-status="${status}" style="background-color: #8b5cf6; margin-left: auto;"><i class="fas fa-layer-group"></i> Study Together</button>` : '';
+
             let header = `
-                <div class="view-header">
+                <div class="view-header" style="display: flex; gap: 10px;">
                     <button class="primary-btn" id="back-to-status-view-btn" data-view="${status}-view"><i class="fas fa-arrow-left"></i> Back to ${status.charAt(0).toUpperCase() + status.slice(1)}</button>
+                    ${studyTogetherBtn}
                 </div>
                 <main id="filter-results-grid" class="grid-container"></main>
             `;
@@ -2460,6 +2465,8 @@ window.initCourseFlix = async function() {
             currentGoalsLectures = [];
             isCalendarMode = false;
             currentCalendarLectures = [];
+            isStudyTogetherMode = false;
+            currentStudyTogetherStatus = null;
 
             currentCourse = courses.find(c => String(c.id) === String(courseId));
             currentSubfolder = subfolder;
@@ -2713,6 +2720,59 @@ window.initCourseFlix = async function() {
             if (liToPlay) await playVideo(liToPlay, null);
         }
 
+        async function renderStudyTogetherPlayer(status) {
+            isGoalsMode = true; // Use Goals mode playback logic
+            isCalendarMode = false;
+            isStudyTogetherMode = true;
+            currentStudyTogetherStatus = status;
+
+            switchView('player-view');
+            chapterListDiv.innerHTML = '<p style="text-align:center; padding: 20px;">Loading Study Together Playlist...</p>';
+
+            backToLibraryBtn.textContent = `← Back to ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+            backToLibraryBtn.dataset.view = `${status}-view`;
+
+            courseTitleMenu.textContent = `🤝 Study Together: ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+            clearBookmarksBtn.classList.add('hidden');
+            toggleCompletedBtn.classList.remove('hidden');
+
+            const allItems = Object.values(courseProgress).filter(p => p.status === status);
+            const chaptersToDisplay = [];
+            
+            allItems.forEach(item => {
+                const originalCourse = courses.find(c => c.id === parseInt(item.courseId));
+                if (originalCourse) {
+                    let ch = chaptersToDisplay.find(c => c.name === originalCourse.title);
+                    if (!ch) {
+                        ch = { name: originalCourse.title, lectures: [] };
+                        chaptersToDisplay.push(ch);
+                    }
+                    if (originalCourse.lectures) {
+                        let fullLecture = originalCourse.lectures.find(l => l.id.toString() === item.lectureId.toString());
+                        if (fullLecture) {
+                            if (!ch.lectures.some(l => l.id.toString() === fullLecture.id.toString())) {
+                                const copy = {...fullLecture};
+                                copy.overrideCourseId = item.courseId;
+                                ch.lectures.push(copy);
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (chaptersToDisplay.length === 0) {
+                chapterListDiv.innerHTML = '<p id="no-content-message">Playlist is empty.</p>';
+                return;
+            }
+
+            renderChapterList(chaptersToDisplay);
+            currentGoalsLectures = chaptersToDisplay.flatMap(ch => ch.lectures);
+            updateMenuProgress();
+
+            let liToPlay = chapterListDiv.querySelector('li');
+            if (liToPlay) await playVideo(liToPlay, null);
+        }
+
         function renderChapterList(chaptersToDisplay, lectureIdToPlay = null) {
              chapterListDiv.innerHTML = '';
              if (!chaptersToDisplay || chaptersToDisplay.length === 0 || (chaptersToDisplay.length === 1 && chaptersToDisplay[0].lectures.length === 0)) {
@@ -2873,7 +2933,7 @@ window.initCourseFlix = async function() {
             autoplayTriggered = false;
             hideAutoplayOverlay(); // Clear any pending autoplay
 
-            if (currentLectureLi) { // Save last played info before switching
+            if (currentLectureLi && currentCourse) { // Save last played info before switching
                 const lastLectureId = currentLectureLi.dataset.lectureId;
                 if (lastLectureId !== liElement.dataset.lectureId) {
                     currentCourse.lastPlayedLecture = { lectureId: lastLectureId, currentTime: videoPlayer.currentTime };
@@ -2886,7 +2946,7 @@ window.initCourseFlix = async function() {
             const lectureId = liElement.dataset.lectureId;
             
             const courseIdOverride = liElement.dataset.courseId;
-            if (courseIdOverride && parseInt(courseIdOverride) !== currentCourse.id) {
+            if (courseIdOverride && (!currentCourse || parseInt(courseIdOverride) !== currentCourse.id)) {
                 currentCourse = courses.find(c => c.id === parseInt(courseIdOverride));
             }
             
@@ -3141,7 +3201,7 @@ window.initCourseFlix = async function() {
         }
 
         function updateMediaViewerToggleButton() {
-            if (!currentLectureLi) {
+            if (!currentLectureLi || !currentCourse) {
                 mediaViewerToggleBtn.classList.add('hidden');
                 return;
             }
@@ -3283,6 +3343,13 @@ window.initCourseFlix = async function() {
                 const courseId = parseInt(filterResultsCard.dataset.courseIdFilter);
                 const status = filterResultsCard.dataset.statusFilter;
                 await playLectureFromAnywhere(courseId, null, `${status}-view`);
+                return;
+            }
+            
+            const studyTogetherBtn = e.target.closest('.study-together-btn');
+            if (studyTogetherBtn) {
+                const status = studyTogetherBtn.dataset.status;
+                await renderStudyTogetherPlayer(status);
                 return;
             }
             
@@ -4696,6 +4763,31 @@ window.initCourseFlix = async function() {
                 }
                 const localStoreData = { ...localStorage };
 
+                // Backup Faculty Faces as Files
+                const facultyMetaRaw = localStoreData['courseflix_faculty_meta'];
+                if (facultyMetaRaw) {
+                    try {
+                        const facultyMeta = JSON.parse(facultyMetaRaw);
+                        for (const [facultyName, meta] of Object.entries(facultyMeta)) {
+                            if (meta.photo && typeof meta.photo === 'string' && meta.photo.startsWith('data:')) {
+                                try {
+                                    const photoBlob = base64ToBlob(meta.photo);
+                                    const sanitizedName = facultyName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                                    const photoFilename = `faculty_${sanitizedName}.png`;
+                                    zip.folder('faculty_faces').file(photoFilename, photoBlob);
+                                    meta.photoFilename = photoFilename;
+                                    delete meta.photo;
+                                } catch (e) {
+                                    console.warn("Could not backup faculty photo for", facultyName, e);
+                                }
+                            }
+                        }
+                        localStoreData['courseflix_faculty_meta'] = JSON.stringify(facultyMeta);
+                    } catch (e) {
+                        console.error("Error parsing faculty meta for backup", e);
+                    }
+                }
+
                 // Backup ProgressAppDB assignmentFiles
                 const progressFiles = [];
                 try {
@@ -4976,6 +5068,29 @@ window.initCourseFlix = async function() {
                 if (backupData.localStorage) {
                     for (const [key, value] of Object.entries(backupData.localStorage)) {
                         localStorage.setItem(key, value);
+                    }
+                    // Restore Faculty Faces
+                    try {
+                        const facultyMetaStr = backupData.localStorage['courseflix_faculty_meta'];
+                        if (facultyMetaStr) {
+                            const facultyMeta = JSON.parse(facultyMetaStr);
+                            let needsUpdate = false;
+                            for (const [facultyName, meta] of Object.entries(facultyMeta)) {
+                                if (meta.photoFilename) {
+                                    const photoFile = zip.file(`faculty_faces/${meta.photoFilename}`);
+                                    if (photoFile) {
+                                        meta.photo = await blobToDataURL(await photoFile.async('blob'));
+                                        delete meta.photoFilename;
+                                        needsUpdate = true;
+                                    }
+                                }
+                            }
+                            if (needsUpdate) {
+                                localStorage.setItem('courseflix_faculty_meta', JSON.stringify(facultyMeta));
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error restoring faculty faces", e);
                     }
                 }
 
@@ -6459,6 +6574,7 @@ window.initCourseFlix = async function() {
                     });
                 }
                 localStorage.setItem('doubtsDashboard', JSON.stringify(progressDoubts));
+                window.dispatchEvent(new Event('doubtsUpdated'));
             } catch (err) {
                 console.error("Failed to sync doubt to progress app:", err);
             }
@@ -6895,6 +7011,7 @@ window.initCourseFlix = async function() {
                         let progressDoubts = JSON.parse(localStorage.getItem('doubtsDashboard') || '[]');
                         progressDoubts = progressDoubts.filter(pd => pd.id !== id);
                         localStorage.setItem('doubtsDashboard', JSON.stringify(progressDoubts));
+                        window.dispatchEvent(new Event('doubtsUpdated'));
                     } catch (err) {}
                     // Rerender the active view logic
                     if (!document.getElementById('doubts-detail-container').classList.contains('hidden')) {

@@ -264,9 +264,14 @@ export default function HistoryView() {
                       <i className="fas fa-lock"></i> Future
                     </span>
                   )}
-                  {isUnlocked && (
+                  {future && isUnlocked && (
                     <span className="cal-unlocked-badge">
                       <i className="fas fa-lock-open"></i> Unlocked
+                    </span>
+                  )}
+                  {currentDateStr === dateToStr(new Date()) && (
+                    <span className="cal-unlocked-badge" style={{ color: '#3b82f6', background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.4)' }}>
+                      <i className="fas fa-calendar-day"></i> Present
                     </span>
                   )}
                 </div>
