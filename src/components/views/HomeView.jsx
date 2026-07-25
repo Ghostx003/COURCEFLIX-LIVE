@@ -756,9 +756,9 @@ export default function HomeView() {
           <div className="footer-top-grid">
             {/* Brand Column */}
             <div className="footer-brand-col">
-              <div className="footer-logo">
-                <i className="fas fa-play" style={{ color: '#10b981' }}></i>
-                <span>CourseFlix</span>
+              <div className="footer-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <img src="/favicon.jpg" alt="CourseFlix Logo" style={{ height: '28px', width: '28px', borderRadius: '6px', objectFit: 'contain' }} />
+                <span className="brand-text-course" style={{ fontSize: '1.3rem' }}>Course<span className="brand-text-flix">Flix</span></span>
               </div>
               <p className="footer-brand-desc">
                 The world's premier, end-to-end learning platform engineered for GATE Computer Science & IT toppers.

@@ -105,9 +105,9 @@ export default function Navbar() {
 
   return (
     <nav>
-        <h1 id="home-btn" data-view="home-view" onClick={() => window.switchView ? window.switchView('home-view') : (window.location.hash = '#home-view')} style={{ cursor: 'pointer' }}>
-            <i className="fas fa-play" style={{"fontSize":"0.95rem","color":"#10b981","filter":"drop-shadow(0 0 6px rgba(16, 185, 129, 0.6))"}}></i> 
-            <span>CourseFlix</span>
+        <h1 id="home-btn" data-view="home-view" onClick={() => window.switchView ? window.switchView('home-view') : (window.location.hash = '#home-view')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src="/favicon.jpg" alt="CourseFlix Logo" style={{ height: '32px', width: '32px', borderRadius: '8px', objectFit: 'contain' }} /> 
+            <span className="brand-text-course" style={{ fontSize: '1.35rem' }}>Course<span className="brand-text-flix">Flix</span></span>
         </h1>
         <div className="nav-links">
             <a href="#" className="nav-link" data-view="dashboard-view"><i className="fas fa-th-large" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Dashboard</a>

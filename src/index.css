@@ -155,11 +155,13 @@
         nav.hidden { display: none !important; }
         nav *, nav h1, .nav-links, .nav-link { transform: none !important; }
         nav h1 { 
-            margin: 0; font-size: 1.05rem; font-weight: 800; cursor: pointer; white-space: nowrap; 
-            font-family: 'Outfit', sans-serif; letter-spacing: -0.5px;
-            background: linear-gradient(135deg, #34d399 0%, #38bdf8 50%, #a78bfa 100%);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            display: flex; align-items: center; gap: 5px;
+            margin: 0; font-size: 1.3rem; font-weight: 800; cursor: pointer; white-space: nowrap; 
+            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.5px;
+            color: #ffffff;
+            background: none;
+            -webkit-background-clip: unset;
+            -webkit-text-fill-color: initial;
+            display: flex; align-items: center; gap: 8px;
             transition: transform 0.2s ease;
         }
         nav h1:hover { transform: scale(1.02); }
@@ -3522,9 +3524,9 @@ select option, select optgroup {
     font-size: 1.4rem;
     font-weight: 800;
     font-family: 'Outfit', sans-serif;
-    background: linear-gradient(135deg, #34d399 0%, #38bdf8 50%, #a78bfa 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #ffffff;
+    background: none;
+    -webkit-text-fill-color: initial;
 }
 
 .footer-brand-desc {
@@ -3897,3 +3899,6 @@ select option, select optgroup {
     gap: 8px;
 }
 
+
+.brand-text-course { color: #ffffff !important; font-weight: 800; font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.4px; }
+.brand-text-flix { background: linear-gradient(135deg, #FF7B00 0%, #FF3D00 55%, #E60000 100%) !important; -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; background-clip: text !important; font-weight: 800; font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.4px; display: inline-block; }
