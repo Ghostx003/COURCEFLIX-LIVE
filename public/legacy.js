@@ -72,10 +72,13 @@ window.initCourseFlix = async function() {
 
         async function ensureDB() {
             if (db) return db;
-            return await openDB();
+            if (window.db) { db = window.db; return db; }
+            db = await openDB();
+            return db;
         }
 
         function getStore(storeName, mode) {
+            if (!db && window.db) db = window.db;
             if (!db) throw new Error("Database not initialized yet.");
             return db.transaction(storeName, mode).objectStore(storeName);
         }
@@ -1029,7 +1032,8 @@ window.initCourseFlix = async function() {
             document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === targetId));
             document.querySelectorAll('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.view === viewId));
             
-            setTimeout(() => {
+            setTimeout(async () => {
+                await ensureDB();
                 if (viewId === 'review-view' || viewId === 'practice-view') {
                     showFilteredCoursesView(viewId.split('-')[0]);
                 }
@@ -1200,6 +1204,11 @@ window.initCourseFlix = async function() {
         }
 
         window.renderIntellView = function() {
+            const backBtn = document.getElementById('back-to-notes-from-intell');
+            if (backBtn && !backBtn.dataset.listenerAttached) {
+                backBtn.dataset.listenerAttached = 'true';
+                backBtn.addEventListener('click', () => switchView('notes-view'));
+            }
             renderIntellHome();
         }
 
@@ -3922,10 +3931,19 @@ window.initCourseFlix = async function() {
             const file = e.target.files[0];
             const lectureId = e.target.dataset.lectureId;
             if (file && lectureId) {
+                const folderDisplayName = currentSubfolder ? getSubfolderDisplayName(currentCourse, currentSubfolder) : (currentCourse ? currentCourse.title : 'DPP');
+                let num = 1;
+                if (currentCourse && currentCourse.lectures) {
+                    let lectures = currentCourse.lectures;
+                    if (currentSubfolder) lectures = currentCourse.lectures.filter(l => l.chapter === currentSubfolder || l.chapter.startsWith(currentSubfolder + '/'));
+                    const idx = lectures.findIndex(l => String(l.id) === String(lectureId));
+                    if (idx !== -1) num = idx + 1;
+                }
+                const autoName = `${folderDisplayName} ${num}`;
                 const progressData = getLectureProgress(currentCourse.id, lectureId);
-                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId: currentCourse.id, lectureId: lectureId });
+                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId: currentCourse.id, lectureId: lectureId });
                 await renderPlayer(currentCourse.id, lectureId, lastView, null, currentSubfolder);
-                await showMediaViewer(file, 'Assignment', file.name, getLectureProgress(currentCourse.id, lectureId));
+                await showMediaViewer(file, 'Assignment', autoName, getLectureProgress(currentCourse.id, lectureId));
             }
             e.target.value = null;
         });
@@ -5433,12 +5451,23 @@ window.initCourseFlix = async function() {
                 await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId: currentCourse.id, lectureId: lectureId });
                 showToast("PDF added as Lecture Notes!");
             } else {
-                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId: currentCourse.id, lectureId: lectureId });
+                const folderDisplayName = currentSubfolder ? getSubfolderDisplayName(currentCourse, currentSubfolder) : (currentCourse ? currentCourse.title : 'DPP');
+                let num = 1;
+                if (currentCourse && currentCourse.lectures) {
+                    let lectures = currentCourse.lectures;
+                    if (currentSubfolder) lectures = currentCourse.lectures.filter(l => l.chapter === currentSubfolder || (l.chapter && l.chapter.startsWith(currentSubfolder + '/')));
+                    const idx = lectures.findIndex(l => String(l.id) === String(lectureId));
+                    if (idx !== -1) num = idx + 1;
+                }
+                const autoName = `${folderDisplayName} ${num}`;
+
+                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId: currentCourse.id, lectureId: lectureId });
                 
                 const dpp = {
                     courseId: currentCourse.id,
-                    folderName: currentSubfolder || 'Uncategorized',
-                    fileName: file.name.replace(/\.[^/.]+$/, ""),
+                    lectureId: lectureId,
+                    folderName: currentSubfolder || '',
+                    fileName: autoName,
                     fileHandle: file,
                     completed: false,
                     starred: false,
@@ -5872,35 +5901,103 @@ window.initCourseFlix = async function() {
         });
 
         // --- DPP Functions ---
+        async function syncDppsFromProgress() {
+            await ensureDB();
+            let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+
+            // Clean up duplicate entries in DPP_STORE
+            const seenDppKeys = new Set();
+            const duplicateIdsToDelete = [];
+
+            for (const dpp of allDpps) {
+                const numMatch = (dpp.fileName || '').match(/(\d+)$/);
+                const num = numMatch ? numMatch[1] : dpp.fileName;
+                const key = `${dpp.courseId}_${dpp.folderName || ''}_${num}`;
+                if (seenDppKeys.has(key)) {
+                    if (dpp.id) duplicateIdsToDelete.push(dpp.id);
+                } else {
+                    seenDppKeys.add(key);
+                }
+            }
+
+            if (duplicateIdsToDelete.length > 0) {
+                for (const delId of duplicateIdsToDelete) {
+                    await new Promise(r => getStore(DPP_STORE, 'readwrite').delete(delId).onsuccess = r);
+                }
+                allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            }
+
+            const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            let addedAny = false;
+
+            for (const prog of allProgress) {
+                if (prog.assignmentHandle) {
+                    const course = courses.find(c => c.id === prog.courseId);
+                    let folder = '';
+                    let num = 1;
+                    if (course && course.lectures) {
+                        const lec = course.lectures.find(l => String(l.id) === String(prog.lectureId));
+                        if (lec && lec.chapter) folder = lec.chapter;
+                        let lectures = course.lectures;
+                        if (folder) lectures = course.lectures.filter(l => l.chapter === folder || (l.chapter && l.chapter.startsWith(folder + '/')));
+                        const idx = lectures.findIndex(l => String(l.id) === String(prog.lectureId));
+                        if (idx !== -1) num = idx + 1;
+                    }
+                    const folderLabel = (folder && folder !== 'Uncategorized' && folder !== '') ? folder.split('/').pop() : (course ? course.title : 'DPP');
+                    const autoName = `${folderLabel} ${num}`;
+
+                    const existingIndex = allDpps.findIndex(d => 
+                        d.courseId === prog.courseId && (
+                            (d.lectureId && String(d.lectureId) === String(prog.lectureId)) ||
+                            d.fileName === autoName || 
+                            d.fileName === prog.assignmentName ||
+                            (d.fileName && d.fileName.match(/(\d+)$/) && autoName.match(/(\d+)$/) && d.fileName.match(/(\d+)$/)[1] === String(num))
+                        )
+                    );
+                    if (existingIndex === -1) {
+                        const dpp = { 
+                            courseId: prog.courseId, 
+                            lectureId: prog.lectureId,
+                            folderName: folder, 
+                            fileName: autoName, 
+                            fileHandle: prog.assignmentHandle, 
+                            completed: false, 
+                            starred: false, 
+                            status: null 
+                        };
+                        await new Promise(r => getStore(DPP_STORE, 'readwrite').add(dpp).onsuccess = r);
+                        allDpps.push(dpp);
+                        addedAny = true;
+                    } else {
+                        const existing = allDpps[existingIndex];
+                        if (existing.fileName !== autoName || existing.folderName !== folder) {
+                            existing.fileName = autoName;
+                            existing.folderName = folder;
+                            await new Promise(r => getStore(DPP_STORE, 'readwrite').put(existing).onsuccess = r);
+                        }
+                    }
+
+                    // Keep assignmentName updated in progress Data as well
+                    if (prog.assignmentName !== autoName) {
+                        prog.assignmentName = autoName;
+                        await saveLectureProgress(prog);
+                    }
+                }
+            }
+            if (addedAny) {
+                if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
+            }
+        }
+
         async function renderDppCourseSelectionView() {
+            await ensureDB();
+            await syncDppsFromProgress();
             nav.classList.remove('hidden');
             const dppCourseGrid = document.getElementById('dpp-course-grid');
             document.getElementById('dpp-detail-container').classList.add('hidden');
             dppCourseGrid.classList.remove('hidden');
 
-            const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            let addedAnyDpp = false;
-            for (const prog of allProgress) {
-                if (prog.assignmentHandle) {
-                    const fName = (prog.assignmentName || "Assignment").replace(/\.[^/.]+$/, "");
-                    if (!allDpps.some(d => d.courseId === prog.courseId && d.fileName === fName)) {
-                        const course = courses.find(c => c.id === prog.courseId);
-                        let folder = 'Uncategorized';
-                        if (course && course.lectures) {
-                            const lec = course.lectures.find(l => l.id === prog.lectureId);
-                            if (lec && lec.chapter) folder = lec.chapter;
-                        }
-                        const dpp = { courseId: prog.courseId, folderName: folder, fileName: fName, fileHandle: prog.assignmentHandle, completed: false, starred: false, status: null };
-                        await new Promise(r => getStore(DPP_STORE, 'readwrite').add(dpp).onsuccess = r);
-                        addedAnyDpp = true;
-                    }
-                }
-            }
-            if (addedAnyDpp) {
-                if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
-                allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            }
+            let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
 
             const courseIdsWithDpps = [...new Set(allDpps.map(dpp => dpp.courseId))];
             const coursesWithDpps = courses.filter(c => courseIdsWithDpps.includes(c.id));
@@ -5949,8 +6046,21 @@ window.initCourseFlix = async function() {
             });
         }
 
+        function getDppDisplayName(dpp, folderName, courseTitle, fallbackIndex = 1) {
+            if (!dpp) return '';
+            const lastFolder = (folderName && folderName !== 'Uncategorized' && folderName !== '') 
+                ? folderName.split('/').pop() 
+                : (courseTitle || 'DPP');
+            let name = (dpp.fileName || '').trim();
+
+            const match = name.match(/(?:^|\s)(\d+)$/);
+            const num = match ? match[1] : fallbackIndex;
+            return `${lastFolder} ${num}`;
+        }
 
         async function renderDppDetailView(courseId) {
+            await ensureDB();
+            await syncDppsFromProgress();
             if (nav) nav.classList.remove('hidden');
             const course = courses.find(c => c.id === courseId);
             if (!course) {
@@ -5990,11 +6100,12 @@ window.initCourseFlix = async function() {
                 }
                 
                 html += `<div class="dpp-list">`;
-                groupedByFolder[folderName].sort((a,b) => naturalSort({name: a.fileName}, {name: b.fileName})).forEach(dpp => {
+                groupedByFolder[folderName].sort((a,b) => naturalSort({name: a.fileName}, {name: b.fileName})).forEach((dpp, idx) => {
+                    const displayName = getDppDisplayName(dpp, folderName, course.title, idx + 1);
                     const statusClass = dpp.status || '';
                     html += `
                         <div class="dpp-item" data-dpp-id="${dpp.id}">
-                            <span class="dpp-item-title ${dpp.completed ? 'completed' : ''}">${dpp.fileName}</span>
+                            <span class="dpp-item-title ${dpp.completed ? 'completed' : ''}">${displayName}</span>
                             <div class="dpp-item-controls">
                                 <button class="file-btn dpp-item-btn dpp-status-btn ${statusClass}" title="Cycle Status">${dpp.status ? dpp.status.toUpperCase() : 'STATUS'}</button>
                                 <button class="file-btn dpp-item-btn star-dpp-btn ${dpp.starred ? 'starred' : ''}" title="Star DPP"><i class="fas fa-star"></i></button>
@@ -6010,7 +6121,13 @@ window.initCourseFlix = async function() {
         }
 
 
-        async function renderDppUploadView(courseId) {
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        async function renderDppUploadView(courseId, targetFolderName = null) {
+            await ensureDB();
+            await syncDppsFromProgress();
             const course = courses.find(c => c.id === courseId);
             if (!course) return;
 
@@ -6020,27 +6137,255 @@ window.initCourseFlix = async function() {
             document.getElementById('dpp-upload-course-title').textContent = course.title;
             const folderList = document.getElementById('dpp-folder-list');
 
-            let folderHTML = `<div class="dpp-folder-item selected" data-folder-name="">
+            const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            const courseDpps = allDpps.filter(dpp => dpp.courseId === courseId);
+
+            const dppCountMap = {};
+            const foldersSet = new Set(course.dppFolders || []);
+            
+            if (course.lectures) {
+                course.lectures.forEach(l => {
+                    if (l.chapter) foldersSet.add(l.chapter);
+                });
+            }
+
+            courseDpps.forEach(dpp => {
+                const fn = dpp.folderName || '';
+                dppCountMap[fn] = (dppCountMap[fn] || 0) + 1;
+                if (fn) foldersSet.add(fn);
+            });
+
+            const allFoldersList = Array.from(foldersSet).sort((a, b) => naturalSort({name: a}, {name: b}));
+
+            const currentSelectedEl = folderList.querySelector('.dpp-folder-item.selected');
+            let selectedFolder = targetFolderName !== null ? targetFolderName : (currentSelectedEl ? currentSelectedEl.dataset.folderName : '');
+
+            const rootCount = dppCountMap[''] || 0;
+            if (targetFolderName === null && selectedFolder === '' && rootCount === 0) {
+                const folderWithDpps = allFoldersList.find(f => (dppCountMap[f] || 0) > 0);
+                if (folderWithDpps) {
+                    selectedFolder = folderWithDpps;
+                }
+            }
+
+            const rootBadge = rootCount > 0 
+                ? `<span class="dpp-count-badge" style="background:#f59e0b; color:#000; font-size:0.75rem; font-weight:bold; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-left:auto;">${rootCount}</span>`
+                : '';
+
+            let folderHTML = `<div class="dpp-folder-item ${selectedFolder === '' ? 'selected' : ''}" data-folder-name="" style="display:flex; align-items:center;">
                 <span><i class="fas fa-folder"></i> No Folder (Root)</span>
+                ${rootBadge}
             </div>`;
 
-            if (course.dppFolders && course.dppFolders.length > 0) {
-                folderHTML += course.dppFolders.sort().map(folder => `
-                    <div class="dpp-folder-item" data-folder-name="${folder}">
-                        <span><i class="fas fa-folder"></i> ${folder}</span>
-                        <button class="file-btn delete-dpp-folder-btn" title="Delete folder" data-folder-name="${folder}"><i class="fas fa-trash"></i></button>
-                    </div>
-                `).join('');
+            if (allFoldersList.length > 0) {
+                folderHTML += allFoldersList.map(folder => {
+                    const count = dppCountMap[folder] || 0;
+                    const badge = count > 0 
+                        ? `<span class="dpp-count-badge" style="background:#f59e0b; color:#000; font-size:0.75rem; font-weight:bold; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-left:auto; margin-right:8px;">${count}</span>`
+                        : '';
+                    const isManual = (course.dppFolders || []).includes(folder);
+                    const deleteBtn = isManual ? `<button class="file-btn delete-dpp-folder-btn" title="Delete folder" data-folder-name="${folder}" style="margin-left: ${count > 0 ? '0' : 'auto'};"><i class="fas fa-trash"></i></button>` : '';
+                    
+                    return `
+                        <div class="dpp-folder-item ${selectedFolder === folder ? 'selected' : ''}" data-folder-name="${folder}" style="display:flex; align-items:center;">
+                            <span><i class="fas fa-folder"></i> ${folder}</span>
+                            ${badge}
+                            ${deleteBtn}
+                        </div>
+                    `;
+                }).join('');
             }
             folderList.innerHTML = folderHTML;
+
+            renderDppUploadFilesList(courseId, selectedFolder, courseDpps);
 
             folderList.querySelectorAll('.dpp-folder-item').forEach(item => {
                 item.addEventListener('click', (e) => {
                     if (e.target.closest('.delete-dpp-folder-btn')) return;
                     folderList.querySelectorAll('.dpp-folder-item').forEach(i => i.classList.remove('selected'));
                     item.classList.add('selected');
+                    const folderName = item.dataset.folderName;
+                    renderDppUploadFilesList(courseId, folderName, courseDpps);
                 });
             });
+        }
+
+        function renderDppUploadFilesList(courseId, folderName, courseDpps) {
+            const titleEl = document.getElementById('dpp-upload-current-folder-title');
+            const filesListEl = document.getElementById('dpp-upload-files-list');
+            if (!titleEl || !filesListEl) return;
+
+            const course = courses.find(c => c.id === courseId);
+            const folderDisplay = folderName ? folderName : 'No Folder (Root)';
+            const folderFiles = courseDpps.filter(d => (d.folderName || '') === folderName);
+            
+            titleEl.innerHTML = `<i class="fas fa-folder-open" style="color:var(--accent-primary); margin-right:8px;"></i> ${folderDisplay} <span style="font-size:0.85rem; color:var(--text-secondary); font-weight:normal; margin-left:8px;">(${folderFiles.length} DPP${folderFiles.length === 1 ? '' : 's'})</span>`;
+
+            if (folderFiles.length === 0) {
+                filesListEl.innerHTML = `<p style="color:var(--text-secondary); font-size:0.9rem; text-align:center; padding:1.5rem;">No DPPs in this folder yet. Drag & drop files above or click browse to upload.</p>`;
+                return;
+            }
+
+            folderFiles.sort((a,b) => naturalSort({name: a.fileName}, {name: b.fileName}));
+
+            let html = '';
+            folderFiles.forEach((dpp, idx) => {
+                const displayName = getDppDisplayName(dpp, folderName, course ? course.title : '', idx + 1);
+                html += `
+                    <div class="dpp-upload-item" data-dpp-id="${dpp.id}" style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary, #1e293b); border:1px solid var(--border-primary, #334155); padding:14px 20px; border-radius:12px; margin-bottom:12px; cursor:pointer; transition:all 0.2s ease; box-shadow:0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                        <div class="dpp-card-main" style="display:flex; align-items:center; gap:14px; flex:1;">
+                            <div style="width:40px; height:40px; border-radius:10px; background:rgba(239, 68, 68, 0.15); display:flex; align-items:center; justify-content:center; color:#ef4444; flex-shrink:0;">
+                                <i class="fas fa-file-pdf" style="font-size:1.25rem;"></i>
+                            </div>
+                            <div>
+                                <span style="font-weight:600; font-size:1rem; color:var(--text-primary, #f8fafc); display:block;">${displayName}</span>
+                                <span style="font-size:0.75rem; color:var(--text-secondary, #94a3b8);">PDF Document</span>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
+                            <button class="view-dpp-file-btn" data-dpp-id="${dpp.id}" title="View DPP" style="display:inline-flex; align-items:center; gap:6px; background:rgba(59, 130, 246, 0.15); color:#60a5fa; border:1px solid rgba(59, 130, 246, 0.3); padding:8px 16px; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer; transition:background 0.2s;">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button class="delete-dpp-file-btn" data-dpp-id="${dpp.id}" title="Delete DPP" style="display:inline-flex; align-items:center; gap:6px; background:rgba(239, 68, 68, 0.15); color:#f87171; border:1px solid rgba(239, 68, 68, 0.3); padding:8px 16px; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer; transition:background 0.2s;">
+                                <i class="fas fa-trash-alt"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            filesListEl.innerHTML = html;
+
+            const handleViewClick = async (dppId) => {
+                const idStr = String(dppId);
+                const dpp = folderFiles.find(d => String(d.id) === idStr);
+                let fileHandle = dpp ? (dpp.fileHandle || dpp.handle) : null;
+                if (!fileHandle && dpp && dpp.lectureId) {
+                    const prog = getLectureProgress(courseId, dpp.lectureId);
+                    if (prog && prog.assignmentHandle) fileHandle = prog.assignmentHandle;
+                }
+
+                if (fileHandle) {
+                    try {
+                        let file = (fileHandle && fileHandle.getFile && typeof fileHandle.getFile === 'function') ? await fileHandle.getFile() : fileHandle;
+                        if (file) {
+                            const fileUrl = URL.createObjectURL(file);
+                            window.open(fileUrl, '_blank');
+                        } else {
+                            showToast("Unable to open file.", true);
+                        }
+                    } catch (err) {
+                        console.error("View file error:", err);
+                        showToast("Error opening file.", true);
+                    }
+                } else {
+                    showToast("File preview not available.", true);
+                }
+            };
+
+            filesListEl.querySelectorAll('.dpp-upload-item').forEach(card => {
+                card.addEventListener('click', async (e) => {
+                    if (e.target.closest('.delete-dpp-file-btn')) return;
+                    await handleViewClick(card.dataset.dppId);
+                });
+            });
+
+            filesListEl.querySelectorAll('.delete-dpp-file-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const idStr = String(btn.dataset.dppId);
+                    const dpp = folderFiles.find(d => String(d.id) === idStr);
+                    if (dpp && confirm(`Are you sure you want to permanently delete "${dpp.fileName}"? This cannot be undone.`)) {
+                        // 1. Delete from DPP_STORE
+                        if (dpp.id) {
+                            await new Promise(r => getStore(DPP_STORE, 'readwrite').delete(dpp.id).onsuccess = r);
+                        }
+                        // 2. Delete from PROGRESS_STORE
+                        const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                        for (const prog of allProgress) {
+                            if (prog.courseId === courseId && (String(prog.lectureId) === String(dpp.lectureId) || prog.assignmentName === dpp.fileName)) {
+                                prog.assignmentHandle = null;
+                                prog.assignmentName = null;
+                                prog.assignmentType = null;
+                                await saveLectureProgress(prog);
+                            }
+                        }
+                        // 3. Delete from localStorage (courseflix_dpps & dppStatuses)
+                        try {
+                            let cfDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
+                            cfDpps = cfDpps.filter(d => String(d.id) !== idStr && d.fileName !== dpp.fileName && d.name !== dpp.fileName);
+                            localStorage.setItem('courseflix_dpps', JSON.stringify(cfDpps));
+
+                            let dppStatuses = JSON.parse(localStorage.getItem('dppStatuses') || '{}');
+                            delete dppStatuses['dpp_' + dpp.id];
+                            localStorage.setItem('dppStatuses', JSON.stringify(dppStatuses));
+                        } catch (err) {
+                            console.warn("Error purging localStorage on delete:", err);
+                        }
+
+                        showToast(`Permanently deleted ${dpp.fileName}`);
+                        if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
+                        await renderDppUploadView(courseId, folderName);
+                    }
+                });
+            });
+        }
+
+        async function processDppUploadFiles(files) {
+            if (!files || files.length === 0) return;
+            const courseId = parseInt(document.getElementById('dpp-upload-view').dataset.courseId);
+            const course = courses.find(c => c.id === courseId);
+            if (!courseId || !course) return;
+
+            const selectedFolderEl = document.querySelector('#dpp-folder-list .dpp-folder-item.selected');
+            const folderName = selectedFolderEl ? selectedFolderEl.dataset.folderName : '';
+
+            const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            const existingFolderDpps = allDpps.filter(d => d.courseId === courseId && (d.folderName || '') === folderName);
+
+            const baseName = folderName ? folderName.split('/').pop() : course.title;
+
+            let maxNum = 0;
+            existingFolderDpps.forEach(dpp => {
+                const match = dpp.fileName.match(new RegExp('(?:^|\\s)' + escapeRegExp(baseName) + '\\s+(\\d+)$', 'i')) || dpp.fileName.match(/(\d+)$/);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    if (num > maxNum) maxNum = num;
+                }
+            });
+
+            if (maxNum === 0 && existingFolderDpps.length > 0) {
+                maxNum = existingFolderDpps.length;
+            }
+
+            const fileArray = Array.from(files);
+            fileArray.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+            const tx = db.transaction(DPP_STORE, 'readwrite');
+            const store = tx.objectStore(DPP_STORE);
+            let uploadedCount = 0;
+
+            for (const file of fileArray) {
+                maxNum++;
+                const autoName = `${baseName} ${maxNum}`;
+                const dpp = {
+                    courseId: courseId,
+                    folderName: folderName,
+                    fileName: autoName,
+                    fileHandle: file,
+                    completed: false,
+                    starred: false,
+                    status: null
+                };
+                store.add(dpp);
+                uploadedCount++;
+            }
+            await new Promise(r => tx.oncomplete = r);
+            
+            if (uploadedCount > 0) {
+                showToast(`${uploadedCount} DPP(s) uploaded successfully!`);
+                if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
+                await renderDppUploadView(courseId, folderName);
+            }
         }
         
         async function addDppFolder(courseId, folderName) {
@@ -6060,7 +6405,7 @@ window.initCourseFlix = async function() {
 
             course.dppFolders.push(folderName);
             await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
-            await renderDppUploadView(courseId);
+            await renderDppUploadView(courseId, folderName);
         }
 
         async function deleteDppFolder(courseId, folderName) {
@@ -6082,7 +6427,7 @@ window.initCourseFlix = async function() {
                 store.put(dpp);
             }
             await new Promise(r => tx.oncomplete = r);
-            await renderDppUploadView(courseId);
+            await renderDppUploadView(courseId, '');
         }
 
         // --- DPP & Upload Listeners ---
@@ -6091,7 +6436,6 @@ window.initCourseFlix = async function() {
             const detailView = document.getElementById('upload-detail-view');
             const subfolder = detailView.dataset.uploadSubfolder;
             if (subfolder) {
-                // Go back to the subfolder view
                 const courseId = parseInt(detailView.dataset.courseId);
                 const parentPath = getParentPath(subfolder);
                 detailView.classList.add('hidden');
@@ -6115,16 +6459,20 @@ window.initCourseFlix = async function() {
 
         
         const dppSidebarToggleBtn = document.getElementById('dpp-sidebar-toggle-btn');
-        dppSidebarToggleBtn.addEventListener('click', () => {
-            document.getElementById('dpp-sidebar').classList.toggle('hidden');
-            dppSidebarToggleBtn.classList.toggle('collapsed');
-        });
+        if (dppSidebarToggleBtn) {
+            dppSidebarToggleBtn.addEventListener('click', () => {
+                document.getElementById('dpp-sidebar').classList.toggle('hidden');
+                dppSidebarToggleBtn.classList.toggle('collapsed');
+            });
+        }
 
         const dppUploadSidebarToggleBtn = document.getElementById('dpp-upload-sidebar-toggle-btn');
-        dppUploadSidebarToggleBtn.addEventListener('click', () => {
-            document.getElementById('dpp-upload-sidebar').classList.toggle('hidden');
-            dppUploadSidebarToggleBtn.classList.toggle('collapsed');
-        });
+        if (dppUploadSidebarToggleBtn) {
+            dppUploadSidebarToggleBtn.addEventListener('click', () => {
+                document.getElementById('dpp-upload-sidebar').classList.toggle('hidden');
+                dppUploadSidebarToggleBtn.classList.toggle('collapsed');
+            });
+        }
 
         const newDppFolderNameInput = document.getElementById('new-dpp-folder-name');
         const addDppFolderBtn = document.getElementById('add-dpp-folder-btn');
@@ -6139,68 +6487,60 @@ window.initCourseFlix = async function() {
             }
         };
 
-        addDppFolderBtn.addEventListener('click', handleAddDppFolder);
-        newDppFolderNameInput.addEventListener('keydown', e => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAddDppFolder();
-            }
-        });
+        if (addDppFolderBtn) addDppFolderBtn.addEventListener('click', handleAddDppFolder);
+        if (newDppFolderNameInput) {
+            newDppFolderNameInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddDppFolder();
+                }
+            });
+        }
 
-        dppFolderList.addEventListener('click', e => {
-            const deleteBtn = e.target.closest('.delete-dpp-folder-btn');
-            if (deleteBtn) {
-                e.stopPropagation();
-                const courseId = parseInt(document.getElementById('dpp-upload-view').dataset.courseId);
-                const folderName = deleteBtn.dataset.folderName;
-                deleteDppFolder(courseId, folderName);
-            }
-        });
+        if (dppFolderList) {
+            dppFolderList.addEventListener('click', e => {
+                const deleteBtn = e.target.closest('.delete-dpp-folder-btn');
+                if (deleteBtn) {
+                    e.stopPropagation();
+                    const courseId = parseInt(document.getElementById('dpp-upload-view').dataset.courseId);
+                    const folderName = deleteBtn.dataset.folderName;
+                    deleteDppFolder(courseId, folderName);
+                }
+            });
+        }
         
         const dppDropZone = document.getElementById('dpp-upload-drop-zone');
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dppDropZone.addEventListener(eventName, e => {
-                e.preventDefault();
-                e.stopPropagation();
+        if (dppDropZone) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dppDropZone.addEventListener(eventName, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
             });
-        });
 
-        dppDropZone.addEventListener('dragenter', () => dppDropZone.classList.add('dragover'));
-        dppDropZone.addEventListener('dragover', () => dppDropZone.classList.add('dragover'));
-        dppDropZone.addEventListener('dragleave', () => dppDropZone.classList.remove('dragover'));
-        dppDropZone.addEventListener('drop', async (e) => {
-            dppDropZone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (!files || files.length === 0) return;
+            dppDropZone.addEventListener('dragenter', () => dppDropZone.classList.add('dragover'));
+            dppDropZone.addEventListener('dragover', () => dppDropZone.classList.add('dragover'));
+            dppDropZone.addEventListener('dragleave', () => dppDropZone.classList.remove('dragover'));
+            dppDropZone.addEventListener('drop', async (e) => {
+                dppDropZone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                await processDppUploadFiles(files);
+            });
+        }
 
-            const courseId = parseInt(document.getElementById('dpp-upload-view').dataset.courseId);
-            const selectedFolderEl = document.querySelector('#dpp-folder-list .dpp-folder-item.selected');
-            const folderName = selectedFolderEl ? selectedFolderEl.dataset.folderName : '';
-
-            const tx = db.transaction(DPP_STORE, 'readwrite');
-            const store = tx.objectStore(DPP_STORE);
-            let uploadedCount = 0;
-
-            for (const file of files) {
-                const dpp = {
-                    courseId: courseId,
-                    folderName: folderName,
-                    fileName: file.name.replace(/\.[^/.]+$/, ""),
-                    fileHandle: file,
-                    completed: false,
-                    starred: false,
-                    status: null
-                };
-                store.add(dpp);
-                uploadedCount++;
-            }
-            await new Promise(r => tx.oncomplete = r);
-            
-            if(uploadedCount > 0) {
-                showToast(`${uploadedCount} DPP(s) uploaded successfully!`);
-                if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
-            }
-        });
+        const browseDppFilesBtn = document.getElementById('browse-dpp-files-btn');
+        const dppFileInput = document.getElementById('dpp-file-input');
+        if (browseDppFilesBtn && dppFileInput) {
+            browseDppFilesBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dppFileInput.click();
+            });
+            dppFileInput.addEventListener('change', async (e) => {
+                const files = e.target.files;
+                await processDppUploadFiles(files);
+                dppFileInput.value = null;
+            });
+        }
 
         document.getElementById('dpp-list-container').addEventListener('click', async (e) => {
             const folderTitle = e.target.closest('.dpp-folder-title');
@@ -6324,6 +6664,11 @@ window.initCourseFlix = async function() {
                 const assignedFiles = fileList.slice(0, maxAssignable);
                 const overflowFiles = fileList.slice(maxAssignable);
 
+                const detailView = document.getElementById('upload-detail-view');
+                const uploadSubfolder = detailView ? detailView.dataset.uploadSubfolder : '';
+                const course = courses.find(c => c.id === courseId);
+                const folderDisplayName = uploadSubfolder ? getSubfolderDisplayName(course, uploadSubfolder) : (course ? course.title : 'DPP');
+
                 for (let i = 0; i < assignedFiles.length; i++) {
                     const file = assignedFiles[i];
                     const targetEl = targetLectures[i];
@@ -6333,7 +6678,10 @@ window.initCourseFlix = async function() {
                     if (type === 'pdf') {
                         await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId, lectureId });
                     } else if (type === 'assignment') {
-                        await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId, lectureId });
+                        const lectureIdx = lectureEls.indexOf(targetEl);
+                        const num = lectureIdx !== -1 ? (lectureIdx + 1) : (i + 1);
+                        const autoName = `${folderDisplayName} ${num}`;
+                        await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId, lectureId });
                     }
 
                     const updatedProgress = getLectureProgress(courseId, lectureId);
@@ -6351,6 +6699,7 @@ window.initCourseFlix = async function() {
             }
 
             // --- MANUAL MODE (single file drop) ---
+            const lectureEls = Array.from(document.querySelectorAll('#upload-lecture-list .lecture-item'));
             const selectedLectureEl = document.querySelector('#upload-lecture-list .lecture-item.selected');
             if (!selectedLectureEl) {
                 showToast('Please select a lecture from the list first!', true);
@@ -6366,6 +6715,11 @@ window.initCourseFlix = async function() {
             const lectureId = selectedLectureEl.dataset.lectureId;
             const progressData = getLectureProgress(courseId, lectureId);
 
+            const detailView = document.getElementById('upload-detail-view');
+            const uploadSubfolder = detailView ? detailView.dataset.uploadSubfolder : '';
+            const course = courses.find(c => c.id === courseId);
+            const folderDisplayName = uploadSubfolder ? getSubfolderDisplayName(course, uploadSubfolder) : (course ? course.title : 'DPP');
+
             if (type === 'pdf') {
                 if (!file.name.toLowerCase().endsWith('.pdf')) {
                     showToast('Only PDF files are allowed for notes.', true);
@@ -6373,7 +6727,10 @@ window.initCourseFlix = async function() {
                 }
                 await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId, lectureId });
             } else if (type === 'assignment') {
-                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId, lectureId });
+                const selectedIdx = lectureEls.indexOf(selectedLectureEl);
+                const num = selectedIdx !== -1 ? (selectedIdx + 1) : 1;
+                const autoName = `${folderDisplayName} ${num}`;
+                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId, lectureId });
             }
 
             showToast(`${type === 'pdf' ? 'Notes' : 'Assignment'} for "${selectedLectureEl.dataset.displayName || selectedLectureEl.textContent.trim()}" added successfully!`);
@@ -6399,12 +6756,22 @@ window.initCourseFlix = async function() {
         
         // --- Notes Functions ---
         async function renderNotesCourseSelectionView() {
+            await ensureDB();
             nav.classList.remove('hidden');
+            const gridHeader = document.getElementById('notes-grid-header');
+            if (gridHeader) gridHeader.style.display = 'flex';
             const notesCourseGrid = document.getElementById('notes-course-grid');
+
             document.getElementById('notes-detail-container').classList.add('hidden');
             notesCourseGrid.classList.remove('hidden');
             const intellBtn = document.getElementById('notes-intell-hub-btn');
-            if (intellBtn) intellBtn.style.display = 'inline-flex';
+            if (intellBtn) {
+                intellBtn.style.display = 'inline-flex';
+                if (!intellBtn.dataset.listenerAttached) {
+                    intellBtn.dataset.listenerAttached = 'true';
+                    intellBtn.addEventListener('click', () => switchView('intell-view'));
+                }
+            }
 
             const notesProgress = Object.values(courseProgress).filter(p => p.pdfHandle);
             const courseIdsWithNotes = [...new Set(notesProgress.map(p => p.courseId))];
@@ -6448,6 +6815,7 @@ window.initCourseFlix = async function() {
         }
 
         async function renderNotesDetailView(courseId) {
+            await ensureDB();
             if (nav) nav.classList.remove('hidden');
             const course = courses.find(c => c.id === courseId);
              if (!course) {
@@ -6455,6 +6823,11 @@ window.initCourseFlix = async function() {
                 switchView('notes-view');
                 return;
             };
+
+            const gridHeader = document.getElementById('notes-grid-header');
+            if (gridHeader) gridHeader.style.display = 'none';
+            const intellBtn = document.getElementById('notes-intell-hub-btn');
+            if (intellBtn) intellBtn.style.display = 'none';
 
             // Ensure lectures are loaded for chapter info
             if (course.isLinked && course.handle && !course.lectures) {
@@ -6466,7 +6839,6 @@ window.initCourseFlix = async function() {
             detailContainer.dataset.courseId = courseId;
             detailContainer.classList.remove('hidden');
             
-            document.getElementById('notes-detail-course-title').textContent = course.title;
             const notesListContainer = document.getElementById('notes-list-container');
             
             const courseNotes = Object.values(courseProgress).filter(p => p.courseId === courseId && p.pdfHandle);
@@ -6567,6 +6939,8 @@ window.initCourseFlix = async function() {
                 if (progress && progress.pdfHandle) {
                     document.querySelectorAll('#notes-list-container .notes-item').forEach(item => item.classList.remove('active'));
                     noteItem.classList.add('active');
+                    const intellBtn = document.getElementById('notes-intell-hub-btn');
+                    if (intellBtn) intellBtn.style.display = 'none';
                     await showMediaViewer(progress.pdfHandle, 'note', progress.pdfName, null);
                 }
             }

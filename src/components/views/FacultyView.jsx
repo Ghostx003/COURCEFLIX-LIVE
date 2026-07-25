@@ -44,7 +44,7 @@ export default function FacultyView() {
         
         <div id="faculty-profile-overlay" style={{"position":"absolute","top":"0","left":"0","right":"0","bottom":"0","background":"var(--bg-primary)","zIndex":"200","display":"none","flexDirection":"column","overflowY":"auto"}}>
             <div style={{"padding":"24px","borderBottom":"1px solid var(--border-primary)","display":"flex","alignItems":"center","gap":"16px","position":"sticky","top":"0","background":"var(--bg-primary)","zIndex":"10"}}>
-                <button id="close-faculty-profile-btn" className="primary-btn" style={{"fontSize":"0.9rem","padding":"6px 12px"}}><i className="fas fa-arrow-left"></i> Back to Faculties</button>
+                <button id="close-faculty-profile-btn" className="primary-btn" style={{"fontSize":"0.9rem","padding":"6px 12px"}}><i className="fas fa-arrow-left"></i> Back to Faculty</button>
                 <h2 id="faculty-profile-title" style={{"margin":"0","fontSize":"1.5rem","fontWeight":"600","color":"var(--text-primary)"}}>Faculty Profile</h2>
             </div>
             <div id="faculty-profile-grid" className="course-grid" style={{"padding":"24px","display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px","alignContent":"start"}}></div>

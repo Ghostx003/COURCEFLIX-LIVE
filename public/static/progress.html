@@ -2871,7 +2871,7 @@ window.addEventListener('unhandledrejection', function(e) {
                         const db = e.target.result;
                         if (!db.objectStoreNames.contains('dpps')) return resolve([]);
                         const tx = db.transaction('dpps', 'readonly');
-                        const store = tx.objectStore('dpps');
+                    const store = tx.objectStore('dpps');
                         const getAllReq = store.getAll();
                         getAllReq.onsuccess = () => resolve(getAllReq.result || []);
                         getAllReq.onerror = () => resolve([]);
@@ -2882,6 +2882,7 @@ window.addEventListener('unhandledrejection', function(e) {
                     cfDpps = dbDpps.map(d => ({
                         id: d.id,
                         name: d.fileName || d.title || `DPP ${d.id}`,
+                        folderName: d.folderName || '',
                         courseId: d.courseId,
                         subject: d.subject || courseSubjectMap[String(d.courseId)] || '',
                         status: d.status || 'none'
@@ -2894,13 +2895,40 @@ window.addEventListener('unhandledrejection', function(e) {
 
             let dppStatuses = JSON.parse(localStorage.getItem('dppStatuses') || '{}');
             
+            const subjectCounter = {};
+            const seenKeys = new Set();
+            const deduplicatedDpps = [];
+
+            cfDpps.forEach(d => {
+                const subjectName = d.subject || courseSubjectMap[String(d.courseId)] || '';
+                const folderName = d.folderName || '';
+                const lastFolder = (folderName && folderName !== 'Uncategorized' && folderName !== '') 
+                    ? folderName.split('/').pop() 
+                    : (subjectName || 'DPP');
+
+                let rawName = (d.name || d.fileName || '').trim();
+                const match = rawName.match(/(?:^|\s)(\d+)$/);
+
+                const key = `${d.courseId || subjectName}_${lastFolder}_${match ? match[1] : rawName}`;
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    deduplicatedDpps.push({ ...d, lastFolder, rawName, matchNum: match ? match[1] : null, subjectName });
+                }
+            });
+
             let allAssignments = [
                 ...assignments.map(a => ({ ...a, source: 'manual' })),
-                ...cfDpps.map(d => {
-                    const subjectName = d.subject || courseSubjectMap[String(d.courseId)] || '';
+                ...deduplicatedDpps.map(d => {
+                    const subjectName = d.subjectName;
+                    const lastFolder = d.lastFolder;
+
+                    subjectCounter[lastFolder] = (subjectCounter[lastFolder] || 0) + 1;
+                    const num = d.matchNum ? d.matchNum : subjectCounter[lastFolder];
+                    const formattedTitle = `${lastFolder} ${num}`;
+
                     return { 
                         id: 'dpp_' + d.id, 
-                        title: d.name, 
+                        title: formattedTitle, 
                         subject: subjectName,
                         due: null, 
                         status: dppStatuses['dpp_' + d.id] || (d.status && d.status !== 'none' ? (d.status === 'solved' ? 'Completed' : d.status === 'doubt' ? 'In Progress' : 'Upcoming') : 'Upcoming'),
