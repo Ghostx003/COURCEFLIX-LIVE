@@ -6483,13 +6483,21 @@ window.initCourseFlix = async function() {
                 });
 
                 if (notesInChapter.length > 0) {
+                    const chapterParts = (chapter.name || '').split('/').filter(Boolean);
+                    const lastFolderName = chapterParts.length > 0 ? chapterParts[chapterParts.length - 1].trim() : (chapter.name || 'Note');
+
                     html += `<div class="notes-folder-group open">
                                 <div class="notes-folder-title"><i class="fas fa-chevron-right"></i> <span>${chapter.name}</span></div>
                                 <div class="notes-list">`;
                     
-                    notesInChapter.forEach(note => {
+                    notesInChapter.forEach((note, index) => {
+                        const lecture = course.lectures ? course.lectures.find(l => String(l.id) === String(note.lectureId)) : null;
+                        let displayName = note.lectureName || (lecture && (lecture.title || lecture.name));
+                        if (!displayName || displayName === 'Unnamed Note' || displayName.endsWith('.pdf')) {
+                            displayName = `${lastFolderName} ${index + 1}`;
+                        }
                         html += `<div class="notes-item" data-lecture-id="${note.lectureId}" style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span class="notes-item-title">${note.lectureName || 'Unnamed Note'}</span>
+                                    <span class="notes-item-title">${displayName}</span>
                                     <button class="delete-note-btn" data-lecture-id="${note.lectureId}" style="background: none; border: none; color: var(--accent-danger); cursor: pointer; padding: 4px;" title="Delete Note"><i class="fas fa-trash"></i></button>
                                  </div>`;
                     });
