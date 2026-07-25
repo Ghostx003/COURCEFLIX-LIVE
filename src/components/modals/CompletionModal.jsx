@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 function AdviceBanner({ bg, border, color, icon, title, text, onDismiss, extraContent }) {
   const [hoverTimer, setHoverTimer] = useState(null);
@@ -50,16 +51,16 @@ function AdviceBanner({ bg, border, color, icon, title, text, onDismiss, extraCo
             type="button"
             onClick={onDismiss}
             style={{
-              background: '#ef4444',
-              color: 'white',
-              border: 'none',
+              background: 'rgba(139, 92, 246, 0.2)',
+              color: '#c084fc',
+              border: '1px solid rgba(139, 92, 246, 0.4)',
               borderRadius: '6px',
               padding: '4px 10px',
               fontSize: '0.75rem',
               fontWeight: 700,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)'
+              boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)'
             }}
           >
             <i className="fas fa-trash-alt" style={{ marginRight: '4px' }}></i> Remove Advice
@@ -146,9 +147,13 @@ export default function CompletionModal() {
 
   // Load courses and progress from IndexedDB & LocalStorage
   const refreshData = async () => {
+    if (window.courses && Array.isArray(window.courses) && window.courses.length > 0) {
+      setAllCourses(window.courses);
+    }
+
     try {
       // 1. Fetch courses from IndexedDB
-      const request = indexedDB.open('CourseFlixDB', 12);
+      const request = indexedDB.open('CourseFlixDB');
       request.onsuccess = (e) => {
         const db = e.target.result;
         if (db.objectStoreNames.contains('courses')) {
@@ -156,7 +161,12 @@ export default function CompletionModal() {
           const store = tx.objectStore('courses');
           const getAllReq = store.getAll();
           getAllReq.onsuccess = () => {
-            setAllCourses(getAllReq.result || []);
+            const fetched = getAllReq.result || [];
+            if (fetched.length > 0) {
+              setAllCourses(fetched);
+            } else if (window.courses && Array.isArray(window.courses) && window.courses.length > 0) {
+              setAllCourses(window.courses);
+            }
           };
         }
         if (db.objectStoreNames.contains('progress')) {
@@ -200,7 +210,7 @@ export default function CompletionModal() {
       // Create initial Group 1 if none exist
       const defaultGroup = {
         id: 'group_' + Date.now(),
-        name: 'Group 1',
+        name: 'BASICS',
         selectedCourseIds: [],
         mode: 'custom_pace', // 'custom_pace' or 'target_date'
         targetDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
@@ -224,19 +234,45 @@ export default function CompletionModal() {
       setIsOpen(true);
     };
 
+    const handleCoursesLoaded = (e) => {
+      if (e.detail && Array.isArray(e.detail) && e.detail.length > 0) {
+        setAllCourses(e.detail);
+      }
+    };
+
     window.addEventListener('open-completion-modal', handleOpen);
     window.addEventListener('courseflix:progress-updated', refreshData);
+    window.addEventListener('courseflix:courses-loaded', handleCoursesLoaded);
 
     return () => {
       window.removeEventListener('open-completion-modal', handleOpen);
       window.removeEventListener('courseflix:progress-updated', refreshData);
+      window.removeEventListener('courseflix:courses-loaded', handleCoursesLoaded);
     };
   }, []);
+
+  // Auto-assign available courses to groups if empty
+  useEffect(() => {
+    if (allCourses.length > 0 && groups.length > 0) {
+      let changed = false;
+      const updated = groups.map(g => {
+        if (!g.selectedCourseIds || g.selectedCourseIds.length === 0) {
+          changed = true;
+          return { ...g, selectedCourseIds: allCourses.map(c => c.id) };
+        }
+        return g;
+      });
+      if (changed) {
+        saveGroupsToStorage(updated);
+      }
+    }
+  }, [allCourses]);
 
   // Save groups to localStorage whenever groups change
   const saveGroupsToStorage = (updatedGroups) => {
     setGroups(updatedGroups);
     localStorage.setItem('courseflix_completion_groups', JSON.stringify(updatedGroups));
+    window.dispatchEvent(new Event('completion_groups_updated'));
   };
 
   const activeGroup = useMemo(() => {
@@ -771,7 +807,7 @@ export default function CompletionModal() {
     let confidenceColor = '#10b981'; // Green (>= 70%)
     let confidenceLabel = 'High Confidence';
     if (confidencePct < 30) {
-      confidenceColor = '#ef4444'; // Red (< 30%)
+      confidenceColor = '#8b5cf6'; // Violet (< 30%)
       confidenceLabel = 'Behind Schedule';
     } else if (confidencePct < 70) {
       confidenceColor = '#f59e0b'; // Yellow (30 - 69%)
@@ -858,9 +894,9 @@ export default function CompletionModal() {
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div 
-      className="completion-modal-backdrop" 
+      className="completion-modal-backdrop no-scrollbar" 
       onClick={() => setIsOpen(false)}
       style={{
         position: 'fixed',
@@ -868,15 +904,19 @@ export default function CompletionModal() {
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(8, 10, 18, 0.75)',
-        backdropFilter: 'blur(18px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(18px) saturate(180%)',
-        zIndex: 99999,
+        width: '125vw',
+        height: '125vh',
+        maxWidth: '125vw',
+        maxHeight: '125vh',
+        backgroundColor: 'var(--bg-primary, #0b0f19)',
+        zIndex: 9999999,
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-        animation: 'fadeIn 0.25s ease'
+        flexDirection: 'column',
+        padding: 0,
+        margin: 0,
+        boxSizing: 'border-box',
+        animation: 'fadeIn 0.25s ease',
+        overflow: 'hidden'
       }}
     >
       <canvas 
@@ -885,21 +925,22 @@ export default function CompletionModal() {
       />
 
       <div 
-        className="completion-modal-card"
+        className="completion-modal-card no-scrollbar"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: '1080px',
-          maxHeight: '92vh',
-          backgroundColor: 'var(--bg-secondary, #141722)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderRadius: '24px',
-          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(16, 185, 129, 0.15)',
+          height: '100%',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          backgroundColor: 'var(--bg-secondary, #131826)',
+          border: 'none',
+          borderRadius: 0,
+          boxShadow: 'none',
           color: 'var(--text-primary, #f3f4f6)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+          animation: 'fadeIn 0.2s ease'
         }}
       >
         {/* Modal Header */}
@@ -1078,9 +1119,9 @@ export default function CompletionModal() {
               <button 
                 onClick={() => handleDeleteGroup(activeGroup.id)}
                 style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  color: '#f87171',
+                  background: 'rgba(139, 92, 246, 0.12)',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  color: '#c084fc',
                   padding: '6px 12px',
                   borderRadius: '8px',
                   fontSize: '0.82rem',
@@ -1098,58 +1139,66 @@ export default function CompletionModal() {
         </div>
 
         {/* Modal Scrollable Content */}
-        <div style={{
-          padding: '24px 28px',
-          overflowY: 'auto',
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px'
-        }}>
+        <div 
+          className="no-scrollbar"
+          style={{
+            padding: '24px 36px',
+            overflowY: 'auto',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}
+        >
           {activeGroup && groupStats && (
             <>
-              {/* Top Overview Cards (Confidence, Velocity, Streak, Meta Summary) */}
+              {/* Top Overview Cards (Confidence, Velocity, Streak, Hours Remaining & Totals) */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '16px'
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '20px'
               }}>
                 {/* Confidence Status Badge Card */}
                 <div style={{
                   background: 'var(--bg-tertiary, rgba(255,255,255,0.03))',
                   border: `1px solid ${groupStats.confidenceColor}40`,
-                  borderRadius: '18px',
-                  padding: '18px',
+                  borderRadius: '20px',
+                  padding: '22px 24px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '16px',
+                  gap: '18px',
                   boxShadow: `0 8px 24px ${groupStats.confidenceColor}15`
                 }}>
-                  {/* Round Circular Status Badge */}
+                  {/* Round Circular Status Badge with dynamic font scaling to prevent 3-digit text overflow */}
                   <div style={{
-                    width: '58px',
-                    height: '58px',
+                    width: '74px',
+                    height: '74px',
                     borderRadius: '50%',
                     border: `4px solid ${groupStats.confidenceColor}`,
-                    boxShadow: `0 0 16px ${groupStats.confidenceColor}60`,
+                    boxShadow: `0 0 20px ${groupStats.confidenceColor}60`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 900,
-                    fontSize: '1rem',
+                    fontSize: String(groupStats.confidencePct).length >= 4 ? '0.75rem' : String(groupStats.confidencePct).length >= 3 ? '0.88rem' : '1.15rem',
                     color: groupStats.confidenceColor,
-                    flexShrink: 0
+                    flexShrink: 0,
+                    padding: '0 4px',
+                    boxSizing: 'border-box',
+                    whiteSpace: 'nowrap'
                   }}>
                     {groupStats.confidencePct}%
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
+                    <div style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
                       Schedule Confidence
                     </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: groupStats.confidenceColor, marginTop: '2px' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 900, color: groupStats.confidenceColor, marginTop: '4px' }}>
                       {groupStats.confidenceLabel}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #9ca3af)', marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #9ca3af)', marginTop: '4px', fontWeight: 600 }}>
                       {groupStats.remGroupLectures === 0 ? 'All lectures completed!' : groupStats.overallFinishDate}
                     </div>
                   </div>
@@ -1159,34 +1208,35 @@ export default function CompletionModal() {
                 <div style={{
                   background: 'var(--bg-tertiary, rgba(255,255,255,0.03))',
                   border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '18px',
-                  padding: '18px',
+                  borderRadius: '20px',
+                  padding: '22px 24px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '16px'
+                  gap: '18px'
                 }}>
                   <div style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '14px',
+                    width: '58px',
+                    height: '58px',
+                    borderRadius: '16px',
                     background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: 'white',
-                    fontSize: '1.3rem',
-                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)'
+                    fontSize: '1.4rem',
+                    boxShadow: '0 6px 18px rgba(59, 130, 246, 0.4)',
+                    flexShrink: 0
                   }}>
                     <i className="fas fa-tachometer-alt"></i>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
+                    <div style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
                       Study Velocity Today
                     </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'white', marginTop: '2px' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'white', marginTop: '4px' }}>
                       {groupStats.todayLecturesCount} / {groupStats.plannedToday} lectures
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: groupStats.velocityPercentage >= 100 ? '#10b981' : '#f59e0b', fontWeight: 700, marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.82rem', color: groupStats.velocityPercentage >= 100 ? '#10b981' : '#f59e0b', fontWeight: 700, marginTop: '4px' }}>
                       {groupStats.velocityPercentage}% Performance
                     </div>
                   </div>
@@ -1196,72 +1246,79 @@ export default function CompletionModal() {
                 <div style={{
                   background: 'var(--bg-tertiary, rgba(255,255,255,0.03))',
                   border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '18px',
-                  padding: '18px',
+                  borderRadius: '20px',
+                  padding: '22px 24px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '16px'
+                  gap: '18px'
                 }}>
                   <div style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '14px',
+                    width: '58px',
+                    height: '58px',
+                    borderRadius: '16px',
                     background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: 'white',
-                    fontSize: '1.3rem',
-                    boxShadow: '0 4px 14px rgba(245, 158, 11, 0.4)'
+                    fontSize: '1.5rem',
+                    boxShadow: '0 6px 18px rgba(245, 158, 11, 0.4)',
+                    flexShrink: 0
                   }}>
                     🔥
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
+                    <div style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
                       Active Streak
                     </div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#fbbf24', marginTop: '2px' }}>
+                    <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#fbbf24', marginTop: '4px' }}>
                       {groupStats.streak} Days Streak
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #9ca3af)', marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #9ca3af)', marginTop: '4px', fontWeight: 600 }}>
                       Keep watching daily!
                     </div>
                   </div>
                 </div>
 
-                {/* Group Meta Summary Card */}
+                {/* Compact Hours Left & Accumulated Totals Card */}
                 <div style={{
-                  background: 'var(--bg-tertiary, rgba(255,255,255,0.03))',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '18px',
-                  padding: '18px',
+                  background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(126, 34, 206, 0.08) 100%)',
+                  border: '1px solid rgba(168, 85, 247, 0.35)',
+                  borderRadius: '16px',
+                  padding: '14px 18px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '16px'
+                  gap: '14px',
+                  boxShadow: '0 6px 20px rgba(168, 85, 247, 0.18)',
+                  position: 'relative',
+                  overflow: 'hidden'
                 }}>
                   <div style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '14px',
-                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: 'white',
-                    fontSize: '1.3rem',
-                    boxShadow: '0 4px 14px rgba(139, 92, 246, 0.4)'
+                    fontSize: '1.15rem',
+                    boxShadow: '0 4px 14px rgba(168, 85, 247, 0.35)',
+                    flexShrink: 0
                   }}>
-                    <i className="fas fa-book"></i>
+                    <i className="fas fa-hourglass-half"></i>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-secondary, #9ca3af)', fontWeight: 700 }}>
-                      Accumulated Totals
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#d8b4fe', fontWeight: 800 }}>
+                      HOURS REMAINING & CONTENT STATS
                     </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'white', marginTop: '2px' }}>
-                      {groupStats.completedGroupLectures} / {groupStats.totalGroupLectures} Lectures
+                    <div style={{ fontSize: '1.45rem', fontWeight: 900, color: 'white', marginTop: '1px', display: 'flex', alignItems: 'baseline', gap: '6px', lineHeight: 1.1 }}>
+                      {Math.round(groupStats.remainingGroupDurationSec / 3600)} 
+                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hours Left</span>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #9ca3af)', marginTop: '4px' }}>
-                      {Math.round(groupStats.remainingGroupDurationSec / 3600)}h remaining ({Math.round(groupStats.totalGroupDurationSec / 3600)}h total)
+                    <div style={{ fontSize: '0.8rem', color: '#e9d5ff', marginTop: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span>📚 <strong>{groupStats.completedGroupLectures}</strong> / <strong>{groupStats.totalGroupLectures}</strong> Lectures</span>
+                      <span>⏱️ <strong>{Math.round(groupStats.totalGroupDurationSec / 3600)}h</strong> Total Content</span>
                     </div>
                   </div>
                 </div>
@@ -1569,7 +1626,7 @@ export default function CompletionModal() {
                     }
                     onDismiss={() => handleDismissBanner(activeGroup.id + '_together')}
                     extraContent={groupStats.hasBacklogIncrease ? (
-                      <div style={{ marginTop: '4px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', color: '#f87171', fontSize: '0.82rem', fontWeight: 600 }}>
+                      <div style={{ marginTop: '4px', padding: '8px 12px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', color: '#c084fc', fontSize: '0.82rem', fontWeight: 600 }}>
                         <i className="fas fa-exclamation-circle" style={{ marginRight: '6px' }}></i>
                         <strong>Notice:</strong> You didn't finish target lectures on schedule, so the daily lecture quantity has automatically increased to meet your rigid target deadline of {groupStats.overallFinishDate}.
                       </div>
@@ -1721,7 +1778,7 @@ export default function CompletionModal() {
                     <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem' }}>Click "+ Add Subject" to choose courses from your library.</p>
                   </div>
                 ) : (
-                  <div style={{ overflowX: 'auto' }}>
+                  <div className="no-scrollbar" style={{ overflowX: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     <table style={{
                       width: '100%',
                       borderCollapse: 'collapse',
@@ -1870,7 +1927,7 @@ export default function CompletionModal() {
                                 style={{
                                   background: 'transparent',
                                   border: 'none',
-                                  color: '#ef4444',
+                                  color: 'var(--text-secondary)',
                                   cursor: 'pointer',
                                   fontSize: '0.9rem',
                                   padding: '6px',
@@ -1960,7 +2017,7 @@ export default function CompletionModal() {
               }}
             />
 
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px' }}>
+            <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               {allCourses
                 .filter(c => !otherGroupsAssignedCourseIds.has(c.id))
                 .filter(c => (c.title || c.name || '').toLowerCase().includes(courseSearchQuery.toLowerCase()))
@@ -2035,6 +2092,7 @@ export default function CompletionModal() {
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

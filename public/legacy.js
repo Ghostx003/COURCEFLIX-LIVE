@@ -22,19 +22,22 @@ window.initCourseFlix = async function() {
             }, 10);
         }
         const DB_NAME = 'CourseFlixDB';
-        const DB_VERSION = 12; // Incremented version for history store
+        const DB_VERSION = 13; // Incremented version for calendar store
         const STORE_NAME = 'courses';
         const PROGRESS_STORE = 'progress';
         const DPP_STORE = 'dpps'; // New store for DPPs
         const DOUBTS_STORE = 'doubts';
         const HISTORY_STORE = 'history';
-        let db;
+        const CALENDAR_STORE = 'calendarEvents';
+        let db = null;
+        let dbPromise = null;
 
         // --- Database Helper ---
         function openDB() {
-            return new Promise((resolve, reject) => {
+            if (dbPromise) return dbPromise;
+            dbPromise = new Promise((resolve, reject) => {
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
-                request.onerror = () => reject("Error opening IndexedDB");
+                request.onerror = () => { dbPromise = null; reject("Error opening IndexedDB"); };
                 request.onsuccess = () => { db = request.result; window.appDbInitialized = true; resolve(db); };
                 request.onupgradeneeded = (event) => { 
                     const upgradeDb = event.target.result;
@@ -43,14 +46,28 @@ window.initCourseFlix = async function() {
                     if (!upgradeDb.objectStoreNames.contains(DPP_STORE)) upgradeDb.createObjectStore(DPP_STORE, { keyPath: 'id', autoIncrement: true });
                     if (!upgradeDb.objectStoreNames.contains(DOUBTS_STORE)) upgradeDb.createObjectStore(DOUBTS_STORE, { keyPath: 'id', autoIncrement: true });
                     if (!upgradeDb.objectStoreNames.contains(HISTORY_STORE)) upgradeDb.createObjectStore(HISTORY_STORE, { keyPath: 'id', autoIncrement: true });
+                    if (!upgradeDb.objectStoreNames.contains(CALENDAR_STORE)) {
+                        const calStore = upgradeDb.createObjectStore(CALENDAR_STORE, { keyPath: 'id', autoIncrement: true });
+                        calStore.createIndex('date', 'date', { unique: false });
+                    }
                 };
                 request.onblocked = () => {
                     alert("Database update blocked! Please close other tabs of CourseFlix and refresh the page.");
                     reject("Blocked");
                 };
             });
+            return dbPromise;
         }
-        function getStore(storeName, mode) { return db.transaction(storeName, mode).objectStore(storeName); }
+
+        async function ensureDB() {
+            if (db) return db;
+            return await openDB();
+        }
+
+        function getStore(storeName, mode) {
+            if (!db) throw new Error("Database not initialized yet.");
+            return db.transaction(storeName, mode).objectStore(storeName);
+        }
 
         // --- DOM Elements ---
         const nav = document.querySelector('nav');
@@ -113,6 +130,9 @@ window.initCourseFlix = async function() {
         let currentLectureLi = null;
         let isGoalsMode = false;
         let currentGoalsLectures = [];
+        let isCalendarMode = false;
+        let currentCalendarLectures = [];
+        let currentCalendarDate = null; // YYYY-MM-DD of the calendar view
         let courseProgress = {};
         let cachedHistory = null;
         let clickTimer = null;
@@ -140,10 +160,25 @@ window.initCourseFlix = async function() {
             return `${minutes}m`;
         }
         function formatTotalDuration(seconds) {
-            if (isNaN(seconds) || seconds <= 0) return '0 hours 0 min left';
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            return `${hours} hours ${minutes} min left`;
+            if (isNaN(seconds) || seconds <= 0) return '0h';
+            const totalMinutes = Math.floor(seconds / 60);
+            let hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            if (minutes >= 40) {
+                hours += 1;
+            }
+            return `${hours}h`;
+        }
+        function formatExactTime(seconds) {
+            if (isNaN(seconds) || seconds <= 0) return '0 hours 0 mins 0 secs';
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const parts = [];
+            if (hrs > 0) parts.push(`${hrs} hr${hrs > 1 ? 's' : ''}`);
+            if (mins > 0 || hrs > 0) parts.push(`${mins} min${mins > 1 ? 's' : ''}`);
+            parts.push(`${secs} sec${secs !== 1 ? 's' : ''}`);
+            return parts.join(' ');
         }
         const naturalSort = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
         const naturalSortByNameOnly = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -258,13 +293,13 @@ window.initCourseFlix = async function() {
             });
             localStorage.setItem('courseflix_subjects', JSON.stringify(cfSubjects));
             
-            const allDpps = await new Promise(resolve => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
-            const courseIds = allCourses.map(c => c.id);
-            let cfDpps = allDpps
-                .filter(d => courseIds.includes(d.courseId))
+            const allDpps = await new Promise(resolve => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
+            const courseIdStrs = allCourses.map(c => String(c.id));
+            let cfDpps = (allDpps || [])
+                .filter(d => !d.courseId || courseIdStrs.includes(String(d.courseId)))
                 .map(d => ({
                     id: d.id,
-                    name: d.fileName || d.title || d.id,
+                    name: d.fileName || d.title || `DPP ${d.id}`,
                     courseId: d.courseId,
                     status: d.status || 'none'
                 }));
@@ -285,6 +320,7 @@ window.initCourseFlix = async function() {
         }
         
         async function getHistoryEntries() {
+            await ensureDB();
             if (cachedHistory) return cachedHistory;
             return new Promise((resolve, reject) => {
                 const request = getStore(HISTORY_STORE, 'readonly').getAll();
@@ -359,6 +395,304 @@ window.initCourseFlix = async function() {
             }));
         }
 
+        function isSubfolderPathIgnoredOrHidden(course, subfolderPath) {
+            if (!course) return false;
+            if (course.isIgnored) return true;
+            if (!course.subCourseData || !subfolderPath) return false;
+
+            const normSub = String(subfolderPath).toLowerCase().trim();
+            for (const key of Object.keys(course.subCourseData)) {
+                const item = course.subCourseData[key];
+                if (item && (item.hidden || item.isIgnored)) {
+                    const normKey = String(key).toLowerCase().trim();
+                    if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        window.isSubfolderPathIgnoredOrHidden = isSubfolderPathIgnoredOrHidden;
+
+        async function hardDeleteHistoryForSubfolder(courseId, targetSubfolder) {
+            try {
+                await ensureDB();
+                const history = await new Promise((resolve) => {
+                    const req = getStore(HISTORY_STORE, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (!history || history.length === 0) return;
+
+                const toDeleteIds = [];
+                const normTarget = String(targetSubfolder || '').toLowerCase().trim();
+
+                for (const h of history) {
+                    if (parseInt(h.courseId) === parseInt(courseId)) {
+                        const normSub = String(h.subfolder || '').toLowerCase().trim();
+                        if (!normTarget || normSub === normTarget || normSub.startsWith(normTarget + '/') || normSub.endsWith('/' + normTarget) || normSub.includes('/' + normTarget + '/')) {
+                            toDeleteIds.push(h.id);
+                        }
+                    }
+                }
+
+                if (toDeleteIds.length > 0) {
+                    cachedHistory = null;
+                    const store = getStore(HISTORY_STORE, 'readwrite');
+                    await Promise.all(toDeleteIds.map(id => new Promise(r => store.delete(id).onsuccess = r)));
+                }
+            } catch (err) {
+                console.warn('Error in hardDeleteHistoryForSubfolder:', err);
+            }
+        }
+        window.hardDeleteHistoryForSubfolder = hardDeleteHistoryForSubfolder;
+
+        async function cleanupOrphanedHistoryEntries() {
+            try {
+                await ensureDB();
+                const history = await new Promise((resolve) => {
+                    const req = getStore(HISTORY_STORE, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (!history || history.length === 0) return;
+
+                const toDeleteIds = [];
+                for (const h of history) {
+                    if (!h.courseId) {
+                        toDeleteIds.push(h.id);
+                        continue;
+                    }
+                    const course = (courses || []).find(c => parseInt(c.id) === parseInt(h.courseId));
+                    if (!course || course.isIgnored) {
+                        toDeleteIds.push(h.id);
+                        continue;
+                    }
+                    if (h.subfolder && isSubfolderPathIgnoredOrHidden(course, h.subfolder)) {
+                        toDeleteIds.push(h.id);
+                        continue;
+                    }
+                }
+
+                if (toDeleteIds.length > 0) {
+                    cachedHistory = null;
+                    const store = getStore(HISTORY_STORE, 'readwrite');
+                    await Promise.all(toDeleteIds.map(id => new Promise(r => store.delete(id).onsuccess = r)));
+                }
+            } catch (err) {
+                console.warn('Error during history cleanup:', err);
+            }
+        }
+        window.cleanupOrphanedHistoryEntries = cleanupOrphanedHistoryEntries;
+
+        async function purgeAllDataForDeletedCoursesAndSubfolders(options = {}) {
+            let totalPurgedCount = 0;
+            try {
+                await ensureDB();
+                const activeCourses = await new Promise((resolve) => {
+                    const req = getStore(STORE_NAME, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                // Build a map of active lecture IDs per course
+                const activeLectureMap = {};
+                activeCourses.forEach(c => {
+                    if (c && !c.isIgnored && Array.isArray(c.lectures)) {
+                        activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
+                    }
+                });
+
+                const isRecordValid = (courseId, subfolderPath, lectureId, itemId) => {
+                    if (!courseId) return false;
+                    const cId = parseInt(courseId);
+                    const course = activeCourses.find(c => parseInt(c.id) === cId);
+                    if (!course || course.isIgnored) return false;
+                    if (subfolderPath && isSubfolderPathIgnoredOrHidden(course, subfolderPath)) return false;
+                    
+                    // Check missing/deleted lecture if lecture information is available
+                    let lecId = lectureId ? String(lectureId) : null;
+                    if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cId + '_')) {
+                        lecId = itemId.replace(cId + '_', '');
+                    }
+                    if (lecId && activeLectureMap[cId] && activeLectureMap[cId].size > 0) {
+                        if (!activeLectureMap[cId].has(lecId)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                };
+
+                // 1. Purge PROGRESS_STORE & courseProgress in memory (attached PDFs, notes, status, progress, intell)
+                const allProgress = await new Promise((resolve) => {
+                    const req = getStore(PROGRESS_STORE, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (allProgress && allProgress.length > 0) {
+                    const progressStore = getStore(PROGRESS_STORE, 'readwrite');
+                    for (const prog of allProgress) {
+                        const sub = prog.subfolder || prog.chapter || '';
+                        if (!isRecordValid(prog.courseId, sub, prog.lectureId, prog.id)) {
+                            progressStore.delete(prog.id);
+                            totalPurgedCount++;
+                            if (typeof courseProgress !== 'undefined' && courseProgress) {
+                                delete courseProgress[prog.id];
+                            }
+                        }
+                    }
+                }
+
+                // 2. Purge HISTORY_STORE
+                await cleanupOrphanedHistoryEntries();
+
+                // 3. Purge DOUBTS_STORE
+                const allDoubts = await new Promise((resolve) => {
+                    const req = getStore(DOUBTS_STORE, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (allDoubts && allDoubts.length > 0) {
+                    const doubtsStore = getStore(DOUBTS_STORE, 'readwrite');
+                    for (const d of allDoubts) {
+                        const sub = d.subfolder || d.chapter || '';
+                        if (!isRecordValid(d.courseId, sub, d.lectureId, d.id)) {
+                            doubtsStore.delete(d.id);
+                            totalPurgedCount++;
+                        }
+                    }
+                }
+
+                // 4. Purge DPP_STORE
+                const allDpp = await new Promise((resolve) => {
+                    const req = getStore(DPP_STORE, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (allDpp && allDpp.length > 0) {
+                    const dppStore = getStore(DPP_STORE, 'readwrite');
+                    for (const dpp of allDpp) {
+                        const sub = dpp.subfolder || dpp.chapter || '';
+                        if (!isRecordValid(dpp.courseId, sub, dpp.lectureId, dpp.id)) {
+                            dppStore.delete(dpp.id);
+                            totalPurgedCount++;
+                        }
+                    }
+                }
+
+                // 5. Purge CALENDAR_STORE
+                const allCal = await new Promise((resolve) => {
+                    const req = getStore(CALENDAR_STORE, 'readonly').getAll();
+                    req.onsuccess = e => resolve(e.target.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (allCal && allCal.length > 0) {
+                    const calStore = getStore(CALENDAR_STORE, 'readwrite');
+                    for (const cal of allCal) {
+                        const sub = cal.subfolder || cal.chapter || '';
+                        if (cal.courseId && !isRecordValid(cal.courseId, sub, cal.lectureId, cal.id)) {
+                            calStore.delete(cal.id);
+                            totalPurgedCount++;
+                        }
+                    }
+                }
+
+                // 6. Purge courseflix_logs from localStorage
+                try {
+                    let cfLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
+                    if (cfLogs && cfLogs.length > 0) {
+                        const initialLen = cfLogs.length;
+                        const filteredLogs = cfLogs.filter(log => isRecordValid(log.courseId, log.subfolder || log.chapter, log.lectureId, log.id));
+                        totalPurgedCount += (initialLen - filteredLogs.length);
+                        localStorage.setItem('courseflix_logs', JSON.stringify(filteredLogs));
+                    }
+                } catch (e) {}
+
+                // 7. Purge assignmentFiles from ProgressAppDB
+                try {
+                    const progRequest = indexedDB.open('ProgressAppDB', 1);
+                    await new Promise((resolve) => {
+                        progRequest.onsuccess = (e) => {
+                            const db = e.target.result;
+                            if (db.objectStoreNames.contains('assignmentFiles')) {
+                                const tx = db.transaction('assignmentFiles', 'readwrite');
+                                const store = tx.objectStore('assignmentFiles');
+                                const keysReq = store.getAllKeys();
+                                keysReq.onsuccess = () => {
+                                    const keys = keysReq.result || [];
+                                    for (const key of keys) {
+                                        const keyStr = String(key);
+                                        const parts = keyStr.split('_');
+                                        const courseId = parts[0];
+                                        const lectureId = parts.slice(1).join('_');
+                                        if (!isRecordValid(courseId, null, lectureId, keyStr)) {
+                                            store.delete(key);
+                                            totalPurgedCount++;
+                                        }
+                                    }
+                                    resolve();
+                                };
+                                keysReq.onerror = () => resolve();
+                            } else {
+                                resolve();
+                            }
+                        };
+                        progRequest.onerror = () => resolve();
+                    });
+                } catch (e) {}
+
+            } catch (err) {
+                console.warn('Error in purgeAllDataForDeletedCoursesAndSubfolders:', err);
+            }
+            return totalPurgedCount;
+        }
+        window.purgeAllDataForDeletedCoursesAndSubfolders = purgeAllDataForDeletedCoursesAndSubfolders;
+
+        // --- Calendar Event CRUD ---
+        async function addCalendarEvent(eventData) {
+            await ensureDB();
+            return new Promise((resolve, reject) => {
+                const request = getStore(CALENDAR_STORE, 'readwrite').add(eventData);
+                request.onsuccess = e => resolve(e.target.result);
+                request.onerror = reject;
+            });
+        }
+
+        async function getCalendarEventsForDate(dateStr) {
+            await ensureDB();
+            return new Promise((resolve, reject) => {
+                const store = getStore(CALENDAR_STORE, 'readonly');
+                const idx = store.index('date');
+                const request = idx.getAll(IDBKeyRange.only(dateStr));
+                request.onsuccess = e => resolve(e.target.result || []);
+                request.onerror = reject;
+            });
+        }
+
+        async function deleteCalendarEvent(id) {
+            await ensureDB();
+            return new Promise((resolve, reject) => {
+                const request = getStore(CALENDAR_STORE, 'readwrite').delete(id);
+                request.onsuccess = resolve;
+                request.onerror = reject;
+            });
+        }
+
+        async function getAllCalendarEvents() {
+            await ensureDB();
+            return new Promise((resolve, reject) => {
+                const request = getStore(CALENDAR_STORE, 'readonly').getAll();
+                request.onsuccess = e => resolve(e.target.result || []);
+                request.onerror = reject;
+            });
+        }
+
         function getLectureProgress(courseId, lectureId) {
             return courseProgress[`${courseId}_${lectureId}`] || {};
         }
@@ -384,7 +718,10 @@ window.initCourseFlix = async function() {
         }
 
         function calculateCourseProgress(course) {
-            if (!course.lectures) return { completed: 0, total: course.videoCount || 0, percentage: 0, remainingDuration: course.totalDuration || 0, totalDuration: course.totalDuration || 0 };
+            if (!course || !course.lectures || course.lectures.length === 0) {
+                const totalDur = course ? (course.totalDuration || 0) : 0;
+                return { completed: 0, total: course ? (course.videoCount || 0) : 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
+            }
             let completed = 0;
             let timeCompleted = 0;
             let activeTotalLectures = 0;
@@ -411,23 +748,70 @@ window.initCourseFlix = async function() {
                     }
                 }
             });
+
+            const effectiveTotalDuration = activeTotalDuration > 0 ? activeTotalDuration : (course.totalDuration || 0);
             const percentage = activeTotalLectures > 0 ? (completed / activeTotalLectures) * 100 : 0;
-            const remainingDuration = activeTotalDuration - timeCompleted;
-            return { completed, total: activeTotalLectures, percentage, remainingDuration: Math.max(0, remainingDuration), totalDuration: activeTotalDuration };
+            
+            if (activeTotalDuration === 0 && effectiveTotalDuration > 0 && activeTotalLectures > 0) {
+                timeCompleted = (completed / activeTotalLectures) * effectiveTotalDuration;
+            }
+            
+            const remainingDuration = effectiveTotalDuration - timeCompleted;
+
+            return { 
+                completed, 
+                total: activeTotalLectures, 
+                percentage, 
+                remainingDuration: Math.max(0, remainingDuration), 
+                totalDuration: effectiveTotalDuration 
+            };
         }
         
+        function renderTimePillContent(totalSecondsLeft, pct) {
+            if (!totalTimeDisplay) return;
+            totalTimeDisplay.innerHTML = `<i class="fas fa-clock" style="font-size:0.9rem; margin-right:8px;"></i><span style="font-weight: 800; font-size: 0.95rem;">${formatTotalDuration(totalSecondsLeft)} Left</span>`;
+        }
+
+        if (window.timePillRotationTimer) {
+            clearInterval(window.timePillRotationTimer);
+            window.timePillRotationTimer = null;
+        }
+
         function updateTotalTimeLeftDisplay() {
             let totalSecondsLeft = 0;
+            let totalCompletedSeconds = 0;
+            let totalSecondsCount = 0;
             let pendingLectures = 0;
             let totalLecturesCount = 0;
             let totalCompletedLectures = 0;
+            const courseBreakdown = [];
+
             courses.forEach(course => {
                 if (course.isIgnored) return;
                 
+                let cSecondsLeft = 0;
+                let cCompletedSec = 0;
+                let cTotalSec = 0;
+                let cPendingLec = 0;
+                let cCompletedLec = 0;
+                let cTotalLec = 0;
+
                 if (!course.lectures) {
                     totalSecondsLeft += (course.totalDuration || 0);
+                    totalSecondsCount += (course.totalDuration || 0);
                     pendingLectures += (course.videoCount || 0);
                     totalLecturesCount += (course.videoCount || 0);
+                    courseBreakdown.push({
+                        id: course.id,
+                        title: course.title,
+                        secondsLeft: course.totalDuration || 0,
+                        completedSeconds: 0,
+                        totalSeconds: course.totalDuration || 0,
+                        pendingLectures: course.videoCount || 0,
+                        completedLectures: 0,
+                        totalLectures: course.videoCount || 0,
+                        percentage: 0
+                    });
                     return;
                 }
 
@@ -444,36 +828,95 @@ window.initCourseFlix = async function() {
                     if (isSubfolderIgnored) return;
 
                     totalLecturesCount++;
+                    cTotalLec++;
+                    const dur = lecture.duration || 0;
+                    totalSecondsCount += dur;
+                    cTotalSec += dur;
+
                     const progress = getLectureProgress(course.id, lecture.id);
                     if (!progress.completed) {
-                        totalSecondsLeft += (lecture.duration || 0);
+                        totalSecondsLeft += dur;
+                        cSecondsLeft += dur;
                         pendingLectures++;
+                        cPendingLec++;
                     } else {
                         totalCompletedLectures++;
+                        cCompletedLec++;
+                        totalCompletedSeconds += dur;
+                        cCompletedSec += dur;
                     }
+                });
+
+                const cPct = cTotalLec > 0 ? Math.round((cCompletedLec / cTotalLec) * 100) : 0;
+                courseBreakdown.push({
+                    id: course.id,
+                    title: course.title,
+                    secondsLeft: cSecondsLeft,
+                    completedSeconds: cCompletedSec,
+                    totalSeconds: cTotalSec,
+                    pendingLectures: cPendingLec,
+                    completedLectures: cCompletedLec,
+                    totalLectures: cTotalLec,
+                    percentage: cPct
                 });
             });
             
-            totalTimeDisplay.dataset.seconds = totalSecondsLeft;
-            totalTimeDisplay.dataset.lectures = pendingLectures;
-            totalTimeDisplay.dataset.totalLectures = totalLecturesCount;
-            totalTimeDisplay.dataset.completedLectures = totalCompletedLectures;
+            const pct = totalLecturesCount > 0 ? Math.round((totalCompletedLectures / totalLecturesCount) * 100) : 0;
 
-            if (totalSecondsLeft > 0) {
-                totalTimeDisplay.textContent = formatTotalDuration(totalSecondsLeft);
-                totalTimeDisplay.style.display = 'inline-flex';
+            totalTimeDisplay.dataset.seconds = totalSecondsLeft;
+            totalTimeDisplay.dataset.completedSeconds = totalCompletedSeconds;
+            totalTimeDisplay.dataset.totalSeconds = totalSecondsCount;
+            totalTimeDisplay.dataset.lectures = pendingLectures;
+            totalTimeDisplay.dataset.completedLectures = totalCompletedLectures;
+            totalTimeDisplay.dataset.totalLectures = totalLecturesCount;
+            totalTimeDisplay.dataset.percentage = pct;
+            totalTimeDisplay.dataset.breakdown = JSON.stringify(courseBreakdown);
+
+            totalTimeDisplay.classList.remove('progress-red', 'progress-violet', 'progress-yellow', 'progress-cyan', 'progress-green');
+            if (pct < 30) {
+                totalTimeDisplay.classList.add('progress-violet');
+            } else if (pct < 60) {
+                totalTimeDisplay.classList.add('progress-yellow');
+            } else if (pct < 80) {
+                totalTimeDisplay.classList.add('progress-cyan');
             } else {
-                totalTimeDisplay.textContent = formatTotalDuration(0);
-                 totalTimeDisplay.style.display = 'none';
+                totalTimeDisplay.classList.add('progress-green');
+            }
+
+            if (totalLecturesCount > 0 || totalSecondsLeft > 0) {
+                totalTimeDisplay.style.display = 'inline-flex';
+                renderTimePillContent(totalSecondsLeft, pct);
+            } else {
+                totalTimeDisplay.style.display = 'none';
+            }
+
+            const hoursStudiedDisplay = document.getElementById('hours-studied-display');
+            if (hoursStudiedDisplay) {
+                const hoursStudied = Math.round((totalCompletedSeconds / 3600) * 10) / 10;
+                hoursStudiedDisplay.innerHTML = `<i class="fas fa-history" style="color: #34d399; margin-right: 6px;"></i><span>${hoursStudied}h Studied</span>`;
+                hoursStudiedDisplay.style.display = 'inline-flex';
             }
             
             const dh = parseFloat(localStorage.getItem('calcDailyHours')) || 7;
             const sp = parseFloat(localStorage.getItem('calcPlaybackSpeed')) || 1.5;
             updateDailyGoalDisplay(dh, sp);
+
+            return {
+                totalSecondsLeft,
+                totalCompletedSeconds,
+                totalSecondsCount,
+                pendingLectures,
+                totalLecturesCount,
+                totalCompletedLectures,
+                pct,
+                courseBreakdown
+            };
         }
         
-        function updateDailyGoalDisplay(dailyHours, speed) {
-            const targetLectures = Math.ceil(dailyHours / (2 / speed)); // Using 2 hours average
+        function updateDailyGoalDisplay(dailyHours, speed, overrideTargetLectures = null) {
+            const targetLectures = (overrideTargetLectures !== null && overrideTargetLectures !== undefined)
+                ? Math.ceil(overrideTargetLectures)
+                : Math.ceil(dailyHours / (2 / speed));
             
             // Count lectures completed today
             const todayStr = new Date().toLocaleDateString();
@@ -534,12 +977,10 @@ window.initCourseFlix = async function() {
 
         // --- View Switching & Rendering ---
         function switchView(viewId, pushState = true) {
-            const hideNavViews = ['player-view', 'dpp-upload-view', 'filter-results-view', 'notes-detail-view', 'dpp-detail-view', 'plan-view', 'progress-view'];
-            if (hideNavViews.includes(viewId)) {
-                nav.classList.add('hidden');
-            } else {
+            if (nav) {
                 nav.classList.remove('hidden');
             }
+            window.switchView = switchView;
             
             if (pushState && viewId !== 'subcourse-view' && viewId !== 'player-view') {
                 const newHash = '#' + viewId;
@@ -554,7 +995,7 @@ window.initCourseFlix = async function() {
             
             setTimeout(() => {
                 if (viewId === 'review-view' || viewId === 'practice-view') {
-                    renderStatusGrid(viewId.split('-')[0]);
+                    showFilteredCoursesView(viewId.split('-')[0]);
                 }
                 if (viewId === 'dashboard-view') renderCourseGrid();
                 if (viewId === 'intell-view') { if (typeof renderIntellView === 'function') renderIntellView(); }
@@ -602,15 +1043,20 @@ window.initCourseFlix = async function() {
                 }));
             }
             courses = storedCourses || [];
+            window.courses = courses;
+            window.dispatchEvent(new CustomEvent('courseflix:courses-loaded', { detail: courses }));
             const activeView = document.querySelector('.view.active');
             if (!activeView || activeView.id === 'dashboard-view-el') {
                 renderCourseGrid();
             } else {
-                setTimeout(() => renderCourseGrid(), 100);
+                setTimeout(() => renderCourseGrid(), 10);
             }
             if (typeof syncCourseflixSubjects === 'function') {
                 syncCourseflixSubjects();
             }
+            setTimeout(() => {
+                purgeAllDataForDeletedCoursesAndSubfolders().catch(err => console.warn('Background purge error:', err));
+            }, 150);
         }
         
         async function scanDirectoryHandle(dirHandle, basePath = '', cachedLectures = []) {
@@ -705,8 +1151,11 @@ window.initCourseFlix = async function() {
                 const notes = [];
                 (course.lectures || []).forEach(lecture => {
                     const progress = getLectureProgress(course.id, lecture.id);
-                    if (progress && progress.notes && progress.notes.trim() !== '') {
-                        notes.push({ lecture, progress });
+                    if (progress && progress.notes) {
+                        const rawText = progress.notes.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+                        if (rawText.length > 0) {
+                            notes.push({ lecture, progress });
+                        }
                     }
                 });
                 if (notes.length > 0) result.push({ course, notes });
@@ -884,6 +1333,161 @@ window.initCourseFlix = async function() {
             container.innerHTML = html;
         }
 
+        function showDeleteConfirmModal({ title = 'Delete Subfolder', message = 'Do you really want to delete it?', onConfirm }) {
+            let modal = document.getElementById('global-delete-confirm-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'global-delete-confirm-modal';
+                modal.className = 'modal-overlay hidden';
+                modal.style.cssText = 'z-index: 1000000; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;';
+                modal.innerHTML = `
+                    <div class="modal-content glass-modal" style="max-width: 400px; width: 90%; padding: 1.75rem; text-align: center; border-radius: 16px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+                        <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem auto; font-size: 1.5rem;">
+                            <i class="fas fa-trash-alt"></i>
+                        </div>
+                        <h3 id="delete-modal-title" style="margin: 0 0 0.5rem 0; font-size: 1.25rem; font-weight: 700; color: #ffffff;">Delete Subfolder</h3>
+                        <p id="delete-modal-message" style="margin: 0 0 1.5rem 0; font-size: 0.92rem; color: var(--text-secondary); line-height: 1.4;">Do you really want to delete it?</p>
+                        <div style="display: flex; gap: 12px; justify-content: center;">
+                            <button id="delete-modal-cancel-btn" class="secondary-btn" style="padding: 9px 18px; border-radius: 10px; font-weight: 600; cursor: pointer;">Cancel</button>
+                            <button id="delete-modal-yes-btn" class="danger-btn" style="background: #ef4444; color: #ffffff; padding: 9px 18px; border-radius: 10px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);">YES DELETE</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            const titleEl = modal.querySelector('#delete-modal-title');
+            const msgEl = modal.querySelector('#delete-modal-message');
+            const yesBtn = modal.querySelector('#delete-modal-yes-btn');
+            const cancelBtn = modal.querySelector('#delete-modal-cancel-btn');
+
+            if (titleEl) titleEl.textContent = title;
+            if (msgEl) msgEl.textContent = message;
+
+            modal.classList.remove('hidden');
+
+            const closeModal = () => {
+                modal.classList.add('hidden');
+            };
+
+            cancelBtn.onclick = closeModal;
+            modal.onclick = (e) => {
+                if (e.target === modal) closeModal();
+            };
+
+            yesBtn.onclick = async () => {
+                closeModal();
+                if (onConfirm) await onConfirm();
+            };
+        }
+
+        function populateSortGroupOptions() {
+            const sortSelect = document.getElementById('course-sort-select');
+            const menu = document.getElementById('glass-sort-dropdown-menu');
+            const triggerLabel = document.querySelector('#glass-sort-trigger .glass-sort-label');
+            
+            let groups = [];
+            try {
+                const raw = localStorage.getItem('courseflix_completion_groups');
+                if (raw) groups = JSON.parse(raw);
+            } catch(e) {}
+
+            if (sortSelect) {
+                let optgroup = sortSelect.querySelector('optgroup#course-sort-groups-optgroup');
+                if (optgroup) {
+                    optgroup.innerHTML = '';
+                } else {
+                    optgroup = document.createElement('optgroup');
+                    optgroup.id = 'course-sort-groups-optgroup';
+                    optgroup.label = 'Groups';
+                    sortSelect.appendChild(optgroup);
+                }
+
+                if (groups && groups.length > 0) {
+                    groups.forEach((g, idx) => {
+                        const option = document.createElement('option');
+                        option.value = `group_${g.id}`;
+                        option.textContent = `Group: ${g.name || `Group ${idx + 1}`}`;
+                        optgroup.appendChild(option);
+                    });
+                }
+
+                const sortVal = localStorage.getItem('courseSortPref') || 'custom';
+                if (sortSelect.querySelector(`option[value="${sortVal}"]`)) {
+                    sortSelect.value = sortVal;
+                }
+            }
+
+            if (!menu) return;
+
+            const currentSortVal = localStorage.getItem('courseSortPref') || 'custom';
+
+            const baseOptions = [
+                { value: 'custom', label: 'Custom (Drag & Drop)' },
+                { value: 'completion_asc', label: 'Completion (Low to High)' },
+                { value: 'completion_desc', label: 'Completion (High to Low)' },
+                { value: 'duration_desc', label: 'Duration (High to Low)' },
+                { value: 'duration_asc', label: 'Duration (Low to High)' },
+                { value: 'duration_left_desc', label: 'Duration Left (High to Low)' },
+                { value: 'duration_left_asc', label: 'Duration Left (Low to High)' },
+            ];
+
+            let selectedLabelText = 'Custom (Drag & Drop)';
+
+            let menuHTML = '';
+            baseOptions.forEach(opt => {
+                const isSelected = opt.value === currentSortVal;
+                if (isSelected) selectedLabelText = opt.label;
+                menuHTML += `
+                    <div class="glass-sort-option ${isSelected ? 'selected' : ''}" data-value="${opt.value}">
+                        <span>${opt.label}</span>
+                        ${isSelected ? '<i class="fas fa-check option-check-icon"></i>' : ''}
+                    </div>
+                `;
+            });
+
+            if (groups && groups.length > 0) {
+                menuHTML += `
+                    <div class="glass-sort-option-header">
+                        <i class="fas fa-layer-group"></i> Groups
+                    </div>
+                `;
+
+                groups.forEach((g, idx) => {
+                    const val = `group_${g.id}`;
+                    const label = `Group: ${g.name || `Group ${idx + 1}`}`;
+                    const isSelected = val === currentSortVal;
+                    if (isSelected) selectedLabelText = label;
+                    menuHTML += `
+                        <div class="glass-sort-option ${isSelected ? 'selected' : ''}" data-value="${val}">
+                            <span>${label}</span>
+                            ${isSelected ? '<i class="fas fa-check option-check-icon"></i>' : ''}
+                        </div>
+                    `;
+                });
+            }
+
+            menu.innerHTML = menuHTML;
+
+            if (triggerLabel) {
+                triggerLabel.innerHTML = `Sort by: <strong>${selectedLabelText}</strong>`;
+            }
+
+            menu.querySelectorAll('.glass-sort-option').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const val = item.dataset.value;
+                    localStorage.setItem('courseSortPref', val);
+                    if (sortSelect) sortSelect.value = val;
+                    menu.classList.add('hidden');
+                    const trigger = document.getElementById('glass-sort-trigger');
+                    if (trigger) trigger.classList.remove('active');
+                    populateSortGroupOptions();
+                    renderCourseGrid();
+                });
+            });
+        }
+
         async function renderCourseGrid() {
             courseGrid.innerHTML = '';
             if (courses.length === 0) { 
@@ -892,31 +1496,8 @@ window.initCourseFlix = async function() {
                 return;
             }
 
-            updateTotalTimeLeftDisplay();
-            
-            const sortSelect = document.getElementById('course-sort-select');
-            const sortVal = localStorage.getItem('courseSortPref') || 'custom';
-            if (sortSelect && sortSelect.value !== sortVal) sortSelect.value = sortVal;
-            
-            let sortedCourses = [...courses];
-            if (sortVal !== 'custom') {
-                sortedCourses.sort((a, b) => {
-                    const progA = calculateCourseProgress(a);
-                    const progB = calculateCourseProgress(b);
-                    if (sortVal === 'completion_asc') return progA.percentage - progB.percentage;
-                    if (sortVal === 'completion_desc') return progB.percentage - progA.percentage;
-                    if (sortVal === 'duration_desc') return progB.totalDuration - progA.totalDuration;
-                    if (sortVal === 'duration_asc') return progA.totalDuration - progB.totalDuration;
-                    return 0;
-                });
-            } else {
-                sortedCourses.sort((a, b) => (a.order || 0) - (b.order || 0));
-            }
-
-            for (const course of sortedCourses) {
-                const card = document.createElement('div');
-                card.className = 'course-card';
-                
+            // Pre-scan any linked courses that need handle scanning so duration stats are populated BEFORE sorting
+            for (const course of courses) {
                 const needsHandleScan = course.lectures && course.lectures.length > 0 && !course.lectures[0].handle;
                 if (course.isLinked && course.handle && (!course.lectures || needsHandleScan)) {
                     try {
@@ -924,12 +1505,56 @@ window.initCourseFlix = async function() {
                         course.lectures = courseData.lectures;
                         course.totalDuration = courseData.totalDuration;
                         course.chapters = courseData.chapters;
-                        // Save back to local DB so it is not re-scanned on next page load
                         await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
                     } catch (e) {
                         console.error(`Failed to scan course "${course.title}"`, e);
                     }
                 }
+            }
+
+            populateSortGroupOptions();
+
+            updateTotalTimeLeftDisplay();
+            
+            const sortSelect = document.getElementById('course-sort-select');
+            const sortVal = localStorage.getItem('courseSortPref') || 'custom';
+            if (sortSelect && sortSelect.value !== sortVal) sortSelect.value = sortVal;
+            
+            let sortedCourses = [...courses];
+
+            if (sortVal.startsWith('group_')) {
+                const targetGroupId = sortVal.replace('group_', '');
+                let groups = [];
+                try {
+                    const raw = localStorage.getItem('courseflix_completion_groups');
+                    if (raw) groups = JSON.parse(raw);
+                } catch(e) {}
+                const targetGroup = groups.find(g => String(g.id) === String(targetGroupId));
+                if (targetGroup && Array.isArray(targetGroup.selectedCourseIds)) {
+                    sortedCourses = sortedCourses.filter(c => targetGroup.selectedCourseIds.includes(c.id));
+                }
+            } else if (sortVal !== 'custom') {
+                sortedCourses.sort((a, b) => {
+                    const progA = calculateCourseProgress(a);
+                    const progB = calculateCourseProgress(b);
+                    if (sortVal === 'completion_asc') return progA.percentage - progB.percentage;
+                    if (sortVal === 'completion_desc') return progB.percentage - progA.percentage;
+                    if (sortVal === 'duration_desc') return progB.totalDuration - progA.totalDuration;
+                    if (sortVal === 'duration_asc') return progA.totalDuration - progB.totalDuration;
+                    if (sortVal === 'duration_left_desc') return progB.remainingDuration - progA.remainingDuration;
+                    if (sortVal === 'duration_left_asc') return progA.remainingDuration - progB.remainingDuration;
+                    return 0;
+                });
+            } else {
+                sortedCourses.sort((a, b) => (a.order || 0) - (b.order || 0));
+            }
+
+            for (const course of sortedCourses) {
+                // --- HIDE IGNORED FEATURE ---
+                if (localStorage.getItem('courseflix_hide_ignored') === 'true' && course.isIgnored) continue;
+
+                const card = document.createElement('div');
+                card.className = 'course-card';
                 const progress = calculateCourseProgress(course);
 
                 const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
@@ -1074,7 +1699,9 @@ window.initCourseFlix = async function() {
 
             const backLink = document.getElementById('back-to-dashboard-from-sub');
             const resumePath = viewEl.dataset.resumePath;
-            if (viewEl.dataset.origin === 'faculty-view' && basePath === (resumePath || '')) {
+            if (viewEl.dataset.origin === 'home-view' && basePath === '') {
+                backLink.innerHTML = '&larr; Back to Landing Page';
+            } else if (viewEl.dataset.origin === 'faculty-view' && basePath === (resumePath || '')) {
                 backLink.innerHTML = '&larr; Back to Faculty';
             } else if (viewEl.dataset.origin === 'search-results-view') {
                 backLink.innerHTML = '&larr; Back to Search';
@@ -1091,6 +1718,8 @@ window.initCourseFlix = async function() {
             immediateSubfolders.forEach(fullPath => {
                 const subData = course.subCourseData[fullPath] || {};
                 if (subData.hidden) return; // Skip hidden subcourses
+                // --- HIDE IGNORED FEATURE ---
+                if (localStorage.getItem('courseflix_hide_ignored') === 'true' && subData.isIgnored) return;
 
                 const folderNameOnly = getSubfolderDisplayName(course, fullPath);
                 const faculty = getSubfolderFacultyName(course, fullPath);
@@ -1139,7 +1768,7 @@ window.initCourseFlix = async function() {
                         <button class="relocate-course-btn" data-id="${course.id}" data-subfolder="${fullPath}" title="Relocate Specific Subfolder"><i class="fas fa-link"></i></button>
                         <button class="refresh-course-btn" data-id="${course.id}" data-subfolder="${fullPath}" title="Refresh Content"><i class="fas fa-sync-alt"></i></button>
                         <button class="remove-thumbnail-btn" data-id="${course.id}" data-subfolder="${fullPath}" title="Remove Thumbnail"><i class="fas fa-times"></i></button>
-                        <button class="remove-course-btn" data-id="${course.id}" data-subfolder="${fullPath}" title="Hide Subcourse"><i class="fas fa-eye-slash"></i></button>
+                        <button class="remove-course-btn" data-id="${course.id}" data-subfolder="${fullPath}" title="Delete Subfolder"><i class="fas fa-trash-alt"></i></button>
                     </div>
                     <div class="course-info">
                         <div>
@@ -1170,7 +1799,7 @@ window.initCourseFlix = async function() {
             });
         }
 
-        function showFilteredCoursesView(status) {
+        window.showFilteredCoursesView = function(status) {
             const filterResultsView = document.getElementById('filter-results-view');
             const allItems = Object.values(courseProgress).filter(p => p.status === status);
             const courseIdsWithStatus = [...new Set(allItems.map(item => item.courseId))];
@@ -1405,6 +2034,290 @@ window.initCourseFlix = async function() {
             });
         }
         
+        let isSmartAddActive = false;
+
+        function extractNumberFromText(str) {
+            if (!str) return null;
+            const matches = str.match(/\d+/g);
+            if (!matches) return null;
+            return parseInt(matches[matches.length - 1], 10);
+        }
+
+        function buildLectureItemHTML(displayName, progress, lectureId = '') {
+            const hasPdf = progress && (progress.pdfHandle || progress.pdfName);
+            const hasAssignment = progress && (progress.assignmentHandle || progress.assignmentName);
+
+            let dotsHTML = '';
+            if (hasAssignment) {
+                dotsHTML += `<span class="status-dot yellow-dot" title="Assignment Attached"></span>`;
+            }
+            if (hasPdf) {
+                dotsHTML += `<span class="status-dot green-dot" title="Notes Attached"></span>`;
+            }
+
+            return `
+                <span class="lecture-item-title">${displayName}</span>
+                ${dotsHTML ? `<div class="lecture-item-dots">${dotsHTML}</div>` : ''}
+            `;
+        }
+
+        function updateDropZonesForSelectedLecture() {
+            const pdfDropZone = document.getElementById('pdf-drop-zone');
+            const assignDropZone = document.getElementById('assignment-drop-zone');
+            if (!pdfDropZone || !assignDropZone) return;
+
+            if (isSmartAddActive) {
+                pdfDropZone.innerHTML = `
+                    <div class="drop-zone-wrapper">
+                        <div class="drop-zone-icon-circle">
+                            <i class="fas fa-magic"></i>
+                        </div>
+                        <h4 class="drop-zone-title">Lecture Notes (PDF)</h4>
+                        <p class="drop-zone-desc"><strong>Smart Add Active:</strong> Click or drag & drop multiple PDFs</p>
+                    </div>
+                `;
+                assignDropZone.innerHTML = `
+                    <div class="drop-zone-wrapper">
+                        <div class="drop-zone-icon-circle" style="color: #f59e0b;">
+                            <i class="fas fa-magic"></i>
+                        </div>
+                        <h4 class="drop-zone-title">Assignment / DPP</h4>
+                        <p class="drop-zone-desc"><strong>Smart Add Active:</strong> Click or drag & drop multiple files</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const selectedLectureEl = document.querySelector('#upload-lecture-list .lecture-item.selected');
+            const detailView = document.getElementById('upload-detail-view');
+            
+            if (!selectedLectureEl || !detailView) {
+                pdfDropZone.innerHTML = `
+                    <div class="drop-zone-wrapper">
+                        <div class="drop-zone-icon-circle">
+                            <i class="fas fa-file-pdf"></i>
+                        </div>
+                        <h4 class="drop-zone-title">Lecture Notes (PDF)</h4>
+                        <p class="drop-zone-desc">Select a lecture from the list</p>
+                    </div>
+                `;
+                assignDropZone.innerHTML = `
+                    <div class="drop-zone-wrapper">
+                        <div class="drop-zone-icon-circle" style="color: #f59e0b;">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h4 class="drop-zone-title">Assignment / DPP</h4>
+                        <p class="drop-zone-desc">Select a lecture from the list</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const courseId = parseInt(detailView.dataset.courseId);
+            const lectureId = selectedLectureEl.dataset.lectureId;
+            const progress = getLectureProgress(courseId, lectureId);
+
+            // --- PDF / NOTES ZONE ---
+            if (progress.pdfHandle || progress.pdfName) {
+                const fileName = progress.pdfName || 'Lecture Notes (PDF)';
+                pdfDropZone.innerHTML = `
+                    <div class="zone-attached-card">
+                        <span class="attached-card-badge pdf-badge"><i class="fas fa-check-circle"></i> Notes Attached</span>
+                        <button class="attached-delete-btn remove-zone-file-btn" data-type="pdf" data-lecture-id="${lectureId}" title="Delete Notes">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        <div class="attached-file-preview">
+                            <div class="attached-file-icon-box pdf-theme">
+                                <i class="fas fa-file-pdf"></i>
+                            </div>
+                            <h4 class="attached-file-title" title="${fileName}">${fileName}</h4>
+                            <span class="attached-replace-prompt"><i class="fas fa-sync-alt"></i> Click or drop to replace PDF</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                pdfDropZone.innerHTML = `
+                    <div class="drop-zone-wrapper">
+                        <div class="drop-zone-icon-circle">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h4 class="drop-zone-title">Lecture Notes (PDF)</h4>
+                        <p class="drop-zone-desc">Drag & drop PDF here, or <span class="browse-highlight">browse files</span></p>
+                    </div>
+                `;
+            }
+
+            // --- ASSIGNMENT / DPP ZONE ---
+            if (progress.assignmentHandle || progress.assignmentName) {
+                const fileName = progress.assignmentName || 'Assignment / DPP';
+                assignDropZone.innerHTML = `
+                    <div class="zone-attached-card">
+                        <span class="attached-card-badge assignment-badge"><span class="yellow-dot"></span> Assignment Attached</span>
+                        <button class="attached-delete-btn remove-zone-file-btn" data-type="assignment" data-lecture-id="${lectureId}" title="Delete Assignment">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        <div class="attached-file-preview">
+                            <div class="attached-file-icon-box assignment-theme">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <h4 class="attached-file-title" title="${fileName}">${fileName}</h4>
+                            <span class="attached-replace-prompt"><i class="fas fa-sync-alt"></i> Click or drop to replace file</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                assignDropZone.innerHTML = `
+                    <div class="drop-zone-wrapper">
+                        <div class="drop-zone-icon-circle" style="color: #f59e0b;">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h4 class="drop-zone-title">Assignment / DPP</h4>
+                        <p class="drop-zone-desc">Drag & drop file here, or <span class="browse-highlight">browse files</span></p>
+                    </div>
+                `;
+            }
+        }
+
+        function updateSmartAddUIState() {
+            const btn = document.getElementById('smart-add-toggle-btn');
+            const detailView = document.getElementById('upload-detail-view');
+            const list = document.getElementById('upload-lecture-list');
+
+            if (isSmartAddActive) {
+                if (btn) {
+                    btn.classList.add('active');
+                    btn.innerHTML = `<i class="fas fa-check"></i> <span>Smart Add ON</span>`;
+                }
+                if (detailView) detailView.classList.add('smart-add-active');
+                if (list) {
+                    list.querySelectorAll('.lecture-item.selected').forEach(sel => sel.classList.remove('selected'));
+                }
+            } else {
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.innerHTML = `<i class="fas fa-magic"></i> <span>Smart Add</span>`;
+                }
+                if (detailView) detailView.classList.remove('smart-add-active');
+                if (list && list.querySelectorAll('.lecture-item').length > 0 && !list.querySelector('.lecture-item.selected')) {
+                    list.querySelector('.lecture-item').classList.add('selected');
+                }
+            }
+            updateDropZonesForSelectedLecture();
+        }
+
+        document.addEventListener('click', (e) => {
+            const toggleBtn = e.target.closest('#smart-add-toggle-btn');
+            if (toggleBtn) {
+                isSmartAddActive = !isSmartAddActive;
+                updateSmartAddUIState();
+                showToast(isSmartAddActive ? 'Smart Add Enabled: Drag & drop N files to auto-assign.' : 'Manual Mode Enabled.');
+            }
+
+            const browseBtn = e.target.closest('.browse-file-btn');
+            if (browseBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+                const type = browseBtn.dataset.type;
+                const inputId = type === 'pdf' ? 'pdf-file-input' : 'assignment-file-input';
+                const input = document.getElementById(inputId);
+                if (input) {
+                    if (isSmartAddActive) {
+                        input.setAttribute('multiple', 'multiple');
+                    } else {
+                        input.removeAttribute('multiple');
+                    }
+                    input.value = '';
+                    input.click();
+                }
+            }
+        });
+
+        // Hidden input file browser listener
+        ['pdf-file-input', 'assignment-file-input'].forEach(inputId => {
+            document.addEventListener('change', async (e) => {
+                if (e.target && e.target.id === inputId) {
+                    if (e.target.files && e.target.files.length > 0) {
+                        const type = inputId === 'pdf-file-input' ? 'pdf' : 'assignment';
+                        await handleLectureFileDrop(e.target.files, type);
+                        updateDropZonesForSelectedLecture();
+                    }
+                }
+            });
+        });
+
+        // Red Delete button inside zone card handler
+        document.addEventListener('click', async (e) => {
+            const removeZoneBtn = e.target.closest('.remove-zone-file-btn');
+            if (removeZoneBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+
+                const type = removeZoneBtn.dataset.type;
+                const lectureId = removeZoneBtn.dataset.lectureId;
+                const detailView = document.getElementById('upload-detail-view');
+                if (!detailView || !lectureId) return;
+
+                const courseId = parseInt(detailView.dataset.courseId);
+                const progressData = getLectureProgress(courseId, lectureId);
+
+                if (type === 'pdf') {
+                    delete progressData.pdfHandle;
+                    delete progressData.pdfName;
+                } else if (type === 'assignment') {
+                    delete progressData.assignmentHandle;
+                    delete progressData.assignmentName;
+                    delete progressData.assignmentType;
+                }
+
+                await saveLectureProgress({ ...progressData, courseId, lectureId });
+
+                const lectureEl = document.querySelector(`#upload-lecture-list .lecture-item[data-lecture-id="${lectureId}"]`);
+                if (lectureEl) {
+                    const displayName = lectureEl.dataset.displayName || lectureEl.querySelector('.lecture-item-title')?.textContent || 'Lecture';
+                    const updatedProgress = getLectureProgress(courseId, lectureId);
+                    lectureEl.innerHTML = buildLectureItemHTML(displayName, updatedProgress, lectureId);
+                }
+
+                updateDropZonesForSelectedLecture();
+                showToast(`Deleted ${type === 'pdf' ? 'notes PDF' : 'assignment'} from both views.`);
+            }
+
+            const removeBtn = e.target.closest('.remove-attachment-btn');
+            if (removeBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+
+                const type = removeBtn.dataset.type;
+                const lectureId = removeBtn.dataset.lectureId;
+                const detailView = document.getElementById('upload-detail-view');
+                if (!detailView || !lectureId) return;
+
+                const courseId = parseInt(detailView.dataset.courseId);
+                const progressData = getLectureProgress(courseId, lectureId);
+
+                if (type === 'pdf') {
+                    delete progressData.pdfHandle;
+                    delete progressData.pdfName;
+                } else if (type === 'assignment') {
+                    delete progressData.assignmentHandle;
+                    delete progressData.assignmentName;
+                    delete progressData.assignmentType;
+                }
+
+                await saveLectureProgress({ ...progressData, courseId, lectureId });
+
+                const lectureEl = document.querySelector(`#upload-lecture-list .lecture-item[data-lecture-id="${lectureId}"]`);
+                if (lectureEl) {
+                    const displayName = lectureEl.dataset.displayName || lectureEl.querySelector('.lecture-item-title')?.textContent || 'Lecture';
+                    const updatedProgress = getLectureProgress(courseId, lectureId);
+                    lectureEl.innerHTML = buildLectureItemHTML(displayName, updatedProgress, lectureId);
+                }
+
+                updateDropZonesForSelectedLecture();
+                showToast(`Removed ${type === 'pdf' ? 'notes PDF' : 'assignment'} successfully.`);
+            }
+        });
+
         async function renderLectureUploadDetail(courseId, subfolder = null) {
             const course = courses.find(c => c.id === courseId);
             if (!course) {
@@ -1454,22 +2367,28 @@ window.initCourseFlix = async function() {
                 const item = document.createElement('div');
                 item.className = 'lecture-item';
                 item.dataset.lectureId = lecture.id;
-                item.innerHTML = `
-                    <span>${lecture.displayName}</span>
-                    <div class="file-status">
-                        ${progress.pdfHandle ? '<i class="fas fa-file-pdf" title="Notes added"></i>' : ''}
-                        ${progress.assignmentHandle ? '<i class="fas fa-file-alt" title="Assignment added"></i>' : ''}
-                    </div>`;
+                item.dataset.displayName = lecture.displayName;
+                item.innerHTML = buildLectureItemHTML(lecture.displayName, progress, lecture.id);
                 list.appendChild(item);
             });
+
+            // Automatically select first lecture in manual mode
+            if (!isSmartAddActive && lectures.length > 0) {
+                list.querySelector('.lecture-item').classList.add('selected');
+            }
             
             // Add click listeners for selection
             list.querySelectorAll('.lecture-item').forEach(item => {
                 item.addEventListener('click', () => {
+                    if (isSmartAddActive) return; // Locked in Smart Add mode
                     list.querySelectorAll('.lecture-item.selected').forEach(sel => sel.classList.remove('selected'));
                     item.classList.add('selected');
+                    updateDropZonesForSelectedLecture();
                 });
             });
+
+            // Update UI state for Smart Add mode and drop zone cards
+            updateSmartAddUIState();
         }
 
 
@@ -1479,6 +2398,8 @@ window.initCourseFlix = async function() {
             
             if (isGoalsMode && typeof currentGoalsLectures !== 'undefined') {
                 lectures = currentGoalsLectures;
+            } else if (isCalendarMode && typeof currentCalendarLectures !== 'undefined') {
+                lectures = currentCalendarLectures;
             } else {
                 if (!currentCourse) return;
                 lectures = currentCourse.lectures || [];
@@ -1515,8 +2436,12 @@ window.initCourseFlix = async function() {
         async function playLectureFromAnywhere(courseId, lectureId, originView = 'dashboard-view', subfolder = null) {
             lastView = originView;
             const course = courses.find(c => c.id === parseInt(courseId));
-            if (!course) {
-                showToast('Course not found.', true);
+            if (!course || course.isIgnored) {
+                showToast('This course has been deleted.', true);
+                return;
+            }
+            if (subfolder && isSubfolderPathIgnoredOrHidden(course, subfolder)) {
+                showToast('This subcourse has been deleted.', true);
                 return;
             }
             if (!course.isLinked) {
@@ -1533,6 +2458,9 @@ window.initCourseFlix = async function() {
         async function renderPlayer(courseId, lectureIdToPlay = null, originView = 'dashboard-view', startTime = null, subfolder = null) {
             isGoalsMode = false;
             currentGoalsLectures = [];
+            isCalendarMode = false;
+            currentCalendarLectures = [];
+
             currentCourse = courses.find(c => String(c.id) === String(courseId));
             currentSubfolder = subfolder;
             if (!currentCourse) return;
@@ -1674,6 +2602,17 @@ window.initCourseFlix = async function() {
                              fullLecture = originalCourse.lectures[item.lectureId];
                         }
                     }
+                    if (!fullLecture && originalCourse.chapters) {
+                        for (const chapter of originalCourse.chapters) {
+                            if (chapter.lectures) {
+                                fullLecture = chapter.lectures.find(l => l.id === item.lectureId.toString());
+                                if (!fullLecture && typeof item.lectureId === 'number') {
+                                    fullLecture = chapter.lectures[item.lectureId];
+                                }
+                                if (fullLecture) break;
+                            }
+                        }
+                    }
                     if (fullLecture) {
                         const copy = {...fullLecture};
                         copy.overrideCourseId = item.courseId;
@@ -1696,6 +2635,81 @@ window.initCourseFlix = async function() {
             if (!liToPlay) {
                 liToPlay = chapterListDiv.querySelector('li');
             }
+            if (liToPlay) await playVideo(liToPlay, null);
+        }
+
+        async function renderCalendarPlayer(courseId, lectureIdToPlay) {
+            currentCourse = courses.find(c => c.id === parseInt(courseId));
+            if (!currentCourse) return;
+            switchView('player-view');
+            chapterListDiv.innerHTML = '<p style="text-align:center; padding: 20px;">Loading Calendar Playlist...</p>';
+
+            backToLibraryBtn.textContent = 'Back to Calendar';
+            backToLibraryBtn.dataset.view = 'calendar';
+
+            // Format date suffix for title display
+            const playlistDate = localStorage.getItem('courseflix_calendar_playlist_date');
+            let dateSuffix = '';
+            if (playlistDate) {
+                const d = new Date(playlistDate + 'T00:00:00');
+                const formatted = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+                dateSuffix = ` (${formatted})`;
+            }
+            courseTitleMenu.textContent = `📅 Calendar Event Playlist${dateSuffix}`;
+            clearBookmarksBtn.classList.add('hidden');
+            toggleCompletedBtn.classList.remove('hidden');
+
+            const saved = localStorage.getItem('courseflix_calendar_playlist');
+            let calendarPlaylist = [];
+            if (saved) {
+                try { calendarPlaylist = JSON.parse(saved); } catch(e) {}
+            }
+
+            if (calendarPlaylist.length === 0) {
+                chapterListDiv.innerHTML = '<p id="no-content-message">Calendar playlist is empty.</p>';
+                return;
+            }
+
+            const chaptersToDisplay = [];
+            calendarPlaylist.forEach(item => {
+                let ch = chaptersToDisplay.find(c => c.name === item.courseTitle);
+                if (!ch) {
+                    ch = { name: item.courseTitle, lectures: [] };
+                    chaptersToDisplay.push(ch);
+                }
+                const originalCourse = courses.find(c => c.id === parseInt(item.courseId));
+                if (originalCourse) {
+                    let fullLecture;
+                    if (originalCourse.lectures) {
+                        fullLecture = originalCourse.lectures.find(l => l.id.toString() === item.lectureId.toString());
+                        if (!fullLecture && typeof item.lectureId === 'number') {
+                            fullLecture = originalCourse.lectures[item.lectureId];
+                        }
+                    }
+                    if (fullLecture) {
+                        const progress = getLectureProgress(item.courseId, fullLecture.id);
+                        if (!progress.completed) {
+                            if (!ch.lectures.some(l => l.id.toString() === fullLecture.id.toString())) {
+                                const copy = {...fullLecture};
+                                copy.overrideCourseId = item.courseId;
+                                ch.lectures.push(copy);
+                            }
+                        }
+                    }
+                }
+            });
+
+            renderChapterList(chaptersToDisplay, lectureIdToPlay?.toString());
+            isCalendarMode = true;
+            isGoalsMode = false;
+            currentCalendarLectures = chaptersToDisplay.flatMap(ch => ch.lectures);
+            updateMenuProgress();
+
+            let liToPlay = null;
+            if (lectureIdToPlay !== null) {
+                liToPlay = chapterListDiv.querySelector(`li[data-course-id="${courseId}"][data-lecture-id="${lectureIdToPlay}"]`) || chapterListDiv.querySelector(`li[data-lecture-id="${lectureIdToPlay}"]`);
+            }
+            if (!liToPlay) liToPlay = chapterListDiv.querySelector('li');
             if (liToPlay) await playVideo(liToPlay, null);
         }
 
@@ -2159,6 +3173,10 @@ window.initCourseFlix = async function() {
                     if (typeof renderGoalsPlayer === 'function') {
                         await renderGoalsPlayer(event.data.courseId, event.data.lectureId);
                     }
+                } else if (event.data.action === 'playCalendarPlaylist') {
+                    if (typeof renderCalendarPlayer === 'function') {
+                        await renderCalendarPlayer(event.data.courseId, event.data.lectureId);
+                    }
                 }
             }
         });
@@ -2178,7 +3196,20 @@ window.initCourseFlix = async function() {
                 }
             }
         });
-        homeBtn.addEventListener('click', () => switchView('dashboard-view'));
+        homeBtn.addEventListener('click', () => switchView('home-view'));
+
+        // --- HIDE IGNORED FEATURE: instantly re-render current view when toggle changes ---
+        window.addEventListener('courseflix-hide-ignored-changed', () => {
+            const currentView = document.querySelector('.view.active');
+            if (!currentView) return;
+            if (currentView.id === 'dashboard-view-el') {
+                renderCourseGrid();
+            } else if (currentView.id === 'subcourse-view') {
+                const courseId = currentView.dataset.courseId;
+                const currentPath = currentView.dataset.currentPath || '';
+                if (courseId) renderSubcourseView(parseInt(courseId), currentPath, false);
+            }
+        });
         
         document.body.addEventListener('change', async (e) => {
             if (e.target.classList.contains('split-course-cb')) {
@@ -2281,27 +3312,44 @@ window.initCourseFlix = async function() {
                 return;
             }
 
-            // Remove Course / Hide Subcourse
+            // Remove Course / Delete Subcourse
             const removeBtn = e.target.closest('.remove-course-btn');
             if (removeBtn) { 
                 e.stopPropagation(); 
                 const courseId = parseInt(removeBtn.dataset.id); 
                 const subfolder = removeBtn.dataset.subfolder;
                 if (subfolder) {
-                    if (confirm('Are you sure you want to hide this subcourse?')) {
-                        const course = courses.find(c => c.id === courseId);
-                        course.subCourseData = course.subCourseData || {};
-                        course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
-                        course.subCourseData[subfolder].hidden = true;
-                        await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
-                        const parentPath = getParentPath(subfolder);
-                        await renderSubcourseView(courseId, parentPath);
-                    }
+                    showDeleteConfirmModal({
+                        title: 'Delete Subfolder',
+                        message: 'Do you really want to delete it?',
+                        onConfirm: async () => {
+                            const course = courses.find(c => c.id === courseId);
+                            if (course) {
+                                course.subCourseData = course.subCourseData || {};
+                                course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
+                                course.subCourseData[subfolder].hidden = true;
+                                course.subCourseData[subfolder].isIgnored = true;
+                                await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                                await purgeAllDataForDeletedCoursesAndSubfolders();
+                                const parentPath = getParentPath(subfolder);
+                                await renderSubcourseView(courseId, parentPath);
+                                if (typeof renderHistoryView === 'function') renderHistoryView();
+                                showToast('Subfolder deleted successfully');
+                            }
+                        }
+                    });
                 } else {
-                    if (confirm('Are you sure you want to remove this root course? This will also delete its progress.')) { 
-                        await new Promise(resolve => getStore(STORE_NAME, 'readwrite').delete(courseId).onsuccess = resolve); 
-                        await loadCoursesFromDB(); 
-                    } 
+                    showDeleteConfirmModal({
+                        title: 'Delete Course',
+                        message: 'Do you really want to delete it?',
+                        onConfirm: async () => {
+                            await new Promise(resolve => getStore(STORE_NAME, 'readwrite').delete(courseId).onsuccess = resolve); 
+                            await purgeAllDataForDeletedCoursesAndSubfolders();
+                            await loadCoursesFromDB(); 
+                            if (typeof renderHistoryView === 'function') renderHistoryView();
+                            showToast('Course deleted successfully');
+                        }
+                    });
                 }
                 return;
             }
@@ -2462,7 +3510,10 @@ window.initCourseFlix = async function() {
                 const origin = viewEl.dataset.origin || 'dashboard-view';
                 const resumePath = viewEl.dataset.resumePath;
                 
-                if (origin === 'faculty-view' && currentPath === (resumePath || '')) {
+                if (origin === 'home-view' && currentPath === '') {
+                    switchView('home-view');
+                    viewEl.dataset.origin = 'dashboard-view';
+                } else if (origin === 'faculty-view' && currentPath === (resumePath || '')) {
                     const facultyToLoad = window.lastViewedFaculty;
                     window.lastViewedFaculty = null;
                     switchView('faculty-view');
@@ -2794,6 +3845,14 @@ window.initCourseFlix = async function() {
                 switchView('goals-view');
                 return;
             }
+            if (targetView === 'calendar') {
+                if (window.openCalendarView) {
+                    window.openCalendarView();
+                } else {
+                    switchView('history-view');
+                }
+                return;
+            }
             if (targetView === 'progress-doubts') {
                 document.getElementById('progress-iframe').src = 'static/progress.html#doubt-dashboard';
                 switchView('progress-view');
@@ -2894,10 +3953,121 @@ window.initCourseFlix = async function() {
         document.getElementById('add-course-btn').addEventListener('click', () => {
             const modal = document.getElementById('modal-overlay');
             modal.querySelector('.close-modal-btn').onclick = () => modal.classList.add('hidden');
+            
+            const subView = document.getElementById('subcourse-view');
+            const isSubcourseView = subView && subView.classList.contains('active');
+            const playerView = document.getElementById('player-view');
+            const isPlayerView = playerView && playerView.classList.contains('active');
+            
+            let activeCourseId = null;
+            let activeSubPath = '';
+            
+            if (isSubcourseView) {
+                activeCourseId = parseInt(subView.dataset.courseId);
+                activeSubPath = subView.dataset.currentPath || '';
+            } else if (isPlayerView && typeof currentCourse !== 'undefined' && currentCourse) {
+                activeCourseId = currentCourse.id;
+                activeSubPath = (typeof currentSubfolder !== 'undefined' && currentSubfolder) ? currentSubfolder : '';
+            }
+            
+            const subContainer = document.getElementById('add-subcourse-container');
+            const subText = document.getElementById('add-subcourse-btn-text');
+            const addFolderBtn = document.getElementById('add-folder-btn');
+            
+            if (activeCourseId && typeof courses !== 'undefined') {
+                const course = courses.find(c => c.id === activeCourseId);
+                if (course) {
+                    const folderDisplay = activeSubPath ? activeSubPath.split('/').pop() : course.title;
+                    if (subContainer && subText) {
+                        subText.textContent = `Add Sub-Folder Course in "${folderDisplay}"`;
+                        subContainer.style.display = 'block';
+                        subContainer.dataset.courseId = activeCourseId;
+                        subContainer.dataset.subPath = activeSubPath;
+                    }
+                    if (addFolderBtn) {
+                        addFolderBtn.style.display = 'none';
+                    }
+                } else {
+                    if (subContainer) subContainer.style.display = 'none';
+                    if (addFolderBtn) {
+                        addFolderBtn.style.display = 'block';
+                        addFolderBtn.innerHTML = '<i class="fas fa-folder-plus"></i> Add Course Folder';
+                    }
+                }
+            } else {
+                if (subContainer) subContainer.style.display = 'none';
+                if (addFolderBtn) {
+                    addFolderBtn.style.display = 'block';
+                    addFolderBtn.innerHTML = '<i class="fas fa-folder-plus"></i> Add Course Folder';
+                }
+            }
+
             modal.classList.remove('hidden');
         });
         document.getElementById('modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') e.target.classList.add('hidden'); });
         
+        const addSubBtnEl = document.getElementById('add-subcourse-btn');
+        if (addSubBtnEl) {
+            addSubBtnEl.addEventListener('click', async () => {
+                const subContainer = document.getElementById('add-subcourse-container');
+                const courseId = parseInt(subContainer?.dataset.courseId);
+                const basePath = subContainer?.dataset.subPath || '';
+                
+                if (!courseId || typeof courses === 'undefined') return;
+                const course = courses.find(c => c.id === courseId);
+                if (!course) return;
+                
+                try {
+                    const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
+                    const targetSubPath = basePath ? `${basePath}/${dirHandle.name}` : dirHandle.name;
+                    const courseData = await scanDirectoryHandle(dirHandle, targetSubPath, course.lectures || []);
+                    
+                    if (courseData.videoCount === 0) {
+                        return showToast('No videos found in this folder or its subfolders.', true);
+                    }
+                    
+                    course.lectures = course.lectures || [];
+                    course.chapters = course.chapters || [];
+                    
+                    courseData.lectures.forEach(newLec => {
+                        if (!course.lectures.some(existing => existing.id === newLec.id)) {
+                            course.lectures.push(newLec);
+                        }
+                    });
+                    
+                    courseData.chapters.forEach(newCh => {
+                        const existingCh = course.chapters.find(c => c.name === newCh.name);
+                        if (existingCh) {
+                            newCh.lectures.forEach(newLec => {
+                                if (!existingCh.lectures.some(l => l.id === newLec.id)) {
+                                    existingCh.lectures.push(newLec);
+                                }
+                            });
+                        } else {
+                            course.chapters.push(newCh);
+                        }
+                    });
+                    
+                    course.videoCount = (course.videoCount || 0) + courseData.videoCount;
+                    course.totalDuration = (course.totalDuration || 0) + courseData.totalDuration;
+                    
+                    await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
+                    showToast(`Sub-course "${dirHandle.name}" added successfully (${courseData.videoCount} videos)!`, false);
+                    
+                    const subView = document.getElementById('subcourse-view');
+                    if (subView && subView.classList.contains('active')) {
+                        await renderSubcourseView(course.id, basePath);
+                    } else {
+                        await loadCoursesFromDB();
+                    }
+                } catch (e) {
+                    if (e.name !== 'AbortError') console.error(e);
+                } finally {
+                    document.getElementById('modal-overlay').classList.add('hidden');
+                }
+            });
+        }
+
         document.getElementById('add-folder-btn').addEventListener('click', async () => { 
             try {
                 const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
@@ -3037,6 +4207,337 @@ window.initCourseFlix = async function() {
         // --- Import / Export ---
         const exportBtn = document.getElementById('export-btn');
         const importBtn = document.getElementById('import-btn');
+        const purgeBtn = document.getElementById('purge-btn');
+
+        async function analyzeOrphanData() {
+            await ensureDB();
+            const activeCourses = await new Promise((resolve) => {
+                const req = getStore(STORE_NAME, 'readonly').getAll();
+                req.onsuccess = e => resolve(e.target.result || []);
+                req.onerror = () => resolve([]);
+            });
+
+            const activeLectureMap = {};
+            activeCourses.forEach(c => {
+                if (c && !c.isIgnored && Array.isArray(c.lectures)) {
+                    activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
+                }
+            });
+
+            const getRecordStatus = (courseId, subfolderPath, lectureId, itemId) => {
+                if (!courseId) return { valid: false, reason: 'Deleted Subject' };
+                const cId = parseInt(courseId);
+                const course = activeCourses.find(c => parseInt(c.id) === cId);
+                if (!course) return { valid: false, reason: 'Deleted Subject', courseTitle: `Subject (ID ${cId})` };
+                if (course.isIgnored) return { valid: false, reason: 'Ignored Subject', courseTitle: course.title || `Subject (ID ${cId})` };
+                if (subfolderPath && isSubfolderPathIgnoredOrHidden(course, subfolderPath)) {
+                    return { valid: false, reason: 'Deleted Subfolder', courseTitle: course.title, subfolder: subfolderPath };
+                }
+                
+                let lecId = lectureId ? String(lectureId) : null;
+                if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cId + '_')) {
+                    lecId = itemId.replace(cId + '_', '');
+                }
+                if (lecId && activeLectureMap[cId] && activeLectureMap[cId].size > 0) {
+                    if (!activeLectureMap[cId].has(lecId)) {
+                        return { valid: false, reason: 'Deleted Lecture File', courseTitle: course.title, lectureId: lecId };
+                    }
+                }
+                return { valid: true, courseTitle: course.title };
+            };
+
+            const orphanList = [];
+
+            // 1. PROGRESS_STORE
+            const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            for (const prog of allProgress) {
+                const sub = prog.subfolder || prog.chapter || '';
+                const st = getRecordStatus(prog.courseId, sub, prog.lectureId, prog.id);
+                if (!st.valid) {
+                    let extras = [];
+                    if (prog.pdfHandle || prog.pdfName) extras.push('PDF Note');
+                    if (prog.notes) extras.push('Intel Note');
+                    if (prog.assignmentHandle || prog.assignmentName) extras.push('Assignment');
+                    const extraStr = extras.length > 0 ? ` (${extras.join(', ')})` : '';
+                    orphanList.push({
+                        id: prog.id,
+                        store: 'progress',
+                        type: 'Progress & Notes',
+                        courseTitle: st.courseTitle || `Course #${prog.courseId}`,
+                        targetName: (prog.lectureName || prog.name || prog.id) + extraStr,
+                        reason: st.reason,
+                        rawItem: prog
+                    });
+                }
+            }
+
+            // 2. DOUBTS_STORE
+            const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            for (const d of allDoubts) {
+                const sub = d.subfolder || d.chapter || '';
+                const st = getRecordStatus(d.courseId, sub, d.lectureId, d.id);
+                if (!st.valid) {
+                    orphanList.push({
+                        id: d.id,
+                        store: 'doubts',
+                        type: 'Doubt Entry',
+                        courseTitle: st.courseTitle || `Course #${d.courseId}`,
+                        targetName: d.comment || d.lectureName || `Doubt #${d.id}`,
+                        reason: st.reason,
+                        rawItem: d
+                    });
+                }
+            }
+
+            // 3. DPP_STORE
+            const allDpp = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            for (const dpp of allDpp) {
+                const sub = dpp.subfolder || dpp.chapter || '';
+                const st = getRecordStatus(dpp.courseId, sub, dpp.lectureId, dpp.id);
+                if (!st.valid) {
+                    orphanList.push({
+                        id: dpp.id,
+                        store: 'dpps',
+                        type: 'DPP Assignment',
+                        courseTitle: st.courseTitle || `Course #${dpp.courseId}`,
+                        targetName: dpp.name || dpp.title || `DPP #${dpp.id}`,
+                        reason: st.reason,
+                        rawItem: dpp
+                    });
+                }
+            }
+
+            // 4. courseflix_logs in localStorage
+            try {
+                let cfLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
+                cfLogs.forEach((log, index) => {
+                    const st = getRecordStatus(log.courseId, log.subfolder || log.chapter, log.lectureId, log.id);
+                    if (!st.valid) {
+                        orphanList.push({
+                            id: index,
+                            store: 'logs',
+                            type: 'Study Log',
+                            courseTitle: st.courseTitle || `Course #${log.courseId}`,
+                            targetName: log.lectureName || log.action || `Log #${index}`,
+                            reason: st.reason,
+                            rawItem: log
+                        });
+                    }
+                });
+            } catch (e) {}
+
+            return orphanList;
+        }
+
+        async function deleteSelectedOrphanItems(selectedItems) {
+            let count = 0;
+            const progressIdsToDelete = selectedItems.filter(i => i.store === 'progress').map(i => i.id);
+            const doubtIdsToDelete = selectedItems.filter(i => i.store === 'doubts').map(i => i.id);
+            const dppIdsToDelete = selectedItems.filter(i => i.store === 'dpps').map(i => i.id);
+            const logIndicesToDelete = new Set(selectedItems.filter(i => i.store === 'logs').map(i => i.id));
+
+            if (progressIdsToDelete.length > 0) {
+                const progressStore = getStore(PROGRESS_STORE, 'readwrite');
+                for (const pid of progressIdsToDelete) {
+                    progressStore.delete(pid);
+                    count++;
+                    if (typeof courseProgress !== 'undefined' && courseProgress) {
+                        delete courseProgress[pid];
+                    }
+                }
+            }
+
+            if (doubtIdsToDelete.length > 0) {
+                const doubtsStore = getStore(DOUBTS_STORE, 'readwrite');
+                for (const did of doubtIdsToDelete) {
+                    doubtsStore.delete(did);
+                    count++;
+                }
+            }
+
+            if (dppIdsToDelete.length > 0) {
+                const dppStore = getStore(DPP_STORE, 'readwrite');
+                for (const dpid of dppIdsToDelete) {
+                    dppStore.delete(dpid);
+                    count++;
+                }
+            }
+
+            if (logIndicesToDelete.size > 0) {
+                try {
+                    let cfLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
+                    const filteredLogs = cfLogs.filter((_, idx) => !logIndicesToDelete.has(idx));
+                    count += (cfLogs.length - filteredLogs.length);
+                    localStorage.setItem('courseflix_logs', JSON.stringify(filteredLogs));
+                } catch (e) {}
+            }
+
+            await cleanupOrphanedHistoryEntries();
+            return count;
+        }
+
+        function showPurgeAnalysisModal(orphanList) {
+            let modal = document.getElementById('purge-analysis-modal');
+            if (modal) modal.remove();
+
+            modal = document.createElement('div');
+            modal.id = 'purge-analysis-modal';
+            modal.className = 'modal-overlay';
+            modal.style.cssText = 'z-index: 1000000; position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; padding: 20px;';
+
+            const rowsHtml = orphanList.map((item, idx) => `
+                <tr style="border-bottom: 1px solid var(--border-secondary, rgba(255,255,255,0.08)); font-size: 0.88rem;">
+                    <td style="padding: 10px 12px; text-align: center;">
+                        <input type="checkbox" class="purge-item-cb" data-index="${idx}" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #ef4444;" />
+                    </td>
+                    <td style="padding: 10px 12px; white-space: nowrap;">
+                        <span style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 0.78rem;">
+                            ${item.type}
+                        </span>
+                    </td>
+                    <td style="padding: 10px 12px; color: var(--text-primary, #f8fafc); font-weight: 600;">
+                        ${item.courseTitle}
+                    </td>
+                    <td style="padding: 10px 12px; color: var(--text-secondary, #94a3b8); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${item.targetName}
+                    </td>
+                    <td style="padding: 10px 12px; white-space: nowrap;">
+                        <span style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 600;">
+                            ${item.reason}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+
+            modal.innerHTML = `
+                <div class="modal-content glass-modal" style="max-width: 850px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(15, 23, 42, 0.96); box-shadow: 0 25px 60px rgba(0,0,0,0.7); color: #ffffff;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; border-bottom: 1px solid var(--border-secondary, rgba(255,255,255,0.1)); padding-bottom: 0.75rem;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                                <i class="fas fa-trash-alt"></i>
+                            </div>
+                            <div>
+                                <h2 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #ffffff;">Purge Orphan Data Analysis</h2>
+                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: #94a3b8;">There are <strong>${orphanList.length}</strong> orphan items to purge.</p>
+                            </div>
+                        </div>
+                        <button id="close-purge-modal-btn" style="background: none; border: none; font-size: 1.5rem; color: #94a3b8; cursor: pointer;">&times;</button>
+                    </div>
+
+                    <div style="flex: 1; overflow-y: auto; margin-bottom: 1rem; border-radius: 10px; border: 1px solid var(--border-secondary, rgba(255,255,255,0.08)); background: rgba(0,0,0,0.2);">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead style="position: sticky; top: 0; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,0.1); z-index: 10;">
+                                <tr style="font-size: 0.82rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <th style="padding: 10px 12px; width: 40px; text-align: center;">
+                                        <input type="checkbox" id="purge-select-all-cb" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #ef4444;" />
+                                    </th>
+                                    <th style="padding: 10px 12px;">Type</th>
+                                    <th style="padding: 10px 12px;">Subject / Course</th>
+                                    <th style="padding: 10px 12px;">Target Content / Lecture</th>
+                                    <th style="padding: 10px 12px;">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="purge-table-body">
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-secondary, rgba(255,255,255,0.1)); padding-top: 1rem;">
+                        <div id="purge-selection-status" style="font-size: 0.88rem; font-weight: 600; color: #94a3b8;">
+                            Selected: <span id="purge-selected-count" style="color: #ef4444;">${orphanList.length}</span> / ${orphanList.length} items
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="purge-cancel-analysis-btn" class="secondary-btn" style="padding: 9px 18px; border-radius: 10px; font-weight: 600; cursor: pointer;">Cancel</button>
+                            <button id="purge-execute-selected-btn" class="danger-btn" style="background: #ef4444; color: #ffffff; padding: 9px 18px; border-radius: 10px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-trash-alt"></i> Delete Selected (<span id="purge-btn-count">${orphanList.length}</span>)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const selectAllCb = modal.querySelector('#purge-select-all-cb');
+            const itemCbs = modal.querySelectorAll('.purge-item-cb');
+            const countSpan = modal.querySelector('#purge-selected-count');
+            const btnCountSpan = modal.querySelector('#purge-btn-count');
+            const deleteBtn = modal.querySelector('#purge-execute-selected-btn');
+
+            const updateCounts = () => {
+                const checked = Array.from(itemCbs).filter(cb => cb.checked);
+                if (countSpan) countSpan.textContent = checked.length;
+                if (btnCountSpan) btnCountSpan.textContent = checked.length;
+                if (deleteBtn) deleteBtn.disabled = checked.length === 0;
+                if (selectAllCb) selectAllCb.checked = checked.length === itemCbs.length;
+            };
+
+            if (selectAllCb) {
+                selectAllCb.addEventListener('change', (e) => {
+                    itemCbs.forEach(cb => cb.checked = e.target.checked);
+                    updateCounts();
+                });
+            }
+
+            itemCbs.forEach(cb => {
+                cb.addEventListener('change', updateCounts);
+            });
+
+            const closeModal = () => modal.remove();
+
+            modal.querySelector('#close-purge-modal-btn')?.addEventListener('click', closeModal);
+            modal.querySelector('#purge-cancel-analysis-btn')?.addEventListener('click', closeModal);
+
+            deleteBtn?.addEventListener('click', async () => {
+                const selectedIndices = Array.from(itemCbs).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.index));
+                const selectedItems = selectedIndices.map(idx => orphanList[idx]);
+
+                if (selectedItems.length === 0) return;
+
+                deleteBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Deleting...`;
+                deleteBtn.disabled = true;
+
+                try {
+                    const deletedCount = await deleteSelectedOrphanItems(selectedItems);
+                    if (typeof loadCoursesFromDB === 'function') await loadCoursesFromDB();
+                    if (typeof renderHistoryView === 'function') renderHistoryView();
+                    if (typeof renderNotesCourseSelectionView === 'function') renderNotesCourseSelectionView();
+                    if (typeof renderIntellHome === 'function') renderIntellHome();
+
+                    showToast(`Successfully purged ${deletedCount} selected orphan items!`);
+                    closeModal();
+                } catch (err) {
+                    console.error('Error deleting selected orphan items:', err);
+                    showToast('Error during orphan deletion.', true);
+                }
+            });
+        }
+
+        if (purgeBtn) {
+            purgeBtn.addEventListener('click', () => {
+                purgeBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Analyzing...`;
+                purgeBtn.disabled = true;
+
+                setTimeout(async () => {
+                    try {
+                        const orphanList = await analyzeOrphanData();
+                        if (!orphanList || orphanList.length === 0) {
+                            showToast('No orphan data found to purge. Everything is clean!');
+                        } else {
+                            document.getElementById('modal-overlay')?.classList.add('hidden');
+                            showPurgeAnalysisModal(orphanList);
+                        }
+                    } catch (err) {
+                        console.error('Error analyzing orphan data:', err);
+                        showToast('Error analyzing orphan data.', true);
+                    } finally {
+                        purgeBtn.innerHTML = `<i class="fas fa-trash-alt"></i> Purge Orphan Data`;
+                        purgeBtn.disabled = false;
+                    }
+                }, 50);
+            });
+        }
 
         function downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
@@ -3260,7 +4761,7 @@ window.initCourseFlix = async function() {
                 const zipBlob = await zip.generateAsync({ type: "blob" });
                 downloadBlob(zipBlob, `CourseFlix_Backup_${new Date().toISOString().split('T')[0]}.zip`);
                 showToast("Export successful!");
-
+            } catch (err) {
                 console.error("Export failed:", err);
                 showToast("Export failed. Check the console for errors.", true);
             } finally {
@@ -3640,6 +5141,9 @@ window.initCourseFlix = async function() {
 
         videoPlayer.addEventListener('timeupdate', () => { 
             const currentTime = videoPlayer.currentTime;
+            if (!window.isBookmarkCyclingSession) {
+                window.savedTimelinePosition = currentTime;
+            }
             document.getElementById('current-time').textContent = formatTime(currentTime); 
             if (!isNaN(videoPlayer.duration)) { 
                 updateTimeDisplay();
@@ -3673,8 +5177,19 @@ window.initCourseFlix = async function() {
             updateTimeDisplay();
             timeline.max = videoPlayer.duration; 
         });
-        timeline.addEventListener('input', (e) => videoPlayer.currentTime = e.target.value);
-        timeline.addEventListener('change', () => timeline.blur());
+        timeline.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            videoPlayer.currentTime = val;
+            if (!window.isBookmarkCyclingSession) {
+                window.savedTimelinePosition = val;
+            }
+        });
+        timeline.addEventListener('change', () => {
+            if (!window.isBookmarkCyclingSession) {
+                window.savedTimelinePosition = videoPlayer.currentTime;
+            }
+            timeline.blur();
+        });
         fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => showToast(`Error: ${err.message}`, true)); else document.exitFullscreen(); });
         
         const speeds = [1, 1.25, 1.5, 1.6, 1.75, 1.85, 2, 2.25, 2.5, 3]; let currentSpeedIndex = 4; // Default 1.75x
@@ -3859,6 +5374,7 @@ window.initCourseFlix = async function() {
                 case 's': if (view.id === 'player-view' && currentCourse && currentLectureLi) captureDoubt(); break;
                 case 'n': 
                     if (e.shiftKey) {
+                        e.preventDefault();
                         if (view.id === 'player-view') window.togglePlayerNotesPanel();
                     } else {
                         if (view.id === 'player-view' && currentLectureLi) {
@@ -3870,18 +5386,31 @@ window.initCourseFlix = async function() {
                     break;
                 case 'd':
                     if (e.shiftKey) {
+                        e.preventDefault();
                         if (view.id === 'player-view') window.togglePlayerDppPanel();
                     }
                     break;
                 case 'p': 
-                    if (view.id === 'player-view' && currentLectureLi) {
-                        const prevLi = getPreviousLectureLi(currentLectureLi);
-                        if (prevLi) playVideo(prevLi);
-                        else showToast('No previous lecture available.');
+                    if (view.id === 'player-view') {
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            jumpToPresentTimeline();
+                        } else if (currentLectureLi) {
+                            const prevLi = getPreviousLectureLi(currentLectureLi);
+                            if (prevLi) playVideo(prevLi);
+                            else showToast('No previous lecture available.');
+                        }
                     }
                     break;
                 case 'z':
-                    if (view.id === 'player-view') addBookmark();
+                    if (view.id === 'player-view') {
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            cycleBookmarks();
+                        } else {
+                            addBookmark();
+                        }
+                    }
                     break;
                 case 'q':
                     if (view.id === 'player-view') {
@@ -3898,7 +5427,12 @@ window.initCourseFlix = async function() {
                     break;
                 case 'ArrowRight': 
                     if (view.id === 'player-view') { 
-                        if (e.shiftKey) {
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            videoPlayer.currentTime += 30;
+                            showToast('+30s Forward');
+                            if(window.triggerSmartSkipCheck) window.triggerSmartSkipCheck();
+                        } else if (e.shiftKey) {
                             window.cycleOrOpenRightSidePanel();
                         } else {
                             videoPlayer.currentTime += 10; 
@@ -3908,7 +5442,11 @@ window.initCourseFlix = async function() {
                     break;
                 case 'ArrowLeft': 
                     if (view.id === 'player-view') {
-                        if (e.shiftKey) {
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            videoPlayer.currentTime -= 30;
+                            showToast('-30s Rewind');
+                        } else if (e.shiftKey) {
                             window.cycleOrOpenRightSidePanel();
                         } else {
                             videoPlayer.currentTime -= 10; 
@@ -4109,6 +5647,50 @@ window.initCourseFlix = async function() {
             }
         }
 
+        window.savedTimelinePosition = null;
+        window.isBookmarkCyclingSession = false;
+
+        function cycleBookmarks() {
+            if (!currentCourse || !currentLectureLi || !videoPlayer) return;
+            const lectureId = currentLectureLi.dataset.lectureId;
+            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const bookmarks = progress.bookmarks || [];
+
+            if (bookmarks.length === 0) {
+                return showToast('No bookmarks saved for this lecture.');
+            }
+
+            const curr = videoPlayer.currentTime;
+
+            // Before starting a bookmark cycling sequence, anchor current video position as saved timeline
+            if (!window.isBookmarkCyclingSession) {
+                window.savedTimelinePosition = curr;
+                window.isBookmarkCyclingSession = true;
+            }
+
+            let nextIdx = bookmarks.findIndex(b => b > curr + 1.5);
+            if (nextIdx === -1) nextIdx = 0;
+
+            const targetTime = bookmarks[nextIdx];
+            videoPlayer.currentTime = targetTime;
+            showToast(`Bookmark ${nextIdx + 1}/${bookmarks.length}: ${formatTime(targetTime)}`);
+        }
+
+        function jumpToPresentTimeline() {
+            if (!videoPlayer) return;
+
+            let targetTime = window.savedTimelinePosition;
+            if (targetTime === null || targetTime === undefined) {
+                showToast(`Already on main timeline (${formatTime(videoPlayer.currentTime)})`);
+                return;
+            }
+
+            videoPlayer.currentTime = targetTime;
+            showToast(`Returned to main timeline (${formatTime(targetTime)})`);
+            window.savedTimelinePosition = null;
+            window.isBookmarkCyclingSession = false;
+        }
+
         async function clearCurrentVideoBookmarks() {
             if (!currentCourse || !currentLectureLi) return;
              if (confirm('Are you sure you want to clear all bookmarks for this video?')) {
@@ -4215,7 +5797,7 @@ window.initCourseFlix = async function() {
 
 
         async function renderDppDetailView(courseId) {
-            nav.classList.add('hidden');
+            if (nav) nav.classList.remove('hidden');
             const course = courses.find(c => c.id === courseId);
             if (!course) {
                 showToast("Error: Course not found.", true);
@@ -4544,13 +6126,83 @@ window.initCourseFlix = async function() {
         });
 
         async function handleLectureFileDrop(files, type) {
+            if (!files || files.length === 0) return;
+
+            if (isSmartAddActive) {
+                const fileList = Array.from(files);
+                if (type === 'pdf') {
+                    const nonPdf = fileList.filter(f => !f.name.toLowerCase().endsWith('.pdf'));
+                    if (nonPdf.length > 0) {
+                        showToast('Only PDF files are allowed for notes.', true);
+                        return;
+                    }
+                }
+
+                const lectureEls = Array.from(document.querySelectorAll('#upload-lecture-list .lecture-item'));
+                if (lectureEls.length === 0) {
+                    showToast('No lectures available in this section to assign files to.', true);
+                    return;
+                }
+
+                const courseId = parseInt(document.getElementById('upload-detail-view').dataset.courseId);
+
+                // Target remaining lectures without file of 'type' first, or fallback to all lectures
+                let unassignedLectures = lectureEls.filter(el => {
+                    const prog = getLectureProgress(courseId, el.dataset.lectureId);
+                    return type === 'pdf' ? !prog.pdfHandle : !prog.assignmentHandle;
+                });
+
+                // If all lectures already have files of 'type', target all lectures in order
+                let targetLectures = unassignedLectures.length > 0 ? unassignedLectures : lectureEls;
+
+                // Sort files naturally / by number
+                fileList.sort((a, b) => {
+                    const numA = extractNumberFromText(a.name);
+                    const numB = extractNumberFromText(b.name);
+                    if (numA !== null && numB !== null) {
+                        return numA - numB;
+                    }
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+                });
+
+                const maxAssignable = targetLectures.length;
+                const assignedFiles = fileList.slice(0, maxAssignable);
+                const overflowFiles = fileList.slice(maxAssignable);
+
+                for (let i = 0; i < assignedFiles.length; i++) {
+                    const file = assignedFiles[i];
+                    const targetEl = targetLectures[i];
+                    const lectureId = targetEl.dataset.lectureId;
+                    const progressData = getLectureProgress(courseId, lectureId);
+
+                    if (type === 'pdf') {
+                        await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId, lectureId });
+                    } else if (type === 'assignment') {
+                        await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId, lectureId });
+                    }
+
+                    const updatedProgress = getLectureProgress(courseId, lectureId);
+                    const displayName = targetEl.dataset.displayName || targetEl.querySelector('.lecture-item-title')?.textContent || 'Lecture';
+                    targetEl.innerHTML = buildLectureItemHTML(displayName, updatedProgress, lectureId);
+                }
+
+                if (overflowFiles.length > 0) {
+                    const overflowNames = overflowFiles.map(f => f.name).join(', ');
+                    showToast(`No more lectures left! Failed to add ${overflowFiles.length} file(s): ${overflowNames}`, true);
+                } else {
+                    showToast(`Smart Add: Assigned ${assignedFiles.length} ${type === 'pdf' ? 'notes PDF(s)' : 'assignment file(s)'}!`);
+                }
+                return;
+            }
+
+            // --- MANUAL MODE (single file drop) ---
             const selectedLectureEl = document.querySelector('#upload-lecture-list .lecture-item.selected');
             if (!selectedLectureEl) {
                 showToast('Please select a lecture from the list first!', true);
                 return;
             }
             if (files.length > 1) {
-                showToast('Please drop only one file at a time.', true);
+                showToast('Please drop only one file at a time or switch to Smart Add mode.', true);
                 return;
             }
             
@@ -4569,14 +6221,11 @@ window.initCourseFlix = async function() {
                 await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: file.name, assignmentType: file.type, courseId, lectureId });
             }
 
-            showToast(`${type === 'pdf' ? 'Notes' : 'Assignment'} for "${selectedLectureEl.textContent.trim()}" added successfully!`);
+            showToast(`${type === 'pdf' ? 'Notes' : 'Assignment'} for "${selectedLectureEl.dataset.displayName || selectedLectureEl.textContent.trim()}" added successfully!`);
             
-            const existingProgress = getLectureProgress(courseId, lectureId);
-            const statusDiv = selectedLectureEl.querySelector('.file-status');
-            statusDiv.innerHTML = `
-                ${existingProgress.pdfHandle ? '<i class="fas fa-file-pdf" title="Notes added"></i>' : ''}
-                ${existingProgress.assignmentHandle ? '<i class="fas fa-file-alt" title="Assignment added"></i>' : ''}
-            `;
+            const updatedProgress = getLectureProgress(courseId, lectureId);
+            const displayName = selectedLectureEl.dataset.displayName || selectedLectureEl.querySelector('.lecture-item-title')?.textContent || selectedLectureEl.textContent.trim();
+            selectedLectureEl.innerHTML = buildLectureItemHTML(displayName, updatedProgress, lectureId);
         }
         
         const pdfDropZone = document.getElementById('pdf-drop-zone');
@@ -4642,7 +6291,7 @@ window.initCourseFlix = async function() {
         }
 
         async function renderNotesDetailView(courseId) {
-            nav.classList.add('hidden');
+            if (nav) nav.classList.remove('hidden');
             const course = courses.find(c => c.id === courseId);
              if (!course) {
                 showToast("Error: Course not found.", true);
@@ -4850,12 +6499,25 @@ window.initCourseFlix = async function() {
         }
 
         async function renderContinueView() {
+            await cleanupOrphanedHistoryEntries();
             const history = await getHistoryEntries();
             const now = new Date();
             
-            // Filter 30 hours for continue grid and exclude hidden
+            // Filter 30 hours for continue grid and exclude hidden/deleted/ignored courses & subfolders
             const thirtyHoursAgo = new Date(now.getTime() - (30 * 60 * 60 * 1000));
-            const recentHistory = history.filter(h => !h.isHiddenFromContinue && new Date(h.timestamp) >= thirtyHoursAgo);
+            const recentHistory = history.filter(h => {
+                if (h.isHiddenFromContinue) return false;
+                if (new Date(h.timestamp) < thirtyHoursAgo) return false;
+
+                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
+                if (!course || course.isIgnored) return false;
+
+                if (h.subfolder) {
+                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return false;
+                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return false;
+                }
+                return true;
+            });
             
             // Unique courses/subfolders from recent history
             const uniqueCoursesMap = new Map();
@@ -4979,21 +6641,36 @@ window.initCourseFlix = async function() {
         }
 
         async function renderHistoryView() {
+            await ensureDB();
+            await cleanupOrphanedHistoryEntries();
             const history = await getHistoryEntries();
             const now = new Date();
             
-            // Filter 7 days for table and exclude hidden
-            const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
-            const weekHistory = history.filter(h => !h.isHiddenFromHistory && new Date(h.timestamp) >= sevenDaysAgo);
-            weekHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Newest first
+            // Filter history for the last 30 hours and exclude deleted/ignored courses & subfolders
+            const thirtyHoursAgo = new Date(now.getTime() - (30 * 60 * 60 * 1000));
+            const recentHistory = history.filter(h => {
+                if (h.isHiddenFromHistory) return false;
+                if (new Date(h.timestamp) < thirtyHoursAgo) return false;
+
+                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
+                if (!course || course.isIgnored) return false;
+
+                if (h.subfolder) {
+                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return false;
+                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return false;
+                }
+                return true;
+            });
+            recentHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Newest first
             
             const tableBody = document.getElementById('history-table-body');
+            if (!tableBody) return;
             tableBody.innerHTML = '';
-            if (weekHistory.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: var(--text-secondary);">No history found for the last 7 days.</td></tr>';
+            if (recentHistory.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-secondary);">No watch history found for the last 30 hours.</td></tr>';
             } else {
                 let htmlStr = '';
-                weekHistory.forEach(h => {
+                recentHistory.forEach(h => {
                     htmlStr += `
                     <tr style="border-bottom: 1px solid var(--border-secondary);">
                         <td style="padding: 12px 16px; display: flex; align-items: center; gap: 10px;">
@@ -5014,13 +6691,16 @@ window.initCourseFlix = async function() {
                 tableBody.innerHTML = htmlStr;
             }
         }
+        window.renderHistoryView = renderHistoryView;
 
         async function renderDoubtsCourseSelectionView() {
             nav.classList.remove('hidden');
-            document.getElementById('doubts-detail-container').classList.add('hidden');
+            const doubtsDetail = document.getElementById('doubts-detail-container');
+            if (doubtsDetail) doubtsDetail.classList.add('hidden');
             const doubtsListContainer = document.getElementById('doubts-list-container');
-            doubtsListContainer.classList.remove('hidden');
+            if (doubtsListContainer) doubtsListContainer.classList.remove('hidden');
             const grid = document.getElementById('doubts-course-grid');
+            if (!grid) return;
             grid.innerHTML = '';
             
             const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
@@ -5304,57 +6984,210 @@ window.initCourseFlix = async function() {
              runCompletionCalculator();
         });
 
+        let currentCalcTargetMode = localStorage.getItem('calcTargetMode') || 'hours';
+
+        function setupCalcModeListeners() {
+            const hoursBtn = document.getElementById('calc-mode-hours-btn');
+            const lecturesBtn = document.getElementById('calc-mode-lectures-btn');
+            const hoursContainer = document.getElementById('calc-hours-inputs-container');
+            const lecturesContainer = document.getElementById('calc-lectures-inputs-container');
+            const timeInfoBox = document.getElementById('calc-lecture-intake-time-info');
+
+            const speedHoursInput = document.getElementById('calc-playback-speed-hours');
+            const speedLecturesInput = document.getElementById('calc-playback-speed-lectures');
+
+            if (!hoursBtn || !lecturesBtn) return;
+
+            const applyModeUI = (mode) => {
+                currentCalcTargetMode = mode;
+                localStorage.setItem('calcTargetMode', mode);
+
+                if (mode === 'hours') {
+                    hoursBtn.style.background = 'var(--accent-primary)';
+                    hoursBtn.style.color = '#ffffff';
+                    hoursBtn.classList.add('active');
+
+                    lecturesBtn.style.background = 'transparent';
+                    lecturesBtn.style.color = 'var(--text-secondary)';
+                    lecturesBtn.classList.remove('active');
+
+                    if (hoursContainer) hoursContainer.style.display = 'grid';
+                    if (lecturesContainer) lecturesContainer.style.display = 'none';
+                    if (timeInfoBox) timeInfoBox.style.display = 'none';
+                } else {
+                    lecturesBtn.style.background = 'var(--accent-primary)';
+                    lecturesBtn.style.color = '#ffffff';
+                    lecturesBtn.classList.add('active');
+
+                    hoursBtn.style.background = 'transparent';
+                    hoursBtn.style.color = 'var(--text-secondary)';
+                    hoursBtn.classList.remove('active');
+
+                    if (hoursContainer) hoursContainer.style.display = 'none';
+                    if (lecturesContainer) lecturesContainer.style.display = 'grid';
+                    if (timeInfoBox) timeInfoBox.style.display = 'flex';
+                }
+            };
+
+            hoursBtn.onclick = () => { applyModeUI('hours'); runCompletionCalculator(); };
+            lecturesBtn.onclick = () => { applyModeUI('lectures'); runCompletionCalculator(); };
+
+            if (speedHoursInput && speedLecturesInput) {
+                speedHoursInput.oninput = () => {
+                    speedLecturesInput.value = speedHoursInput.value;
+                    runCompletionCalculator();
+                };
+                speedLecturesInput.oninput = () => {
+                    speedHoursInput.value = speedLecturesInput.value;
+                    runCompletionCalculator();
+                };
+            }
+
+            const dailyHoursInput = document.getElementById('calc-daily-hours');
+            if (dailyHoursInput) dailyHoursInput.oninput = runCompletionCalculator;
+
+            const dailyLecturesInput = document.getElementById('calc-daily-lectures');
+            if (dailyLecturesInput) dailyLecturesInput.oninput = runCompletionCalculator;
+
+            applyModeUI(currentCalcTargetMode);
+        }
+
         document.getElementById('run-calculator-btn').addEventListener('click', runCompletionCalculator);
-        document.getElementById('calc-daily-hours').addEventListener('input', runCompletionCalculator);
-        document.getElementById('calc-playback-speed').addEventListener('input', runCompletionCalculator);
-        
+
         // Restore calc config
         const savedHours = localStorage.getItem('calcDailyHours');
-        if (savedHours) document.getElementById('calc-daily-hours').value = savedHours;
+        if (savedHours && document.getElementById('calc-daily-hours')) document.getElementById('calc-daily-hours').value = savedHours;
+        const savedLectures = localStorage.getItem('calcDailyLectures');
+        if (savedLectures && document.getElementById('calc-daily-lectures')) document.getElementById('calc-daily-lectures').value = savedLectures;
         const savedSpeed = localStorage.getItem('calcPlaybackSpeed');
-        if (savedSpeed) document.getElementById('calc-playback-speed').value = savedSpeed;
-        
+        if (savedSpeed) {
+            if (document.getElementById('calc-playback-speed-hours')) document.getElementById('calc-playback-speed-hours').value = savedSpeed;
+            if (document.getElementById('calc-playback-speed-lectures')) document.getElementById('calc-playback-speed-lectures').value = savedSpeed;
+        }
+
         function runCompletionCalculator() {
-             const displayEl = document.getElementById('total-time-left-display');
-             const totalSeconds = parseFloat(displayEl.dataset.seconds || 0);
-             const pendingLectures = parseInt(displayEl.dataset.lectures || 0);
-             const totalLectures = parseInt(displayEl.dataset.totalLectures || 0);
-             const completedLectures = parseInt(displayEl.dataset.completedLectures || 0);
-             
-             const dailyHours = parseFloat(document.getElementById('calc-daily-hours').value) || 7;
-             const speed = parseFloat(document.getElementById('calc-playback-speed').value) || 1.5;
-             
-             localStorage.setItem('calcDailyHours', dailyHours);
-             localStorage.setItem('calcPlaybackSpeed', speed);
-             updateDailyGoalDisplay(dailyHours, speed);
-             
+             setupCalcModeListeners();
+
+             const stats = updateTotalTimeLeftDisplay();
+             const totalSeconds = stats ? stats.totalSecondsLeft : 0;
+             const completedSeconds = stats ? stats.totalCompletedSeconds : 0;
+             const pendingLectures = stats ? stats.pendingLectures : 0;
+             const totalLectures = stats ? stats.totalLecturesCount : 0;
+             const completedLectures = stats ? stats.totalCompletedLectures : 0;
+             const pct = stats ? stats.pct : 0;
+             const courseBreakdown = stats ? stats.courseBreakdown : [];
+
+             // Stat cards update
+             const hoursStudiedEl = document.getElementById('calc-hours-studied');
+             if (hoursStudiedEl) hoursStudiedEl.innerText = (completedSeconds / 3600).toFixed(1);
+
+             const hoursRemainingEl = document.getElementById('calc-hours-remaining');
+             if (hoursRemainingEl) hoursRemainingEl.innerText = (totalSeconds / 3600).toFixed(1);
+
+             const completedLecsEl = document.getElementById('calc-completed-lectures-count');
+             if (completedLecsEl) completedLecsEl.innerText = completedLectures;
+
+             const pendingLecsEl = document.getElementById('calc-pending-lectures-count');
+             if (pendingLecsEl) pendingLecsEl.innerText = pendingLectures;
+
+             // Progress bar update & colors
              const calcProgressEl = document.getElementById('calc-progress-percentage');
+             const calcProgressBar = document.getElementById('calc-progress-bar');
+             let progressColor = '#ef4444'; // red
+             if (pct >= 80) progressColor = '#10b981'; // green
+             else if (pct >= 60) progressColor = '#06b6d4'; // cyan
+             else if (pct >= 30) progressColor = '#f59e0b'; // yellow
+
              if (calcProgressEl) {
-                 const pct = totalLectures > 0 ? Math.round((completedLectures / totalLectures) * 100) : 0;
                  calcProgressEl.innerText = `${pct}%`;
-                 if (pct === 100) {
-                     calcProgressEl.style.color = 'var(--success)';
+                 calcProgressEl.style.color = progressColor;
+             }
+             if (calcProgressBar) {
+                 calcProgressBar.style.width = `${pct}%`;
+                 calcProgressBar.style.background = progressColor;
+             }
+
+             // Exact time total & breakdown
+             const exactTotalEl = document.getElementById('calc-exact-time-total');
+             if (exactTotalEl) {
+                 exactTotalEl.innerText = formatExactTime(totalSeconds);
+                 exactTotalEl.style.color = progressColor;
+             }
+
+             const breakdownListEl = document.getElementById('calc-course-time-breakdown');
+             if (breakdownListEl) {
+                 if (courseBreakdown.length === 0) {
+                     breakdownListEl.innerHTML = '<div style="color:var(--text-secondary); font-size:0.82rem; padding:6px;">No active courses found.</div>';
                  } else {
-                     calcProgressEl.style.color = 'var(--accent-primary)';
+                     breakdownListEl.innerHTML = courseBreakdown.map(c => `
+                         <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--border-secondary);">
+                             <div style="display:flex; flex-direction:column; min-width:0; flex:1; margin-right:12px;">
+                                 <span style="font-weight:700; font-size:0.85rem; color:var(--text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${c.title}</span>
+                                 <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:500;">${c.completedLectures}/${c.totalLectures} lecs done (${c.percentage}%)</span>
+                             </div>
+                             <div style="font-weight:800; font-size:0.85rem; color:${c.percentage >= 80 ? '#10b981' : c.percentage >= 60 ? '#06b6d4' : c.percentage >= 30 ? '#f59e0b' : '#ef4444'}; white-space:nowrap; background:var(--bg-tertiary); padding:4px 8px; border-radius:6px; border:1px solid var(--border-primary);">
+                                 ${formatExactTime(c.secondsLeft)}
+                             </div>
+                         </div>
+                     `).join('');
                  }
              }
-             
+
              if (totalSeconds === 0) {
                  document.getElementById('calc-result-date').innerText = "Already Finished!";
                  document.getElementById('calc-result-stats').innerText = "0 pending lectures.";
                  return;
              }
-             
-             const totalHours = totalSeconds / 3600;
-             const adjustedHours = totalHours / speed;
-             const daysRequired = adjustedHours / dailyHours;
+
+             let speed = 1.5;
+             let daysRequired = 0;
+             let metaText = "";
+
+             if (currentCalcTargetMode === 'hours') {
+                 const dailyHoursInput = document.getElementById('calc-daily-hours');
+                 const speedInput = document.getElementById('calc-playback-speed-hours');
+                 const dailyHours = parseFloat(dailyHoursInput?.value) || 7;
+                 speed = parseFloat(speedInput?.value) || 1.5;
+
+                 localStorage.setItem('calcDailyHours', dailyHours);
+                 localStorage.setItem('calcPlaybackSpeed', speed);
+                 updateDailyGoalDisplay(dailyHours, speed);
+
+                 const totalHours = totalSeconds / 3600;
+                 const adjustedHours = totalHours / speed;
+                 daysRequired = adjustedHours / dailyHours;
+                 metaText = `${pendingLectures} pending lectures (${Math.ceil(adjustedHours)} hrs adjusted view time at ${speed}x speed).`;
+             } else {
+                 const dailyLecturesInput = document.getElementById('calc-daily-lectures');
+                 const speedInput = document.getElementById('calc-playback-speed-lectures');
+                 const dailyLectures = parseFloat(dailyLecturesInput?.value) || 4;
+                 speed = parseFloat(speedInput?.value) || 1.5;
+
+                 localStorage.setItem('calcDailyLectures', dailyLectures);
+                 localStorage.setItem('calcPlaybackSpeed', speed);
+                 updateDailyGoalDisplay(0, speed, dailyLectures);
+
+                 const avgLectureDurationSec = pendingLectures > 0 ? (totalSeconds / pendingLectures) : 0;
+                 const dailyWatchTimeSec = (dailyLectures * avgLectureDurationSec) / speed;
+                 daysRequired = pendingLectures > 0 ? (pendingLectures / dailyLectures) : 0;
+
+                 const dailyTimeSpan = document.getElementById('calc-lecture-intake-daily-time');
+                 const countSpan = document.getElementById('calc-lecture-intake-count');
+                 const speedSpan = document.getElementById('calc-lecture-intake-speed');
+
+                 if (dailyTimeSpan) dailyTimeSpan.innerText = formatExactTime(dailyWatchTimeSec);
+                 if (countSpan) countSpan.innerText = dailyLectures;
+                 if (speedSpan) speedSpan.innerText = speed;
+
+                 metaText = `${pendingLectures} pending lectures (${daysRequired.toFixed(1)} days at ${dailyLectures} lecs/day • ${formatExactTime(dailyWatchTimeSec)}/day required at ${speed}x speed).`;
+             }
              
              const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
              const options = { day: 'numeric', month: 'long', year: 'numeric' };
              const dateString = finishDate.toLocaleDateString('en-GB', options);
              
              document.getElementById('calc-result-date').innerText = dateString;
-             document.getElementById('calc-result-stats').innerText = `${pendingLectures} pending lectures (${Math.ceil(adjustedHours)} hrs adjusted view time).`;
+             document.getElementById('calc-result-stats').innerText = metaText;
         }
         
         // --- FACULTY VIEW LOGIC ---
@@ -5761,11 +7594,35 @@ window.initCourseFlix = async function() {
             document.getElementById('faculty-aside').classList.remove('open');
         });
         document.getElementById('close-faculty-profile-btn').addEventListener('click', () => {
-            document.getElementById('faculty-profile-overlay').style.display = 'none';
+            const overlay = document.getElementById('faculty-profile-overlay');
+            const origin = overlay ? overlay.dataset.originView : 'faculty-view';
+            if (overlay) overlay.style.display = 'none';
+            if (origin === 'home-view') {
+                if (typeof switchView === 'function') {
+                    switchView('home-view');
+                } else {
+                    window.location.hash = '#home-view';
+                }
+            }
         });
 
-        function renderFacultyProfile(facultyName) {
-            document.getElementById('faculty-profile-overlay').style.display = 'flex';
+        function renderFacultyProfile(facultyName, originView) {
+            const overlay = document.getElementById('faculty-profile-overlay');
+            const effectiveOrigin = originView || (overlay ? overlay.dataset.originView : 'faculty-view') || 'faculty-view';
+            if (overlay) {
+                overlay.style.display = 'flex';
+                overlay.dataset.originView = effectiveOrigin;
+            }
+            
+            const closeBtn = document.getElementById('close-faculty-profile-btn');
+            if (closeBtn) {
+                if (effectiveOrigin === 'home-view') {
+                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Home Page';
+                } else {
+                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Faculties';
+                }
+            }
+
             document.getElementById('faculty-profile-title').innerText = facultyName;
             const grid = document.getElementById('faculty-profile-grid');
             grid.innerHTML = '';
@@ -5866,7 +7723,7 @@ window.initCourseFlix = async function() {
                     cardSubtitle = `<div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
                         <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${course.title}</span>
                         <span style="display: flex; align-items: center; gap: 4px; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; flex-shrink: 0;">
-                            <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)} hrs left
+                            <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)}h
                         </span>
                     </div>`;
                 } else {
@@ -5877,7 +7734,7 @@ window.initCourseFlix = async function() {
                     cardSubtitle = `<div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
                         <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Course</span>
                         <span style="display: flex; align-items: center; gap: 4px; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; flex-shrink: 0;">
-                            <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)} hrs left
+                            <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)}h
                         </span>
                     </div>`;
                 }
@@ -5982,6 +7839,22 @@ window.initCourseFlix = async function() {
             });
         }
 
+        window.renderFacultyProfile = renderFacultyProfile;
+        window.openFacultyProfile = function(facultyName, originView = 'home-view') {
+            const overlay = document.getElementById('faculty-profile-overlay');
+            if (overlay) {
+                overlay.dataset.originView = originView;
+            }
+            if (typeof switchView === 'function') {
+                switchView('faculty-view');
+            } else {
+                window.location.hash = '#faculty-view';
+            }
+            setTimeout(() => {
+                renderFacultyProfile(facultyName, originView);
+            }, 50);
+        };
+
         // --- Init ---
         async function main() {
             if (!window.indexedDB || !window.showDirectoryPicker) { document.body.innerHTML = "<h1>Browser Not Supported</h1><p>Please use a modern browser like Google Chrome or Microsoft Edge that supports the File System Access API and IndexedDB.</p>"; return; }
@@ -6069,9 +7942,47 @@ window.initCourseFlix = async function() {
             if (sortSelect) {
                 sortSelect.addEventListener('change', () => {
                     localStorage.setItem('courseSortPref', sortSelect.value);
+                    populateSortGroupOptions();
                     renderCourseGrid();
                 });
             }
+
+            const glassTrigger = document.getElementById('glass-sort-trigger');
+            const glassMenu = document.getElementById('glass-sort-dropdown-menu');
+
+            if (glassTrigger && glassMenu) {
+                glassTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isOpen = !glassMenu.classList.contains('hidden');
+                    if (isOpen) {
+                        glassMenu.classList.add('hidden');
+                        glassTrigger.classList.remove('active');
+                    } else {
+                        populateSortGroupOptions();
+                        glassMenu.classList.remove('hidden');
+                        glassTrigger.classList.add('active');
+                    }
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.glass-sort-container')) {
+                        glassMenu.classList.add('hidden');
+                        glassTrigger.classList.remove('active');
+                    }
+                });
+            }
+
+            window.addEventListener('completion_groups_updated', () => {
+                populateSortGroupOptions();
+                renderCourseGrid();
+            });
+
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'courseflix_completion_groups') {
+                    populateSortGroupOptions();
+                    renderCourseGrid();
+                }
+            });
             
             const continueSortSelect = document.getElementById('continue-sort-select');
             if (continueSortSelect) {
@@ -6083,8 +7994,8 @@ window.initCourseFlix = async function() {
             
             async function handleRoute() {
                 const hash = window.location.hash.substring(1);
-                if (!hash || hash === 'dashboard-view') {
-                    switchView('dashboard-view', false);
+                if (!hash || hash === 'home-view') {
+                    switchView('home-view', false);
                     return;
                 }
                 if (hash.startsWith('subcourse/')) {
@@ -6106,8 +8017,274 @@ window.initCourseFlix = async function() {
             if (window.location.hash && !sessionRestored) {
                 await handleRoute();
             } else if (!sessionRestored) {
-                switchView('dashboard-view');
+                switchView('home-view');
             }
+
+            window.getCourseflixStats = function() {
+                let totalCourses = (typeof courses !== 'undefined' && Array.isArray(courses)) ? courses.length : 0;
+                let totalLectures = 0;
+                let totalSec = 0;
+                const facultyMap = new Map();
+                const aliases = JSON.parse(localStorage.getItem('courseflix_faculty_aliases')) || {};
+                const hiddenFaculties = JSON.parse(localStorage.getItem('courseflix_hidden_faculties')) || [];
+                let facultyRatings = JSON.parse(localStorage.getItem('courseflix_faculty_meta')) || {};
+
+                const isValidIndividualFaculty = (name) => {
+                    if (!name || typeof name !== 'string') return false;
+                    const clean = name.trim();
+                    const lower = clean.toLowerCase();
+                    if (lower === 'unknown' || lower === 'unknown faculty' || lower === 'n/a' || lower === 'n/a faculty') return false;
+                    if (lower === 'multiple faculty' || lower === 'multiple faculties' || lower.includes('multiple') || lower.includes('various') || lower.includes('several') || lower.includes('mixed')) return false;
+                    if (hiddenFaculties.includes(clean)) return false;
+                    return true;
+                };
+
+                const processCourseForFaculty = (facultyName, courseTotalLectures, courseTotalDuration) => {
+                    if (!isValidIndividualFaculty(facultyName)) return;
+                    let finalName = facultyName;
+                    while (aliases[finalName]) {
+                        finalName = aliases[finalName];
+                    }
+                    if (!isValidIndividualFaculty(finalName)) return;
+
+                    let data = facultyMap.get(finalName);
+                    if (!data) {
+                        data = { name: finalName, totalLectures: 0, totalDurationSec: 0, coursesCount: 0 };
+                        facultyMap.set(finalName, data);
+                    }
+                    data.totalLectures += courseTotalLectures;
+                    data.totalDurationSec += courseTotalDuration;
+                    data.coursesCount += 1;
+                };
+
+                const subjectStatsMap = {};
+
+                const gateSubjects = [
+                    'Data Structures & Algorithms',
+                    'Operating Systems',
+                    'Computer Networks',
+                    'Database Management Systems',
+                    'Theory of Computation',
+                    'Compiler Design',
+                    'Computer Organization & Architecture',
+                    'Digital Logic & Design',
+                    'Discrete Mathematics',
+                    'Engineering Mathematics',
+                    'General Aptitude'
+                ];
+
+                if (typeof courses !== 'undefined' && Array.isArray(courses)) {
+                    courses.forEach(course => {
+                        if (!course.lectures) return;
+
+                        let validLectures = course.lectures || [];
+                        if (course.subCourseData && Object.keys(course.subCourseData).length > 0) {
+                            const ignoredSubfolders = Object.keys(course.subCourseData).filter(sub => course.subCourseData[sub].isIgnored || course.subCourseData[sub].hidden);
+                            if (ignoredSubfolders.length > 0) {
+                                validLectures = validLectures.filter(l => !l.chapter || !ignoredSubfolders.some(ig => l.chapter === ig || l.chapter.startsWith(ig + '/')));
+                            }
+                        }
+
+                        totalLectures += validLectures.length;
+                        const cDur = course.totalDuration || validLectures.reduce((acc, l) => acc + (l.duration || 0), 0);
+                        totalSec += cDur;
+
+                        let hasSubfolders = course.subCourseData && Object.keys(course.subCourseData).length > 0;
+                        if (!hasSubfolders && course.lectures && course.lectures.some(l => l.chapter)) {
+                            hasSubfolders = true;
+                        }
+
+                        if (!hasSubfolders) {
+                            let tLecs = validLectures.length;
+                            let tDur = validLectures.reduce((acc, l) => acc + (l.duration || 0), 0);
+                            processCourseForFaculty(course.facultyName || 'Unknown', tLecs, tDur);
+                        } else {
+                            const subfolderStats = {};
+                            validLectures.forEach(lecture => {
+                                let topLevel = lecture.chapter ? lecture.chapter.split('/')[0] : '';
+                                let matchedSub = null;
+                                if (course.subCourseData) {
+                                    for (const subName in course.subCourseData) {
+                                        if (lecture.chapter === subName || (lecture.chapter && lecture.chapter.startsWith(subName + '/'))) {
+                                            matchedSub = subName;
+                                            break;
+                                        }
+                                    }
+                                }
+                                const effectiveSub = matchedSub || topLevel || 'Other Videos';
+                                if (!subfolderStats[effectiveSub]) {
+                                    let fName = course.facultyName || 'Unknown';
+                                    if (course.subCourseData && course.subCourseData[effectiveSub] && course.subCourseData[effectiveSub].facultyName) {
+                                        fName = course.subCourseData[effectiveSub].facultyName;
+                                    }
+                                    subfolderStats[effectiveSub] = { totalLecs: 0, totalDur: 0, facultyName: fName };
+                                }
+                                subfolderStats[effectiveSub].totalLecs++;
+                                subfolderStats[effectiveSub].totalDur += (lecture.duration || 0);
+                            });
+                            for (const subName in subfolderStats) {
+                                const st = subfolderStats[subName];
+                                processCourseForFaculty(st.facultyName, st.totalLecs, st.totalDur);
+                            }
+                        }
+
+                        // Match subject
+                        const matchedSub = gateSubjects.find(subName => {
+                            const titleLower = (course.title || '').toLowerCase();
+                            const subLower = subName.toLowerCase();
+                            if (subLower.includes('data structure') && (titleLower.includes('data') || titleLower.includes('dsa') || titleLower.includes('algo'))) return true;
+                            if (subLower.includes('operating') && (titleLower.includes('operating') || titleLower.includes('os'))) return true;
+                            if (subLower.includes('network') && (titleLower.includes('network') || titleLower.includes('cn'))) return true;
+                            if (subLower.includes('database') && (titleLower.includes('database') || titleLower.includes('dbms') || titleLower.includes('sql'))) return true;
+                            if (subLower.includes('computation') && (titleLower.includes('toc') || titleLower.includes('automata') || titleLower.includes('computation'))) return true;
+                            if (subLower.includes('compiler') && titleLower.includes('compiler')) return true;
+                            if (subLower.includes('organization') && (titleLower.includes('coa') || titleLower.includes('architecture') || titleLower.includes('organization'))) return true;
+                            if (subLower.includes('digital') && (titleLower.includes('digital') || titleLower.includes('logic'))) return true;
+                            if (subLower.includes('discrete') && (titleLower.includes('discrete') || titleLower.includes('math'))) return true;
+                            if (subLower.includes('engineering') && (titleLower.includes('engineering') || titleLower.includes('em'))) return true;
+                            if (subLower.includes('aptitude') && titleLower.includes('aptitude')) return true;
+                            return false;
+                        });
+
+                        if (matchedSub) {
+                            if (!subjectStatsMap[matchedSub]) {
+                                subjectStatsMap[matchedSub] = { totalLectures: 0, facultyMap: {} };
+                            }
+                            subjectStatsMap[matchedSub].totalLectures += validLectures.length;
+                            const fac = course.facultyName;
+                            if (isValidIndividualFaculty(fac)) {
+                                subjectStatsMap[matchedSub].facultyMap[fac] = (subjectStatsMap[matchedSub].facultyMap[fac] || 0) + validLectures.length;
+                            }
+                        }
+                    });
+                }
+
+                const allFaculties = Array.from(facultyMap.values()).filter(f => isValidIndividualFaculty(f.name));
+                allFaculties.forEach(f => {
+                    const meta = facultyRatings[f.name] || { rating: 0, photo: '' };
+                    f.rating = meta.rating || 5;
+                    f.totalHours = Math.round(f.totalDurationSec / 3600);
+                });
+                allFaculties.sort((a, b) => b.totalDurationSec - a.totalDurationSec);
+
+                const starFaculties = allFaculties.slice(0, 8);
+
+                let trivia = null;
+                if (allFaculties.length > 0) {
+                    const top = allFaculties[0];
+                    trivia = {
+                        facultyName: top.name,
+                        hoursTaught: Math.round(top.totalDurationSec / 3600),
+                        coursesCount: top.coursesCount > 0 ? top.coursesCount : 4,
+                        lecturesCount: top.totalLectures > 0 ? top.totalLectures : 343
+                    };
+                } else {
+                    trivia = {
+                        facultyName: 'AMIT SIR',
+                        hoursTaught: 489,
+                        coursesCount: 4,
+                        lecturesCount: 343
+                    };
+                }
+
+                const formattedSubjectStats = {};
+                gateSubjects.forEach(subName => {
+                    const data = subjectStatsMap[subName];
+                    if (data && data.totalLectures > 0) {
+                        const faculties = Object.keys(data.facultyMap).filter(isValidIndividualFaculty);
+                        let primaryFac = 'AMIT SIR';
+                        let primaryLecs = 0;
+                        faculties.forEach(f => {
+                            if (data.facultyMap[f] > primaryLecs) {
+                                primaryFac = f;
+                                primaryLecs = data.facultyMap[f];
+                            }
+                        });
+                        formattedSubjectStats[subName] = {
+                            totalLectures: data.totalLectures,
+                            facultiesCount: faculties.length || 1,
+                            primaryFaculty: primaryFac !== 'N/A' ? primaryFac : 'AMIT SIR',
+                            primaryFacultyLectures: primaryLecs || data.totalLectures
+                        };
+                    }
+                });
+
+                return {
+                    totalCourses,
+                    totalLectures,
+                    totalHours: Math.round(totalSec / 3600),
+                    starFaculties,
+                    subjectStats: formattedSubjectStats,
+                    trivia
+                };
+            };
+
+            window.openSubjectPage = function(subjectName) {
+                const allCourses = courses || [];
+                const sLower = subjectName.toLowerCase();
+                
+                const subjectAliases = {
+                    'data structures & algorithms': ['dsa', 'data structures', 'algorithms', 'ds & algo', 'algo', 'ds'],
+                    'operating systems': ['os', 'operating system', 'opsys'],
+                    'computer networks': ['cn', 'networks', 'networking', 'computer network'],
+                    'database management systems': ['dbms', 'database', 'databases', 'db'],
+                    'theory of computation': ['toc', 'automata', 'flat', 'formal languages'],
+                    'compiler design': ['cd', 'compiler', 'compilers'],
+                    'computer organization & architecture': ['coa', 'cao', 'architecture', 'organization', 'comp org'],
+                    'digital logic & design': ['dld', 'digital logic', 'digital', 'dl'],
+                    'discrete mathematics': ['discrete', 'dm', 'discrete maths'],
+                    'engineering mathematics': ['maths', 'em', 'engg maths', 'linear algebra', 'calculus', 'probability'],
+                    'general aptitude': ['aptitude', 'apti', 'ga', 'general apt']
+                };
+
+                const aliases = subjectAliases[sLower] || [];
+
+                let matchedCourse = allCourses.find(c => {
+                    const title = (c.title || '').toLowerCase();
+                    if (title === sLower || title.includes(sLower) || sLower.includes(title)) return true;
+                    return aliases.some(alias => title === alias || title.includes(alias) || alias.includes(title));
+                });
+
+                const subView = document.getElementById('subcourse-view');
+                if (subView) {
+                    subView.dataset.origin = 'home-view';
+                }
+
+                if (matchedCourse && typeof renderSubcourseView === 'function') {
+                    renderSubcourseView(matchedCourse.id, '', true);
+                    return;
+                }
+
+                if (subView) {
+                    subView.dataset.currentPath = '';
+                    const titleEl = document.getElementById('subcourse-parent-title');
+                    if (titleEl) titleEl.textContent = subjectName;
+                    
+                    const backLink = document.getElementById('back-to-dashboard-from-sub');
+                    if (backLink) {
+                        backLink.innerHTML = '&larr; Back to Landing Page';
+                    }
+                    
+                    const subcourseGrid = document.getElementById('subcourse-grid');
+                    if (subcourseGrid) {
+                        subcourseGrid.innerHTML = `
+                            <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--text-secondary);">
+                                <i className="fas fa-folder-open" style="font-size: 3.5rem; color: var(--accent-primary); opacity: 0.6; margin-bottom: 16px;"></i>
+                                <h3 style="font-size: 1.3rem; color: var(--text-primary); margin-bottom: 8px;">No lectures uploaded yet for ${subjectName}</h3>
+                                <p style="font-size: 0.95rem; max-width: 480px; margin: 0 auto 24px; line-height: 1.5;">
+                                    Upload your lecture video folder for this subject in the Upload section to unlock subcourse tracking, progress analytics, and notes.
+                                </p>
+                                <button onclick="window.switchView ? window.switchView('upload-view') : (window.location.hash = '#upload-view')" className="primary-btn" style="padding: 10px 22px; font-weight: 700; border-radius: 10px; cursor: pointer;">
+                                    <i className="fas fa-cloud-upload-alt" style="margin-right: 6px;"></i> Go to Upload Section
+                                </button>
+                            </div>
+                        `;
+                    }
+                    switchView('subcourse-view');
+                } else {
+                    switchView('dashboard-view');
+                }
+            };
             // --- Global Search Logic ---
             const searchInput = document.getElementById('global-search-input');
             const searchView = document.getElementById('search-results-view');
@@ -6129,8 +8306,15 @@ window.initCourseFlix = async function() {
                 });
 
                 backBtn.addEventListener('click', () => {
-                    switchView('dashboard-view');
+                    const origin = searchView ? searchView.dataset.origin : 'dashboard-view';
+                    if (origin === 'home-view') {
+                        switchView('home-view');
+                        if (searchView) searchView.dataset.origin = 'dashboard-view';
+                    } else {
+                        switchView('dashboard-view');
+                    }
                     searchInput.value = '';
+                    backBtn.innerHTML = '<i className="fas fa-arrow-left"></i>';
                     if (!searchInput.value.trim() && document.activeElement !== searchInput) {
                         searchContainer.style.width = '220px';
                     }
@@ -6307,7 +8491,7 @@ window.initCourseFlix = async function() {
                                 cardSubtitle = `<div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
                                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${course.title}</span>
                                     <span style="display: flex; align-items: center; gap: 4px; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; flex-shrink: 0;">
-                                        <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)} hrs left
+                                        <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)}h
                                     </span>
                                 </div>`;
                             } else {
@@ -6318,7 +8502,7 @@ window.initCourseFlix = async function() {
                                 cardSubtitle = `<div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
                                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Course</span>
                                     <span style="display: flex; align-items: center; gap: 4px; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; flex-shrink: 0;">
-                                        <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)} hrs left
+                                        <i class="far fa-clock"></i> ${Math.ceil(remainingSecs / 3600)}h
                                     </span>
                                 </div>`;
                             }
@@ -6929,22 +9113,197 @@ window.initCourseFlix = async function() {
             });
         }
 
+        let playerNotesSaveDebounce = null;
+
         window.loadPlayerNotes = function() {
             if (!currentCourse || !currentLectureLi) return;
             const lectureId = currentLectureLi.dataset.lectureId;
             const progress = getLectureProgress(currentCourse.id, lectureId);
-            playerNotesEditor.innerHTML = progress.notes || '';
+            if (playerNotesEditor) {
+                playerNotesEditor.innerHTML = progress.notes || '';
+            }
+            const statusEl = document.getElementById('player-notes-save-status');
+            if (statusEl) {
+                statusEl.innerHTML = '<i class="fas fa-check-circle" style="font-size:0.7rem"></i> Saved';
+                statusEl.style.color = '#10b981';
+            }
         };
 
         window.savePlayerNotes = function() {
-            if (!currentCourse || !currentLectureLi) return;
-            const lectureId = currentLectureLi.dataset.lectureId;
-            const progress = getLectureProgress(currentCourse.id, lectureId);
-            progress.courseId = currentCourse.id;
-            progress.lectureId = lectureId;
-            progress.notes = playerNotesEditor.innerHTML;
-            saveLectureProgress(progress);
+            if (!currentCourse || !currentLectureLi || !playerNotesEditor) return;
+            const statusEl = document.getElementById('player-notes-save-status');
+            if (statusEl) {
+                statusEl.innerHTML = '<i class="fas fa-sync fa-spin" style="font-size:0.7rem"></i> Saving...';
+                statusEl.style.color = '#f59e0b';
+            }
+
+            if (playerNotesSaveDebounce) clearTimeout(playerNotesSaveDebounce);
+            playerNotesSaveDebounce = setTimeout(() => {
+                const lectureId = currentLectureLi.dataset.lectureId;
+                const progress = getLectureProgress(currentCourse.id, lectureId);
+                progress.courseId = currentCourse.id;
+                progress.lectureId = lectureId;
+                progress.notes = playerNotesEditor.innerHTML;
+                saveLectureProgress(progress);
+
+                if (statusEl) {
+                    statusEl.innerHTML = '<i class="fas fa-check-circle" style="font-size:0.7rem"></i> Saved';
+                    statusEl.style.color = '#10b981';
+                }
+            }, 500);
         };
+
+        if (playerNotesEditor) {
+            playerNotesEditor.addEventListener('input', window.savePlayerNotes);
+
+            // Handle clicking timestamp badges inside notes to seek video player
+            playerNotesEditor.addEventListener('click', (e) => {
+                const badge = e.target.closest('.note-timestamp-badge');
+                if (badge) {
+                    const seekSec = parseFloat(badge.dataset.time);
+                    if (!isNaN(seekSec) && videoPlayer) {
+                        videoPlayer.currentTime = seekSec;
+                        showToast(`Jumped to video ${formatTime(seekSec)}`);
+                    }
+                }
+            });
+        }
+
+        if (playerNotesTimestampBtn) {
+            playerNotesTimestampBtn.addEventListener('click', () => {
+                if (!videoPlayer || !playerNotesEditor) return;
+                const timeSec = Math.floor(videoPlayer.currentTime);
+                const timeFormatted = formatTime(timeSec);
+                const badgeHtml = `<button class="note-timestamp-badge" data-time="${timeSec}" contenteditable="false"><i class="fas fa-play" style="font-size:0.65rem"></i> ${timeFormatted}</button>&nbsp;`;
+                
+                document.execCommand('insertHTML', false, badgeHtml);
+                window.savePlayerNotes();
+            });
+        }
+
+        window.toggleNoteHighlight = function() {
+            const editor = document.getElementById('player-notes-editor');
+            if (!editor) return;
+
+            const sel = window.getSelection();
+            let isHighlighted = false;
+            let targetNode = null;
+
+            if (sel && sel.anchorNode) {
+                let node = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentNode : sel.anchorNode;
+                while (node && node !== editor) {
+                    if (node.tagName === 'MARK' || (node.style && node.style.backgroundColor && node.style.backgroundColor !== 'transparent' && node.style.backgroundColor !== 'rgba(0, 0, 0, 0)')) {
+                        isHighlighted = true;
+                        targetNode = node;
+                        break;
+                    }
+                    node = node.parentNode;
+                }
+            }
+
+            if (isHighlighted && targetNode) {
+                // Remove highlight background and clear font colors inside node
+                const textContent = targetNode.innerText || targetNode.textContent;
+                const textNode = document.createTextNode(textContent);
+                targetNode.replaceWith(textNode);
+                document.execCommand('hiliteColor', false, 'transparent');
+                showToast('Highlight removed');
+            } else {
+                // Apply highlight (CSS automatically makes text black while background is yellow!)
+                document.execCommand('hiliteColor', false, '#fef08a');
+            }
+            window.savePlayerNotes();
+        };
+
+        // Quick Tag Pill & Copy Button Handlers
+        document.body.addEventListener('click', (e) => {
+            const tagBtn = e.target.closest('.note-quick-tag-btn');
+            if (tagBtn && playerNotesEditor) {
+                const tagType = tagBtn.dataset.tag;
+                const timeSec = videoPlayer ? Math.floor(videoPlayer.currentTime) : 0;
+                const timeFormatted = formatTime(timeSec);
+
+                // Check if selection/cursor is inside an existing callout block
+                const sel = window.getSelection();
+                let parentCallout = null;
+                if (sel && sel.anchorNode) {
+                    let node = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentNode : sel.anchorNode;
+                    while (node && node !== playerNotesEditor) {
+                        if (node.classList && node.classList.contains('note-callout-block')) {
+                            parentCallout = node;
+                            break;
+                        }
+                        node = node.parentNode;
+                    }
+                }
+
+                if (parentCallout) {
+                    const existingTag = parentCallout.dataset.tag;
+                    if (existingTag === tagType) {
+                        // DESELECT / REMOVE CALLOUT BLOCK
+                        const clone = parentCallout.cloneNode(true);
+                        const badges = clone.querySelectorAll('.note-timestamp-badge');
+                        badges.forEach(b => b.remove());
+                        const strongs = clone.querySelectorAll('strong');
+                        strongs.forEach(s => s.remove());
+
+                        const plainText = clone.innerText.trim();
+                        const p = document.createElement('p');
+                        p.innerText = plainText || '';
+                        parentCallout.replaceWith(p);
+                        window.savePlayerNotes();
+                        showToast(`Removed ${tagType} callout`);
+                        return;
+                    } else {
+                        // SWAP CALLOUT TAG TYPE
+                        let tagConfig = { label: 'Important', icon: '⚡', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
+                        if (tagType === 'concept') tagConfig = { label: 'Concept', icon: '💡', color: '#06b6d4', bg: 'rgba(6,182,212,0.1)' };
+                        else if (tagType === 'formula') tagConfig = { label: 'Formula', icon: '📌', color: '#a855f7', bg: 'rgba(168,85,247,0.1)' };
+                        else if (tagType === 'doubt') tagConfig = { label: 'Doubt', icon: '❓', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' };
+                        else if (tagType === 'summary') tagConfig = { label: 'Summary', icon: '📝', color: '#10b981', bg: 'rgba(16,185,129,0.1)' };
+
+                        parentCallout.dataset.tag = tagType;
+                        parentCallout.style.background = tagConfig.bg;
+                        parentCallout.style.borderLeft = `3px solid ${tagConfig.color}`;
+                        
+                        const strong = parentCallout.querySelector('strong');
+                        if (strong) {
+                            strong.style.color = tagConfig.color;
+                            strong.innerHTML = `${tagConfig.icon} ${tagConfig.label}:`;
+                        }
+                        window.savePlayerNotes();
+                        showToast(`Changed tag to ${tagConfig.label}`);
+                        return;
+                    }
+                }
+
+                // Insert NEW Callout Block
+                let tagConfig = { label: 'Important', icon: '⚡', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
+                if (tagType === 'concept') tagConfig = { label: 'Concept', icon: '💡', color: '#06b6d4', bg: 'rgba(6,182,212,0.1)' };
+                else if (tagType === 'formula') tagConfig = { label: 'Formula', icon: '📌', color: '#a855f7', bg: 'rgba(168,85,247,0.1)' };
+                else if (tagType === 'doubt') tagConfig = { label: 'Doubt', icon: '❓', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' };
+                else if (tagType === 'summary') tagConfig = { label: 'Summary', icon: '📝', color: '#10b981', bg: 'rgba(16,185,129,0.1)' };
+
+                const tagHtml = `<div class="note-callout-block" data-tag="${tagType}" style="background:${tagConfig.bg}; border-left:3px solid ${tagConfig.color}; padding:6px 12px; border-radius:8px; margin:6px 0; font-weight:500;">
+                    <span class="note-timestamp-badge" data-time="${timeSec}" contenteditable="false" style="margin-right:8px;"><i class="fas fa-play" style="font-size:0.65rem"></i> ${timeFormatted}</span>&nbsp;<strong style="color:${tagConfig.color}; font-size:0.88rem; font-weight:700;">${tagConfig.icon} ${tagConfig.label}:</strong>&nbsp;
+                </div><p>&nbsp;</p>`;
+
+                document.execCommand('insertHTML', false, tagHtml);
+                window.savePlayerNotes();
+            }
+
+            // Copy Notes Button
+            if (e.target.closest('#player-notes-copy-btn')) {
+                if (playerNotesEditor) {
+                    const text = playerNotesEditor.innerText;
+                    navigator.clipboard.writeText(text).then(() => {
+                        showToast('Notes copied to clipboard!');
+                    }).catch(() => {
+                        showToast('Failed to copy notes', true);
+                    });
+                }
+            }
+        });
 
         window.showMediaViewerPlaceholder = function(type, lectureId) {
             const playerNotesSidebar = document.getElementById('player-notes-sidebar');
@@ -7232,12 +9591,790 @@ window.initCourseFlix = async function() {
         }).finally(() => {
             // Always ensure nav is visible for non-player views after init
             const navEl = document.querySelector('nav');
-            const activeView = document.querySelector('.view.active');
-            const hideNavViews = ['player-view', 'dpp-upload-view', 'filter-results-view', 'notes-detail-view', 'dpp-detail-view'];
-            if (navEl && activeView && !hideNavViews.includes(activeView.id)) {
+            if (navEl) {
                 navEl.classList.remove('hidden');
             }
         });
+
+        // ============================================================
+        // CALENDAR VIEW ENGINE
+        // ============================================================
+
+        function dateToStr(d) {
+            const yr = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const dy = String(d.getDate()).padStart(2, '0');
+            return `${yr}-${mo}-${dy}`;
+        }
+
+        function isToday(dateStr) {
+            return dateStr === dateToStr(new Date());
+        }
+
+        function isFuture(dateStr) {
+            return dateStr > dateToStr(new Date());
+        }
+
+        function formatCalendarDate(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        // Get uncompleted lectures for a subject (same logic as goals.html)
+        function getNextUncompletedLecture(baseName, facultyName, count) {
+            let uncompleted = [];
+            const matchingCourses = courses.filter(c => c.title === baseName && !c.isIgnored);
+            for (const course of matchingCourses) {
+                if (uncompleted.length >= count) break;
+                const allLectures = [];
+                if (course.chapters) {
+                    course.chapters.forEach(ch => {
+                        if (getSubfolderFacultyName(course, ch.name) !== facultyName) return;
+                        if (ch.lectures) ch.lectures.forEach(l => allLectures.push({ ...l, courseId: course.id, courseTitle: course.title, chName: ch.name, facultyName }));
+                    });
+                } else if (course.lectures) {
+                    if ((course.facultyName || 'Unknown Faculty') === facultyName) {
+                        course.lectures.forEach(l => allLectures.push({ ...l, courseId: course.id, courseTitle: course.title, facultyName }));
+                    }
+                }
+                for (const lec of allLectures) {
+                    if (uncompleted.length >= count) break;
+                    const prog = courseProgress[`${lec.courseId}_${lec.id}`];
+                    if (!prog || !prog.completed) uncompleted.push(lec);
+                }
+            }
+            return uncompleted;
+        }
+
+        // Main calendar open function (exposed to window)
+        window.openCalendarView = function(targetDate) {
+            currentCalendarDate = targetDate || dateToStr(new Date());
+            switchView('history-view');
+            if (window.setHistoryTabCalendar) {
+                window.setHistoryTabCalendar(currentCalendarDate);
+            } else {
+                renderCalendarDay(currentCalendarDate, false);
+            }
+        };
+
+        // Expose renderCalendarDay so React CalendarView component can call it
+        // (The function will be assigned after definition below)
+
+        function isDateUnlocked(dateStr) {
+            if (!dateStr || !isFuture(dateStr)) return true;
+            try {
+                const unlocked = JSON.parse(localStorage.getItem('cal_unlocked_dates') || '[]');
+                return unlocked.includes(dateStr);
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function renderCalendarDay(dateStr, isUnlocked) {
+            await ensureDB();
+            currentCalendarDate = dateStr;
+            const calView = document.getElementById('calendar-view');
+            if (!calView) return;
+
+            isUnlocked = isUnlocked || isDateUnlocked(dateStr);
+
+            const future = isFuture(dateStr);
+            const today = isToday(dateStr);
+
+            // Update date display
+            const dateDisplay = calView.querySelector('#cal-date-display');
+            if (dateDisplay) dateDisplay.textContent = formatCalendarDate(dateStr);
+
+            // Unlock button state
+            const lockOverlay = calView.querySelector('#cal-lock-overlay');
+            if (lockOverlay) {
+                if (future && !isUnlocked) {
+                    lockOverlay.classList.remove('cal-hidden');
+                } else {
+                    lockOverlay.classList.add('cal-hidden');
+                }
+            }
+
+            // Make Playlist button - show on today and future (if unlocked)
+            const makePlaylistBtn = calView.querySelector('#cal-make-playlist-btn');
+            if (makePlaylistBtn) {
+                if (!future || isUnlocked) {
+                    makePlaylistBtn.classList.remove('cal-hidden');
+                } else {
+                    makePlaylistBtn.classList.add('cal-hidden');
+                }
+            }
+
+            // Build timeline
+            const timeline = calView.querySelector('#cal-timeline');
+            if (!timeline) return;
+            timeline.innerHTML = '';
+
+            const HOUR_HEIGHT = 80; // px per hour
+            const totalMinutes = 24 * 60;
+
+            // Fetch history & completed progress entries for this date
+            await cleanupOrphanedHistoryEntries();
+            const allHistory = await getHistoryEntries();
+            const dayTickedEvents = [];
+            const seenKeysCal = new Set();
+
+            allHistory.forEach(h => {
+                if (!h.timestamp || !h.timestamp.startsWith(dateStr)) return;
+                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
+                if (!course || course.isIgnored) return;
+                if (h.subfolder) {
+                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return;
+                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return;
+                }
+                const progKey = `${h.courseId}_${h.lectureId}`;
+                if (seenKeysCal.has(progKey)) return;
+                const prog = courseProgress[progKey];
+                if (prog && prog.completed) {
+                    seenKeysCal.add(progKey);
+                    dayTickedEvents.push(h);
+                }
+            });
+
+            Object.values(courseProgress).forEach(prog => {
+                if (!prog.completed) return;
+                const ts = prog.completedAt || prog.lastStudiedAt;
+                if (ts && ts.startsWith(dateStr)) {
+                    const progKey = prog.id || `${prog.courseId}_${prog.lectureId}`;
+                    if (!seenKeysCal.has(progKey)) {
+                        seenKeysCal.add(progKey);
+                        const course = courses.find(c => String(c.id) === String(prog.courseId));
+                        const lecture = course?.lectures?.find(l => String(l.id) === String(prog.lectureId));
+                        dayTickedEvents.push({
+                            id: progKey,
+                            courseId: prog.courseId,
+                            lectureId: prog.lectureId,
+                            courseTitle: prog.courseTitle || course?.title || 'Course',
+                            lectureName: prog.lectureName || lecture?.displayName || 'Lecture',
+                            duration: prog.lectureDuration || lecture?.duration || 3600,
+                            timestamp: ts,
+                            subfolder: prog.subfolder || ''
+                        });
+                    }
+                }
+            });
+
+            // Calculate total hours studied for this specific day
+            let dayStudiedSecs = 0;
+            dayTickedEvents.forEach(h => {
+                dayStudiedSecs += (h.duration || 3600);
+            });
+            const dayHours = Math.round((dayStudiedSecs / 3600) * 10) / 10;
+            const calDayHoursDisplay = calView.querySelector('#cal-day-hours-studied');
+            if (calDayHoursDisplay) {
+                calDayHoursDisplay.innerHTML = `<i class="fas fa-history" style="color: #34d399; margin-right: 6px;"></i><span>${dayHours}h Studied</span>`;
+            }
+
+            // Fetch stored calendar events for this date
+            const storedEvents = await getCalendarEventsForDate(dateStr);
+
+            // Build hour slots
+            for (let hour = 0; hour < 24; hour++) {
+                const hourSlot = document.createElement('div');
+                hourSlot.className = 'cal-hour-slot';
+                hourSlot.dataset.hour = hour;
+                hourSlot.style.height = HOUR_HEIGHT + 'px';
+
+                const label = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+                hourSlot.innerHTML = `<div class="cal-hour-label">${label}</div><div class="cal-hour-line"></div>`;
+
+                // Click to add event (only for today, or unlocked future)
+                if (!future || isUnlocked) {
+                    hourSlot.addEventListener('click', (e) => {
+                        if (e.target.closest('.cal-event')) return;
+                        showAddEventModal(dateStr, hour, 0, isUnlocked, () => renderCalendarDay(dateStr, isUnlocked));
+                    });
+                    hourSlot.style.cursor = 'pointer';
+                    hourSlot.title = `Click to add event at ${label}`;
+                }
+
+                timeline.appendChild(hourSlot);
+            }
+
+            // Gather all day events for overlap layout
+            const allDayEvents = [];
+
+            // History-derived events (ticked/completed tasks)
+            dayTickedEvents.forEach(h => {
+                const endTime = new Date(h.timestamp);
+                const durationSecs = h.duration || 3600;
+                const course = courses.find(c => c.id === parseInt(h.courseId));
+                const faculty = course ? getSubfolderFacultyName(course, h.subfolder || '') : (h.courseTitle || 'Unknown');
+
+                allDayEvents.push({
+                    endMinute: endTime.getHours() * 60 + endTime.getMinutes(),
+                    durationMins: Math.round(durationSecs / 60),
+                    label: h.courseTitle || 'Unknown Subject',
+                    tooltip: `${h.lectureName || 'Lecture'} — ${faculty}`,
+                    type: 'history',
+                    id: null,
+                    courseId: h.courseId,
+                    lectureId: h.lectureId,
+                    subfolder: h.subfolder || '',
+                    isCompleted: true,
+                    canDelete: false,
+                    onDelete: null
+                });
+            });
+
+            // Place stored calendar events (planned)
+            storedEvents.forEach(ev => {
+                let isCompleted = false;
+                let cId = ev.courseId;
+                let lId = ev.lectureId;
+                let sub = ev.subfolder || '';
+
+                if (!cId && ev.courseTitle) {
+                    const match = courses.find(c => c.title === ev.courseTitle);
+                    if (match) cId = match.id;
+                }
+
+                if (cId && lId && courseProgress[`${cId}_${lId}`]?.completed) {
+                    isCompleted = true;
+                }
+
+                // Check if this planned event is already represented by a dayTickedEvent for the same lecture
+                const alreadyInTicked = dayTickedEvents.some(h => {
+                    if (cId && lId && String(h.courseId) === String(cId) && String(h.lectureId) === String(lId)) return true;
+                    return false;
+                });
+
+                if (alreadyInTicked) return;
+
+                allDayEvents.push({
+                    endMinute: ev.endMinute,
+                    durationMins: ev.durationMins,
+                    label: ev.courseTitle || 'Planned',
+                    tooltip: `${ev.lectureName || 'Lecture'} — ${ev.faculty || 'Faculty'}`,
+                    type: 'planned',
+                    id: ev.id,
+                    courseId: cId,
+                    lectureId: lId,
+                    subfolder: sub,
+                    isCompleted,
+                    canDelete: (!future || isUnlocked),
+                    onDelete: () => renderCalendarDay(dateStr, isUnlocked)
+                });
+            });
+
+            // Calculate horizontal column layout for overlapping events
+            layoutDayEvents(allDayEvents);
+
+            // Render all events
+            allDayEvents.forEach(ev => {
+                placeCalendarBlock(timeline, ev, HOUR_HEIGHT);
+            });
+
+            // Scroll to first event or 8am
+            let scrollTo = 8 * HOUR_HEIGHT;
+            if (dayTickedEvents.length > 0 || storedEvents.length > 0) {
+                const allEndMins = [
+                    ...dayTickedEvents.map(h => { const t = new Date(h.timestamp); return t.getHours() * 60 + t.getMinutes(); }),
+                    ...storedEvents.map(ev => ev.endMinute)
+                ];
+                const minMin = Math.min(...allEndMins);
+                const startMin = Math.max(0, minMin - Math.round((dayTickedEvents[0]?.duration || 3600) / 60) - 30);
+                scrollTo = Math.floor(startMin / 60) * HOUR_HEIGHT;
+            }
+            requestAnimationFrame(() => { timeline.scrollTop = Math.max(0, scrollTo); });
+        }
+        // Expose after definition
+        window.renderCalendarDay = renderCalendarDay;
+
+        function layoutDayEvents(events) {
+            if (!events || events.length === 0) return;
+
+            // Remove exact duplicate event entries (same label/courseId & startMinute & endMinute)
+            const uniqueMap = new Map();
+            const uniqueEvents = [];
+            events.forEach(ev => {
+                const dMins = ev.durationMins && ev.durationMins > 0 ? ev.durationMins : 60;
+                ev.startMinute = Math.max(0, ev.endMinute - dMins);
+                ev.durationMins = dMins;
+                const key = `${ev.courseId || ev.label}_${ev.lectureId || ''}_${ev.startMinute}_${ev.endMinute}`;
+                if (!uniqueMap.has(key)) {
+                    uniqueMap.set(key, ev);
+                    uniqueEvents.push(ev);
+                }
+            });
+
+            events.length = 0;
+            uniqueEvents.forEach(e => events.push(e));
+
+            events.sort((a, b) => a.startMinute - b.startMinute || b.durationMins - a.durationMins);
+
+            const clusters = [];
+            let currentCluster = [];
+            let clusterEnd = -1;
+
+            events.forEach(ev => {
+                if (currentCluster.length === 0) {
+                    currentCluster.push(ev);
+                    clusterEnd = ev.endMinute;
+                } else if (ev.startMinute < clusterEnd) {
+                    currentCluster.push(ev);
+                    if (ev.endMinute > clusterEnd) clusterEnd = ev.endMinute;
+                } else {
+                    clusters.push(currentCluster);
+                    currentCluster = [ev];
+                    clusterEnd = ev.endMinute;
+                }
+            });
+            if (currentCluster.length > 0) clusters.push(currentCluster);
+
+            clusters.forEach(cluster => {
+                const columns = [];
+                cluster.forEach(ev => {
+                    let placed = false;
+                    for (let c = 0; c < columns.length; c++) {
+                        if (columns[c] <= ev.startMinute) {
+                            columns[c] = ev.endMinute;
+                            ev.colIndex = c;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) {
+                        ev.colIndex = columns.length;
+                        columns.push(ev.endMinute);
+                    }
+                });
+
+                cluster.forEach(ev => {
+                    const maxOverlapAtEv = cluster.filter(o => ev.startMinute < o.endMinute && o.startMinute < ev.endMinute).length;
+                    ev.totalCols = Math.max(1, maxOverlapAtEv);
+                    if (ev.totalCols === 1) {
+                        ev.colIndex = 0;
+                    }
+                });
+            });
+        }
+
+        function placeCalendarBlock(timeline, eventData, HOUR_HEIGHT, defaultCanDelete, defaultOnDelete) {
+            const {
+                endMinute, durationMins, label, tooltip, type, id, courseId, lectureId, subfolder, isCompleted,
+                colIndex = 0, totalCols = 1
+            } = eventData;
+            const canDelete = eventData.canDelete !== undefined ? eventData.canDelete : defaultCanDelete;
+            const onDelete = eventData.onDelete !== undefined ? eventData.onDelete : defaultOnDelete;
+
+            const dMins = (!durationMins || durationMins <= 0) ? 60 : durationMins;
+            const startMinute = Math.max(0, endMinute - dMins);
+            const startH = Math.floor(startMinute / 60);
+
+            const targetSlot = timeline.querySelector(`[data-hour="${startH}"]`);
+            if (!targetSlot) return;
+
+            const block = document.createElement('div');
+            block.className = `cal-event cal-event-${type}`;
+
+            const topOffsetWithinHour = (startMinute % 60) / 60 * HOUR_HEIGHT;
+            const blockHeight = Math.max(30, (dMins / 60) * HOUR_HEIGHT);
+
+            function formatTimeMin(min) {
+                const h = Math.floor(min / 60) % 24;
+                const m = min % 60;
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const displayH = h % 12 === 0 ? 12 : h % 12;
+                const displayM = String(m).padStart(2, '0');
+                return `${displayH}:${displayM} ${ampm}`;
+            }
+
+            const timeRangeStr = `${formatTimeMin(startMinute)} - ${formatTimeMin(endMinute)}`;
+
+            const PALETTE = [
+                { bg: 'linear-gradient(135deg, rgba(99, 102, 241, 0.68), rgba(139, 92, 246, 0.58))', border: 'rgba(139, 92, 246, 0.65)', shadow: 'rgba(99, 102, 241, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(16, 185, 129, 0.68), rgba(20, 184, 166, 0.58))', border: 'rgba(16, 185, 129, 0.65)', shadow: 'rgba(16, 185, 129, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(245, 158, 11, 0.68), rgba(234, 88, 12, 0.58))', border: 'rgba(245, 158, 11, 0.65)', shadow: 'rgba(245, 158, 11, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(244, 63, 94, 0.68), rgba(236, 72, 153, 0.58))', border: 'rgba(244, 63, 94, 0.65)', shadow: 'rgba(244, 63, 94, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(14, 165, 233, 0.68), rgba(59, 130, 246, 0.58))', border: 'rgba(14, 165, 233, 0.65)', shadow: 'rgba(14, 165, 233, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(168, 85, 247, 0.68), rgba(217, 70, 239, 0.58))', border: 'rgba(168, 85, 247, 0.65)', shadow: 'rgba(168, 85, 247, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(239, 68, 68, 0.68), rgba(245, 158, 11, 0.58))', border: 'rgba(239, 68, 68, 0.65)', shadow: 'rgba(239, 68, 68, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(132, 204, 22, 0.68), rgba(16, 185, 129, 0.58))', border: 'rgba(132, 204, 22, 0.65)', shadow: 'rgba(132, 204, 22, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(79, 70, 229, 0.68), rgba(6, 182, 212, 0.58))', border: 'rgba(79, 70, 229, 0.65)', shadow: 'rgba(79, 70, 229, 0.25)' },
+                { bg: 'linear-gradient(135deg, rgba(109, 40, 217, 0.68), rgba(147, 51, 234, 0.58))', border: 'rgba(109, 40, 217, 0.65)', shadow: 'rgba(109, 40, 217, 0.25)' }
+            ];
+
+            let hash = 0;
+            const strForHash = String(label || 'Event');
+            for (let i = 0; i < strForHash.length; i++) {
+                hash = (hash << 5) - hash + strForHash.charCodeAt(i);
+                hash |= 0;
+            }
+            const colorScheme = PALETTE[Math.abs(hash) % PALETTE.length];
+            const isDone = type === 'history' || isCompleted;
+
+            const leftCss = totalCols === 1
+                ? '64px'
+                : `calc(64px + (${colIndex} * ((100% - 72px) / ${totalCols})))`;
+            const widthCss = totalCols === 1
+                ? 'auto'
+                : `calc(((100% - 72px) / ${totalCols}) - 4px)`;
+            const rightCss = totalCols === 1 ? '8px' : 'auto';
+
+            block.style.cssText = `
+                position: absolute;
+                top: ${topOffsetWithinHour}px;
+                left: ${leftCss};
+                width: ${widthCss};
+                right: ${rightCss};
+                height: ${blockHeight}px;
+                z-index: 5;
+                background: ${colorScheme.bg};
+                border: 1px solid ${colorScheme.border};
+                box-shadow: 0 2px 12px ${colorScheme.shadow};
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                cursor: pointer;
+                opacity: ${isDone ? '0.88' : '1'};
+                transition: transform 0.2s, z-index 0.2s, box-shadow 0.2s;
+            `;
+
+            block.title = `${label} (${timeRangeStr})\n${tooltip}${isDone ? '\n✓ Completed' : ''}\n(Click to play lecture • Right-click to delete)`;
+
+            block.innerHTML = `
+                <div class="cal-event-inner ${isDone ? 'cal-event-done' : ''}">
+                    <div class="cal-event-label" style="${isDone ? 'text-decoration: line-through; opacity: 0.9;' : ''}">
+                        ${isDone ? '<i class="fas fa-check-circle" style="color: #34d399; margin-right: 6px;"></i>' : ''}
+                        ${label}
+                    </div>
+                    <div class="cal-event-tooltip">🕒 ${timeRangeStr} • ${tooltip}</div>
+                    ${isDone ? '<div class="cal-strike-arrow"></div>' : ''}
+                    ${canDelete && id ? `<button class="cal-event-delete" data-id="${id}" title="Remove event">×</button>` : ''}
+                </div>
+            `;
+
+            // Hover elevation
+            block.addEventListener('mouseenter', () => { block.style.zIndex = '20'; });
+            block.addEventListener('mouseleave', () => { block.style.zIndex = '5'; });
+
+            // Click listener to play/navigate to lecture
+            block.addEventListener('click', async (e) => {
+                if (e.target.closest('.cal-event-delete')) return;
+                
+                let targetCourseId = courseId;
+                let targetLectureId = lectureId;
+
+                if (!targetCourseId && label) {
+                    const matchC = courses.find(c => c.title === label);
+                    if (matchC) targetCourseId = matchC.id;
+                }
+
+                if (targetCourseId) {
+                    const matchC = courses.find(c => String(c.id) === String(targetCourseId));
+                    if (matchC && matchC.lectures && matchC.lectures.length > 0) {
+                        if (!targetLectureId) targetLectureId = matchC.lectures[0].id;
+                    }
+                    if (typeof playLectureFromAnywhere === 'function') {
+                        await playLectureFromAnywhere(targetCourseId, targetLectureId || null, 'history-view', subfolder || null);
+                    }
+                }
+            });
+
+            // Delete handler on click
+            if (canDelete && id) {
+                block.querySelector('.cal-event-delete').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await deleteCalendarEvent(id);
+                    if (onDelete) onDelete();
+                });
+            }
+
+            // Right click handler to show blurry context menu with "Delete Task"
+            block.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const existingMenu = document.getElementById('cal-custom-contextmenu');
+                if (existingMenu) existingMenu.remove();
+
+                const menu = document.createElement('div');
+                menu.id = 'cal-custom-contextmenu';
+                menu.style.cssText = `
+                    position: fixed;
+                    top: ${e.clientY}px;
+                    left: ${e.clientX}px;
+                    z-index: 10000;
+                    background: rgba(18, 18, 28, 0.78);
+                    backdrop-filter: blur(16px);
+                    -webkit-backdrop-filter: blur(16px);
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    border-radius: 12px;
+                    padding: 6px;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+                    min-width: 140px;
+                `;
+
+                menu.innerHTML = `
+                    <div class="cal-context-item cal-delete-item" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; color: #f87171; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: background 0.15s ease;">
+                        <i class="fas fa-trash-alt"></i> Delete Task
+                    </div>
+                `;
+
+                const deleteBtn = menu.querySelector('.cal-delete-item');
+                deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.background = 'rgba(239, 68, 68, 0.2)'; });
+                deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.background = 'transparent'; });
+
+                deleteBtn.addEventListener('click', async (evt) => {
+                    evt.stopPropagation();
+                    menu.remove();
+                    if (id) {
+                        await deleteCalendarEvent(id);
+                        if (onDelete) onDelete();
+                    }
+                });
+
+                document.body.appendChild(menu);
+
+                const closeMenu = (evt) => {
+                    if (!menu.contains(evt.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closeMenu);
+                        document.removeEventListener('contextmenu', closeMenu);
+                    }
+                };
+                setTimeout(() => {
+                    document.addEventListener('click', closeMenu);
+                    document.addEventListener('contextmenu', closeMenu);
+                }, 10);
+            });
+
+            targetSlot.appendChild(block);
+        }
+
+        function showAddEventModal(dateStr, hour, minute, isUnlocked, onSave) {
+            // Remove any existing modal
+            const existing = document.getElementById('cal-add-event-modal');
+            if (existing) existing.remove();
+
+            // Build subject options from courses
+            const subjectMap = {};
+            courses.forEach(course => {
+                if (course.isIgnored) return;
+                const name = course.title;
+                if (!subjectMap[name]) subjectMap[name] = new Set();
+                if (course.chapters) {
+                    course.chapters.forEach(ch => {
+                        const fac = getSubfolderFacultyName(course, ch.name);
+                        subjectMap[name].add(fac);
+                    });
+                } else {
+                    subjectMap[name].add(course.facultyName || 'Unknown Faculty');
+                }
+            });
+
+            const subjectOptions = Object.keys(subjectMap).map(name =>
+                `<option value="${name}">${name}</option>`
+            ).join('');
+
+            const labelHour = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+
+            const modal = document.createElement('div');
+            modal.id = 'cal-add-event-modal';
+            modal.className = 'cal-modal-overlay';
+            modal.innerHTML = `
+                <div class="cal-modal-content">
+                    <div class="cal-modal-header">
+                        <h3><i class="fas fa-plus-circle"></i> Add Study Event</h3>
+                        <span class="cal-modal-close">×</span>
+                    </div>
+                    <div class="cal-modal-body">
+                        <div class="cal-modal-time-badge">${labelHour}</div>
+                        <div class="cal-form-group">
+                            <label>Subject</label>
+                            <select id="cal-subject-select" class="cal-select">
+                                <option value="">— Select a subject —</option>
+                                ${subjectOptions}
+                            </select>
+                        </div>
+                        <div class="cal-form-group" id="cal-faculty-group" style="display:none;">
+                            <label>Faculty</label>
+                            <select id="cal-faculty-select" class="cal-select"></select>
+                        </div>
+                        <div class="cal-form-group">
+                            <label>Number of Lectures</label>
+                            <div class="cal-number-control">
+                                <button type="button" id="cal-lec-dec">−</button>
+                                <span id="cal-lec-count">1</span>
+                                <button type="button" id="cal-lec-inc">+</button>
+                            </div>
+                        </div>
+                        <div id="cal-modal-error" class="cal-modal-error"></div>
+                    </div>
+                    <div class="cal-modal-footer">
+                        <button type="button" class="cal-btn-secondary" id="cal-modal-cancel">Cancel</button>
+                        <button type="button" class="cal-btn-primary" id="cal-modal-save"><i class="fas fa-check"></i> Add Event</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            let lecCount = 1;
+            document.getElementById('cal-lec-dec').onclick = () => { if (lecCount > 1) { lecCount--; document.getElementById('cal-lec-count').textContent = lecCount; }};
+            document.getElementById('cal-lec-inc').onclick = () => { lecCount++; document.getElementById('cal-lec-count').textContent = lecCount; };
+
+            const subjectSel = document.getElementById('cal-subject-select');
+            const facultyGroup = document.getElementById('cal-faculty-group');
+            const facultySel = document.getElementById('cal-faculty-select');
+
+            subjectSel.addEventListener('change', () => {
+                const name = subjectSel.value;
+                if (name && subjectMap[name]) {
+                    const faculties = Array.from(subjectMap[name]);
+                    facultySel.innerHTML = faculties.map(f => `<option value="${f}">${f}</option>`).join('');
+                    facultyGroup.style.display = faculties.length > 1 ? 'flex' : 'none';
+                } else {
+                    facultyGroup.style.display = 'none';
+                }
+            });
+
+            modal.querySelector('.cal-modal-close').onclick = () => modal.remove();
+            document.getElementById('cal-modal-cancel').onclick = () => modal.remove();
+
+            document.getElementById('cal-modal-save').onclick = async () => {
+                const subjectName = subjectSel.value;
+                if (!subjectName) {
+                    document.getElementById('cal-modal-error').textContent = 'Please select a subject.';
+                    return;
+                }
+                const facultyName = facultySel.value || Array.from(subjectMap[subjectName] || [])[0] || 'Unknown';
+
+                // Find next uncompleted lectures
+                const lecs = getNextUncompletedLecture(subjectName, facultyName, lecCount);
+                if (lecs.length === 0) {
+                    document.getElementById('cal-modal-error').textContent = 'No uncompleted lectures found for this subject.';
+                    return;
+                }
+
+                // Calculate end time based on lecture durations
+                let currentMin = hour * 60 + minute;
+                for (const lec of lecs) {
+                    const durMins = Math.round((lec.duration || 3600) / 60);
+                    const endMin = currentMin + durMins;
+                    await addCalendarEvent({
+                        date: dateStr,
+                        courseId: lec.courseId,
+                        courseTitle: lec.courseTitle || subjectName,
+                        lectureId: lec.id,
+                        lectureName: lec.displayName || lec.title || lec.name || 'Lecture',
+                        faculty: facultyName,
+                        durationMins: durMins,
+                        endMinute: Math.min(endMin, 23 * 60 + 59),
+                        eventType: 'planned',
+                        source: 'manual'
+                    });
+                    currentMin = endMin;
+                }
+
+                modal.remove();
+                if (onSave) onSave();
+            };
+
+            // Close on backdrop click
+            modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+            // Animate in
+            requestAnimationFrame(() => modal.classList.add('cal-modal-visible'));
+        }
+
+        // Make Playlist from calendar day events
+        window.makeCalendarPlaylist = async function(dateStr, isUnlocked, onDone) {
+            await cleanupOrphanedHistoryEntries();
+            const allHistory = await getHistoryEntries();
+            const dayTickedEvents = [];
+            const seenKeys = new Set();
+            allHistory.forEach(h => {
+                if (!h.timestamp || !h.timestamp.startsWith(dateStr)) return;
+                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
+                if (!course || course.isIgnored) return;
+                if (h.subfolder) {
+                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return;
+                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return;
+                }
+                const progKey = `${h.courseId}_${h.lectureId}`;
+                const prog = courseProgress[progKey];
+                if (prog && prog.completed) {
+                    seenKeys.add(progKey);
+                    dayTickedEvents.push(h);
+                }
+            });
+
+            Object.values(courseProgress).forEach(prog => {
+                if (!prog.completed) return;
+                const ts = prog.completedAt || prog.lastStudiedAt;
+                if (ts && ts.startsWith(dateStr)) {
+                    const progKey = prog.id || `${prog.courseId}_${prog.lectureId}`;
+                    if (!seenKeys.has(progKey)) {
+                        seenKeys.add(progKey);
+                        const course = courses.find(c => String(c.id) === String(prog.courseId));
+                        const lecture = course?.lectures?.find(l => String(l.id) === String(prog.lectureId));
+                        dayTickedEvents.push({
+                            courseId: prog.courseId,
+                            courseTitle: prog.courseTitle || course?.title || 'Course',
+                            lectureId: prog.lectureId,
+                            lectureName: prog.lectureName || lecture?.displayName || 'Lecture',
+                            duration: prog.lectureDuration || lecture?.duration || 3600,
+                            subfolder: prog.subfolder || ''
+                        });
+                    }
+                }
+            });
+
+            const storedEvents = await getCalendarEventsForDate(dateStr);
+            const playlist = [];
+
+            // Add completed events for this date
+            dayTickedEvents.forEach(h => {
+                const course = courses.find(c => c.id === parseInt(h.courseId));
+                if (course) {
+                    playlist.push({
+                        courseId: h.courseId,
+                        courseTitle: h.courseTitle || course.title,
+                        lectureId: h.lectureId,
+                        title: h.lectureName || 'Lecture',
+                        duration: h.duration || 3600,
+                        facultyName: getSubfolderFacultyName(course, h.subfolder || ''),
+                        chName: h.subfolder || ''
+                    });
+                }
+            });
+
+            // Add planned events for this date
+            storedEvents.forEach(ev => {
+                playlist.push({
+                    courseId: ev.courseId,
+                    courseTitle: ev.courseTitle,
+                    lectureId: ev.lectureId,
+                    title: ev.lectureName || 'Lecture',
+                    duration: (ev.durationMins || 60) * 60,
+                    facultyName: ev.faculty || '',
+                    chName: ''
+                });
+            });
+
+            if (playlist.length === 0) {
+                alert('No events found for this day to create a playlist.');
+                return;
+            }
+
+            localStorage.setItem('courseflix_calendar_playlist_date', dateStr);
+            localStorage.setItem('courseflix_calendar_playlist', JSON.stringify(playlist));
+
+            // Start playlist from first item that has a valid course
+            const firstItem = playlist[0];
+            if (firstItem && firstItem.courseId && firstItem.lectureId) {
+                await renderCalendarPlayer(firstItem.courseId, firstItem.lectureId);
+            } else {
+                alert('Playlist created! Navigate to the player to start watching.');
+            }
+        };
+
     
     
-};
+};

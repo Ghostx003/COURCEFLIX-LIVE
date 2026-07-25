@@ -76,7 +76,8 @@ export default function PlayerView() {
                                     <button id="apply-custom-speed" style={{"padding":"4px 10px","borderRadius":"4px","fontSize":"0.85rem","background":"var(--accent-primary)","color":"var(--text-on-accent)","border":"none","cursor":"pointer","fontWeight":"600"}}>Set</button>
                                 </div>
                                 <button className="control-btn" id="player-notes-btn" title="Notes (Shift+N)" style={{"marginRight":"6px","fontSize":"0.85rem","opacity":"0.85"}}><i className="fas fa-sticky-note"></i></button>
-                                <button className="control-btn" id="player-dpp-btn" title="DPP (Shift+D)" style={{"marginRight":"10px","fontSize":"0.85rem","opacity":"0.85"}}><i className="fas fa-book-open"></i></button>
+                                <button className="control-btn" id="player-dpp-btn" title="DPP (Shift+D)" style={{"marginRight":"6px","fontSize":"0.85rem","opacity":"0.85"}}><i className="fas fa-book-open"></i></button>
+                                <button className="control-btn" id="shortcuts-btn" title="Keyboard Shortcuts (/)" onClick={() => { const el = document.getElementById('shortcuts-modal-overlay'); if (el) el.classList.remove('hidden'); }} style={{"marginRight":"10px","fontSize":"0.85rem","opacity":"0.85"}}><i className="fas fa-keyboard"></i></button>
                                 <button className="control-btn" id="speed-btn" style={{"marginRight":"0"}}>1x</button>
                                 <button className="control-btn" id="custom-speed-btn" title="Custom Speed" style={{"marginRight":"8px"}}><i className="fas fa-sliders-h" style={{"fontSize":"0.9rem"}}></i></button>
                                 <button className="control-btn" id="fullscreen-btn"><i className="fas fa-expand"></i></button>
@@ -103,33 +104,144 @@ export default function PlayerView() {
                 </div>
             </div>
             <button id="media-viewer-toggle-btn" className="hidden"><i className="fas fa-chevron-left"></i></button>
-            <div id="player-notes-sidebar" className="hidden" style={{"width":"var(--notes-width)","minWidth":"0px","backgroundColor":"var(--bg-secondary)","borderLeft":"1px solid var(--border-primary)","position":"relative","zIndex":"50","display":"flex","flexDirection":"column","transition":"width 0.3s ease-in-out, opacity 0.3s"}}>
-                <div id="player-notes-resize-handle" style={{"position":"absolute","top":"0","left":"0","height":"100%","width":"8px","cursor":"ew-resize","zIndex":"60","backgroundColor":"transparent","transition":"background-color 0.2s"}}></div>
-                <div id="player-notes-sidebar-header" style={{"display":"flex","alignItems":"center","justifyContent":"space-between","padding":"1rem","borderBottom":"1px solid var(--border-primary)","backgroundColor":"var(--bg-secondary)","flexShrink":"0","gap":"1rem"}}>
-                    <h3 style={{"margin":"0","fontSize":"1.1rem","fontWeight":"600"}}>Notes</h3>
-                    <div className="notes-actions" style={{"display":"flex","gap":"8px"}}>
-                        <button id="player-notes-add-timestamp-btn" title="Add Timestamp" style={{"backgroundColor":"var(--bg-tertiary)","color":"var(--text-primary)","border":"1px solid var(--border-secondary)","padding":"4px 8px","borderRadius":"4px","cursor":"pointer","fontSize":"0.8rem","fontWeight":"500"}}><i className="fas fa-clock"></i> Timestamp</button>
-                        <button id="close-player-notes-btn" title="Close Notes" style={{"backgroundColor":"var(--accent-primary)","color":"white","border":"none","borderRadius":"6px","width":"28px","height":"28px","cursor":"pointer","fontSize":"1rem","display":"flex","alignItems":"center","justifyContent":"center","transition":"background-color 0.2s"}}><i className="fas fa-times"></i></button>
+            <div id="player-notes-sidebar" className="hidden" style={{ width: "var(--notes-width)", minWidth: "0px", backgroundColor: "var(--bg-secondary)", borderLeft: "1px solid var(--border-primary)", position: "relative", zIndex: "50", display: "flex", flexDirection: "column", transition: "width 0.3s ease-in-out, opacity 0.3s", boxShadow: "-10px 0 30px rgba(0,0,0,0.3)" }}>
+                <div id="player-notes-resize-handle" style={{ position: "absolute", top: "0", left: "0", height: "100%", width: "8px", cursor: "ew-resize", zIndex: "60", backgroundColor: "transparent", transition: "background-color 0.2s" }} title="Drag to resize notes panel"></div>
+                
+                {/* Modern Header */}
+                <div id="player-notes-sidebar-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.85rem 1.1rem", borderBottom: "1px solid var(--border-primary)", backgroundColor: "var(--bg-secondary)", flexShrink: "0", gap: "0.8rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <h3 style={{ margin: "0", fontSize: "1.05rem", fontWeight: "800", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <i className="fas fa-edit" style={{ color: "var(--accent-primary)", fontSize: "1rem" }}></i> Notes
+                        </h3>
+                        <span style={{ fontSize: "0.72rem", background: "var(--bg-tertiary)", border: "1px solid var(--border-secondary)", color: "var(--text-secondary)", padding: "2px 6px", borderRadius: "5px", fontWeight: "700" }} title="Press 'Q' to toggle notes window">Q</span>
+                    </div>
+
+                    <div className="notes-actions" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span id="player-notes-save-status" style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px", padding: "2px 8px", background: "rgba(16,185,129,0.1)", borderRadius: "12px", border: "1px solid rgba(16,185,129,0.2)" }}>
+                            <i className="fas fa-check-circle" style={{ fontSize: "0.7rem" }}></i> Saved
+                        </span>
+                        
+                        <button id="player-notes-add-timestamp-btn" title="Insert Current Video Timestamp (Click inside notes to jump back!)" style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-secondary)", padding: "5px 10px", borderRadius: "8px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px", transition: "all 0.2s ease" }}>
+                            <i className="fas fa-stopwatch" style={{ color: "var(--accent-primary)" }}></i> +Time
+                        </button>
+                        
+                        <button id="player-notes-copy-btn" title="Copy Notes to Clipboard" style={{ backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-secondary)", padding: "5px 9px", borderRadius: "8px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "600", transition: "all 0.2s ease" }}>
+                            <i className="fas fa-copy"></i>
+                        </button>
+
+                        <button id="close-player-notes-btn" title="Close Notes (Q)" style={{ backgroundColor: "rgba(255,255,255,0.06)", color: "var(--text-secondary)", border: "1px solid var(--border-primary)", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s ease" }}>
+                            <i className="fas fa-times"></i>
+                        </button>
                     </div>
                 </div>
-                <div id="player-notes-formatting-toolbar" style={{"display":"flex","gap":"2px","padding":"6px 12px","borderBottom":"1px solid var(--border-primary)","background":"#111116","overflowX":"auto","alignItems":"center"}}>
-                    <button className="notes-format-btn" data-command="formatBlock" data-value="H1" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'H1') }} title="Heading 1" style={{"fontWeight":"500"}}>H1</button>
-                    <button className="notes-format-btn" data-command="formatBlock" data-value="H2" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'H2') }} title="Heading 2" style={{"fontWeight":"500"}}>H2</button>
-                    <button className="notes-format-btn" data-command="formatBlock" data-value="P" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'P') }} title="Paragraph" style={{"fontWeight":"500"}}>P</button>
-                    
-                    <div style={{"width":"1px","height":"16px","background":"rgba(255,255,255,0.1)","margin":"0 6px"}}></div>
-                    
-                    <button className="notes-format-btn" data-command="insertUnorderedList" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('insertUnorderedList', false, null) }} title="Bullet List"><i className="fas fa-list-ul"></i></button>
-                    <button className="notes-format-btn" data-command="insertOrderedList" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('insertOrderedList', false, null) }} title="Numbered List"><i className="fas fa-list-ol"></i></button>
-                    
-                    <div style={{"width":"1px","height":"16px","background":"rgba(255,255,255,0.1)","margin":"0 6px"}}></div>
-                    
-                    <button className="notes-format-btn" data-command="bold" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('bold', false, null) }} title="Bold" style={{"fontWeight":"800","fontFamily":"serif"}}>B</button>
-                    <button className="notes-format-btn" data-command="italic" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('italic', false, null) }} title="Italic" style={{"fontStyle":"italic","fontFamily":"serif"}}>I</button>
-                    <button className="notes-format-btn" data-command="underline" onMouseDown={() => { event.preventDefault() }} onClick={() => { document.execCommand('underline', false, null) }} title="Underline" style={{"textDecoration":"underline","fontFamily":"serif"}}>U</button>
+
+                {/* Editor Container */}
+                <div id="player-notes-editor-container" style={{ flexGrow: "1", padding: "1rem", overflowY: "auto", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
+                    <div id="player-notes-editor" contentEditable="true" placeholder="Press Q to take notes... Insert timestamps, formulas, & callout blocks!" style={{ flexGrow: "1", outline: "none", whiteSpace: "pre-wrap", fontFamily: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, sans-serif", fontSize: "0.95rem", lineHeight: "1.65", color: "#ffffff", minHeight: "200px" }}></div>
                 </div>
-                <div id="player-notes-editor-container" style={{"flexGrow":"1","padding":"1rem","overflowY":"auto","display":"flex","flexDirection":"column"}}>
-                    <div id="player-notes-editor" contentEditable="true" placeholder="Type your notes here... (Markdown supported)" style={{"flexGrow":"1","outline":"none","whiteSpace":"pre-wrap","fontFamily":"inherit","fontSize":"0.95rem","lineHeight":"1.5","color":"var(--text-primary)"}}></div>
+
+                {/* Bottom Toolbar Section */}
+                <div id="player-notes-bottom-section" style={{ borderTop: "1px solid var(--border-primary)", background: "var(--bg-tertiary)", flexShrink: "0", display: "flex", flexDirection: "column" }}>
+                    {/* Quick Callout Tag Pills Bar */}
+                    <div id="player-notes-tags-bar" style={{ display: "flex", gap: "6px", padding: "8px 12px", background: "var(--bg-primary)", borderBottom: "1px solid var(--border-primary)", overflowX: "auto", scrollbarWidth: "none" }}>
+                        <button className="note-quick-tag-btn" data-tag="important" style={{ background: "rgba(239, 68, 68, 0.12)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.74rem", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "4px" }}>
+                            ⚡ Important
+                        </button>
+                        <button className="note-quick-tag-btn" data-tag="concept" style={{ background: "rgba(6, 182, 212, 0.12)", color: "#06b6d4", border: "1px solid rgba(6, 182, 212, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.74rem", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "4px" }}>
+                            💡 Concept
+                        </button>
+                        <button className="note-quick-tag-btn" data-tag="formula" style={{ background: "rgba(168, 85, 247, 0.12)", color: "#a855f7", border: "1px solid rgba(168, 85, 247, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.74rem", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "4px" }}>
+                            📌 Formula
+                        </button>
+                        <button className="note-quick-tag-btn" data-tag="doubt" style={{ background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.74rem", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "4px" }}>
+                            ❓ Doubt
+                        </button>
+                        <button className="note-quick-tag-btn" data-tag="summary" style={{ background: "rgba(16, 185, 129, 0.12)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "3px 9px", borderRadius: "12px", fontSize: "0.74rem", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "4px" }}>
+                            📝 Summary
+                        </button>
+                    </div>
+
+                    {/* Formatting Toolbar */}
+                    <div id="player-notes-formatting-toolbar" style={{ display: "flex", flexWrap: "wrap", gap: "5px", padding: "8px 12px", background: "var(--bg-tertiary)", alignItems: "center", scrollbarWidth: "none" }}>
+                        <div style={{ display: "flex", gap: "2px" }}>
+                            <button className="notes-format-btn" data-command="formatBlock" data-value="H1" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'H1') }} title="Heading 1" style={{ fontWeight: "700", fontSize: "0.75rem", padding: "3px 6px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}>H1</button>
+                            <button className="notes-format-btn" data-command="formatBlock" data-value="H2" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'H2') }} title="Heading 2" style={{ fontWeight: "700", fontSize: "0.75rem", padding: "3px 6px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}>H2</button>
+                            <button className="notes-format-btn" data-command="formatBlock" data-value="H3" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'H3') }} title="Heading 3" style={{ fontWeight: "700", fontSize: "0.75rem", padding: "3px 6px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}>H3</button>
+                            <button className="notes-format-btn" data-command="formatBlock" data-value="P" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('formatBlock', false, 'P') }} title="Paragraph" style={{ fontWeight: "700", fontSize: "0.75rem", padding: "3px 6px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}>P</button>
+                        </div>
+                        
+                        <div style={{ width: "1px", height: "16px", background: "var(--border-primary)", margin: "0 2px" }}></div>
+                        
+                        <div style={{ display: "flex", gap: "2px" }}>
+                            <button className="notes-format-btn" data-command="bold" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('bold', false, null) }} title="Bold" style={{ fontWeight: "800", padding: "3px 7px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}><b>B</b></button>
+                            <button className="notes-format-btn" data-command="italic" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('italic', false, null) }} title="Italic" style={{ fontStyle: "italic", padding: "3px 7px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}><i>I</i></button>
+                            <button className="notes-format-btn" data-command="underline" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('underline', false, null) }} title="Underline" style={{ textDecoration: "underline", padding: "3px 7px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}><u>U</u></button>
+                            <button className="notes-format-btn" data-command="strikeThrough" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { document.execCommand('strikeThrough', false, null) }} title="Strikethrough" style={{ textDecoration: "line-through", padding: "3px 7px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}>S</button>
+                        </div>
+
+                        <div style={{ width: "1px", height: "16px", background: "var(--border-primary)", margin: "0 2px" }}></div>
+                        
+                        {/* Font Theme Select Dropdown */}
+                        <select 
+                            id="player-notes-font-family"
+                            onChange={(e) => {
+                                const font = e.target.value;
+                                const ed = document.getElementById('player-notes-editor');
+                                if (ed) ed.style.fontFamily = font;
+                                document.execCommand('fontName', false, font);
+                            }}
+                            defaultValue="'Comic Sans MS', 'Chalkboard SE', cursive, sans-serif"
+                            style={{
+                                background: "var(--bg-secondary)",
+                                color: "var(--text-primary)",
+                                border: "1px solid var(--border-secondary)",
+                                borderRadius: "5px",
+                                padding: "2px 5px",
+                                fontSize: "0.73rem",
+                                fontWeight: "600",
+                                cursor: "pointer",
+                                outline: "none"
+                            }}
+                            title="Choose Font Theme"
+                        >
+                            <option value="'Comic Sans MS', 'Chalkboard SE', cursive, sans-serif">Comic Sans</option>
+                            <option value="'Inter', sans-serif">Inter</option>
+                            <option value="'Roboto', sans-serif">Roboto</option>
+                            <option value="'Courier New', monospace">Monospace</option>
+                            <option value="'Georgia', serif">Georgia</option>
+                        </select>
+
+                        {/* Font Size Select Dropdown */}
+                        <select 
+                            id="player-notes-font-size"
+                            onChange={(e) => {
+                                const size = e.target.value;
+                                const ed = document.getElementById('player-notes-editor');
+                                if (ed) ed.style.fontSize = size;
+                            }}
+                            defaultValue="0.95rem"
+                            style={{
+                                background: "var(--bg-secondary)",
+                                color: "var(--text-primary)",
+                                border: "1px solid var(--border-secondary)",
+                                borderRadius: "5px",
+                                padding: "2px 5px",
+                                fontSize: "0.73rem",
+                                fontWeight: "600",
+                                cursor: "pointer",
+                                outline: "none"
+                            }}
+                            title="Choose Font Size"
+                        >
+                            <option value="0.8rem">13px</option>
+                            <option value="0.95rem">15px (Def)</option>
+                            <option value="1.1rem">18px</option>
+                            <option value="1.25rem">20px</option>
+                            <option value="1.5rem">24px</option>
+                        </select>
+
+                        <button className="notes-format-btn" onMouseDown={(e) => { e.preventDefault() }} onClick={() => { if (window.toggleNoteHighlight) window.toggleNoteHighlight(); }} title="Toggle Yellow Highlight" style={{ padding: "3px 7px", borderRadius: "5px", border: "1px solid var(--border-secondary)", background: "#fef08a", color: "#000000", cursor: "pointer", fontSize: "0.73rem", fontWeight: "700" }}>Highlight</button>
+                    </div>
                 </div>
             </div>
         </div>

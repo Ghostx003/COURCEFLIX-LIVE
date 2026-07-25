@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        /* --- THEME & ACCENT COLOR VARIABLES (Copied from index.html) --- */
+        /* --- THEME & ACCENT COLOR VARIABLES --- */
         html { background-color: #000000; overflow-x: hidden; }
         :root {
             --bg-primary: #f9fafb; --bg-secondary: #ffffff; --bg-tertiary: #f3f4f6;
@@ -272,7 +272,7 @@ window.addEventListener('DOMContentLoaded', () => {
             </div>
 
             <div style="margin-top: 2rem;">
-                <h3 class="section-title" style="cursor: pointer; border-bottom-color: var(--border-secondary);" onclick="const c = document.getElementById('finished-list-container'); c.style.display = c.style.display === 'none' ? 'flex' : 'none'; this.querySelector('.fa-chevron-down, .fa-chevron-up').classList.toggle('fa-chevron-up'); this.querySelector('.fa-chevron-down, .fa-chevron-up').classList.toggle('fa-chevron-down');">
+                <h3 class="section-title" style="cursor: pointer; border-bottom-color: var(--border-secondary);" onclick="const c = document.getElementById('finished-list-container'); if(c) { c.style.display = c.style.display === 'none' ? 'flex' : 'none'; this.querySelector('.fa-chevron-down, .fa-chevron-up').classList.toggle('fa-chevron-up'); this.querySelector('.fa-chevron-down, .fa-chevron-up').classList.toggle('fa-chevron-down'); }">
                     <i class="fas fa-check-double" style="color: var(--text-secondary);"></i> <span style="color: var(--text-secondary);">Finished Lectures</span> <i class="fas fa-chevron-down" style="margin-left: auto; font-size: 1rem; color: var(--text-secondary);"></i>
                 </h3>
                 <div class="upcoming-list" id="finished-list-container" style="display: none; padding-top: 1rem;">
@@ -285,35 +285,32 @@ window.addEventListener('DOMContentLoaded', () => {
     <script>
         // --- DATABASE HELPERS ---
         const DB_NAME = 'CourseFlixDB';
-        const DB_VERSION = 12;
+        const DB_VERSION = 13;
         const STORE_NAME = 'courses';
         const PROGRESS_STORE = 'progress';
 
         let db;
         let courses = [];
         let courseProgress = {};
-        let groupedSubjects = {}; // { "Computer Network": [course1, course2] }
+        let groupedSubjects = {}; // { "Computer Network": Set of faculties }
 
         // State
-        let selectedSubjects = []; // [{ groupName, courseId }]
-        let allocatedLectures = {}; // { courseId: number }
-        let generatedPlaylist = []; // [ { courseId, lecturePath, title, duration, timeStr } ]
+        let selectedSubjects = []; // [{ groupName, facultyName }]
+        let allocatedLectures = {}; // { groupName: number }
+        let generatedPlaylist = []; // [ { courseId, lectureId, title, duration, facultyName, courseTitle } ]
+
+        const $ = id => document.getElementById(id);
 
         async function initDB() {
-            return new Promise((resolve, reject) => {
-                const checkParent = setInterval(() => {
-                    if (window.parent && window.parent.appDbInitialized) {
-                        clearInterval(checkParent);
-                        const request = indexedDB.open(DB_NAME, DB_VERSION);
-                        request.onerror = () => reject("Error opening DB");
-                        request.onsuccess = () => { db = request.result; resolve(); };
-                    }
-                }, 100);
+            return new Promise((resolve) => {
+                try {
+                    const request = indexedDB.open(DB_NAME);
+                    request.onerror = () => resolve();
+                    request.onsuccess = () => { db = request.result; resolve(); };
+                } catch (e) {
+                    resolve();
+                }
             });
-        }
-
-        function getStore(storeName, mode) {
-            return db.transaction(storeName, mode).objectStore(storeName);
         }
 
         function getSubfolderFacultyName(course, fullPath) {
@@ -342,18 +339,46 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         async function loadData() {
-            const allCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
-            const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
+            let allCourses = [];
+            let allProgress = [];
             
+            if (db) {
+                try {
+                    if (db.objectStoreNames && db.objectStoreNames.contains(STORE_NAME)) {
+                        allCourses = await new Promise(resolve => {
+                            const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAll();
+                            req.onsuccess = e => resolve(e.target.result || []);
+                            req.onerror = () => resolve([]);
+                        });
+                    }
+                } catch (e) { console.warn(e); }
+
+                try {
+                    if (db.objectStoreNames && db.objectStoreNames.contains(PROGRESS_STORE)) {
+                        allProgress = await new Promise(resolve => {
+                            const req = db.transaction(PROGRESS_STORE, 'readonly').objectStore(PROGRESS_STORE).getAll();
+                            req.onsuccess = e => resolve(e.target.result || []);
+                            req.onerror = () => resolve([]);
+                        });
+                    }
+                } catch (e) { console.warn(e); }
+            }
+
+            if ((!allCourses || allCourses.length === 0) && window.parent) {
+                if (Array.isArray(window.parent.courses)) {
+                    allCourses = window.parent.courses;
+                }
+            }
+
             courses = allCourses || [];
             courseProgress = {};
-            (allProgress || []).forEach(p => courseProgress[p.id] = p);
+            (allProgress || []).forEach(p => { if (p && p.id) courseProgress[p.id] = p; });
             
             groupedSubjects = {};
             courses.forEach(course => {
                 if (course.isIgnored) return;
 
-                let baseName = course.title;
+                let baseName = course.title || course.name || 'Subject';
                 if (!groupedSubjects[baseName]) groupedSubjects[baseName] = new Set();
                 
                 if (course.chapters && course.chapters.length > 0) {
@@ -374,9 +399,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
         function renderSubjectsList() {
             const container = $('subject-list-container');
+            if (!container) return;
             container.innerHTML = '';
+
+            const subjectKeys = Object.keys(groupedSubjects);
+            if (subjectKeys.length === 0) {
+                container.innerHTML = '<div class="empty-state"><i class="fas fa-folder-open"></i><h3>No subjects found</h3><p>Upload a course first to plan your goals.</p></div>';
+                return;
+            }
             
-            Object.keys(groupedSubjects).forEach(baseName => {
+            subjectKeys.forEach(baseName => {
                 const faculties = Array.from(groupedSubjects[baseName]);
                 const card = document.createElement('div');
                 card.className = 'subject-card';
@@ -401,12 +433,16 @@ window.addEventListener('DOMContentLoaded', () => {
                     const maxCount = parseInt($('subject-count-input').value) || 1;
                     
                     if (!isSelected && document.querySelectorAll('.subject-card.selected').length >= maxCount) {
-                        $('step-1-error').style.display = 'block';
-                        $('step-1-error').textContent = `You can only select up to ${maxCount} subjects.`;
+                        const step1Err = $('step-1-error');
+                        if (step1Err) {
+                            step1Err.style.display = 'block';
+                            step1Err.textContent = `You can only select up to ${maxCount} subjects.`;
+                        }
                         return;
                     }
                     
-                    $('step-1-error').style.display = 'none';
+                    const step1Err = $('step-1-error');
+                    if (step1Err) step1Err.style.display = 'none';
                     card.classList.toggle('selected');
                 };
 
@@ -414,91 +450,112 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        const $ = id => document.getElementById(id);
-        
         function showStep(stepId) {
             document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
-            $(stepId).classList.add('active');
+            const target = $(stepId);
+            if (target) target.classList.add('active');
         }
 
         function renderAllocationList() {
             const container = $('allocation-list-container');
+            if (!container) return;
             container.innerHTML = '';
-            
-            selectedSubjects.forEach(sub => {
-                const title = sub.groupName;
-                
-                if (!allocatedLectures[title]) allocatedLectures[title] = 0;
 
+            const totalReq = parseInt($('total-lectures-input').value) || 4;
+            const reqSpan = $('req-lec-count');
+            if (reqSpan) reqSpan.textContent = totalReq;
+
+            const totalAllocated = Object.values(allocatedLectures).reduce((a, b) => a + b, 0);
+            if (totalAllocated === 0 && selectedSubjects.length > 0) {
+                smartSplit();
+                return;
+            }
+
+            selectedSubjects.forEach(sub => {
                 const item = document.createElement('div');
                 item.className = 'allocation-item';
+
+                const val = allocatedLectures[sub.groupName] || 0;
+
                 item.innerHTML = `
-                    <div class="allocation-name">${title} (${sub.facultyName})</div>
+                    <div>
+                        <div class="allocation-name">${sub.groupName}</div>
+                        <div style="font-size:0.85rem; color:var(--text-secondary);">${sub.facultyName}</div>
+                    </div>
                     <div class="allocation-controls">
-                        <button class="alloc-btn dec-btn" data-id="${title}"><i class="fas fa-minus"></i></button>
-                        <div class="alloc-val" id="alloc-val-${title}">${allocatedLectures[title]}</div>
-                        <button class="alloc-btn inc-btn" data-id="${title}"><i class="fas fa-plus"></i></button>
+                        <button class="alloc-btn dec-btn" data-group="${sub.groupName}">-</button>
+                        <span class="alloc-val" id="alloc-val-${sub.groupName}">${val}</span>
+                        <button class="alloc-btn inc-btn" data-group="${sub.groupName}">+</button>
                     </div>
                 `;
+
+                item.querySelector('.dec-btn').onclick = () => {
+                    if ((allocatedLectures[sub.groupName] || 0) > 0) {
+                        allocatedLectures[sub.groupName]--;
+                        const valEl = $(`alloc-val-${sub.groupName}`);
+                        if (valEl) valEl.textContent = allocatedLectures[sub.groupName];
+                        validateAllocation();
+                    }
+                };
+
+                item.querySelector('.inc-btn').onclick = () => {
+                    allocatedLectures[sub.groupName] = (allocatedLectures[sub.groupName] || 0) + 1;
+                    const valEl = $(`alloc-val-${sub.groupName}`);
+                    if (valEl) valEl.textContent = allocatedLectures[sub.groupName];
+                    validateAllocation();
+                };
+
                 container.appendChild(item);
             });
 
-            document.querySelectorAll('.inc-btn').forEach(btn => btn.onclick = (e) => {
-                const id = e.currentTarget.dataset.id;
-                allocatedLectures[id]++;
-                $(`alloc-val-${id}`).textContent = allocatedLectures[id];
-                validateAllocation();
+            validateAllocation();
+        }
+
+        function smartSplit() {
+            const total = parseInt($('total-lectures-input').value) || 4;
+            const n = selectedSubjects.length;
+            if (n === 0) return;
+            const base = Math.floor(total / n);
+            const rem = total % n;
+            selectedSubjects.forEach((s, idx) => {
+                allocatedLectures[s.groupName] = base + (idx < rem ? 1 : 0);
+                const valEl = $(`alloc-val-${s.groupName}`);
+                if (valEl) valEl.textContent = allocatedLectures[s.groupName];
             });
-            document.querySelectorAll('.dec-btn').forEach(btn => btn.onclick = (e) => {
-                const id = e.currentTarget.dataset.id;
-                if (allocatedLectures[id] > 0) {
-                    allocatedLectures[id]--;
-                    $(`alloc-val-${id}`).textContent = allocatedLectures[id];
-                    validateAllocation();
-                }
-            });
+            validateAllocation();
         }
 
         function validateAllocation() {
-            const totalRequired = parseInt($('total-lectures-input').value) || 1;
-            const currentTotal = Object.values(allocatedLectures).reduce((a, b) => a + b, 0);
-            const err = $('step-2-error');
-            
-            if (currentTotal !== totalRequired) {
-                err.style.display = 'block';
-                $('req-lec-count').textContent = totalRequired;
-                $('cur-lec-count').textContent = currentTotal;
+            const totalReq = parseInt($('total-lectures-input').value) || 0;
+            const totalAllocated = Object.values(allocatedLectures).reduce((a, b) => a + b, 0);
+            const errEl = $('step-2-error');
+            const reqSpan = $('req-lec-count');
+            const curSpan = $('cur-lec-count');
+            if (reqSpan) reqSpan.textContent = totalReq;
+            if (curSpan) curSpan.textContent = totalAllocated;
+
+            if (totalAllocated !== totalReq) {
+                if (errEl) {
+                    errEl.style.display = 'block';
+                    errEl.innerHTML = `Total allocated lectures must equal <span id="req-lec-count">${totalReq}</span>. Current: <span id="cur-lec-count">${totalAllocated}</span>`;
+                }
                 return false;
+            } else {
+                if (errEl) errEl.style.display = 'none';
+                return true;
             }
-            err.style.display = 'none';
-            return true;
         }
-
-        $('smart-alloc-btn').onclick = () => {
-            const totalRequired = parseInt($('total-lectures-input').value) || 1;
-            const subCount = selectedSubjects.length;
-            if (subCount === 0) return;
-
-            let remaining = totalRequired;
-            selectedSubjects.forEach((sub, idx) => {
-                const share = Math.floor(remaining / (subCount - idx));
-                allocatedLectures[sub.groupName] = share;
-                remaining -= share;
-                $(`alloc-val-${sub.groupName}`).textContent = share;
-            });
-            validateAllocation();
-        };
 
         function getUncompletedLectures(baseName, facultyName, limit) {
             let uncompleted = [];
             let globalIdx = 0;
             
-            const matchingCourses = courses.filter(c => c.title === baseName && !c.isIgnored);
+            const matchingCourses = courses.filter(c => (c.title || c.name || 'Subject') === baseName && !c.isIgnored);
             
             for (const course of matchingCourses) {
                 if (uncompleted.length >= limit) break;
                 
-                if (course.chapters) {
+                if (course.chapters && course.chapters.length > 0) {
                     course.chapters.forEach(ch => {
                         if (uncompleted.length >= limit) return;
                         if (isSubfolderIgnored(course, ch.name)) return;
@@ -514,7 +571,7 @@ window.addEventListener('DOMContentLoaded', () => {
                                 if (!prog || !prog.completed) {
                                     uncompleted.push({
                                         courseId: course.id,
-                                        courseTitle: course.title,
+                                        courseTitle: course.title || course.name || 'Subject',
                                         lectureId: lec.id,
                                         title: lec.title || lec.name || lec.displayName || `Lecture ${globalIdx+1}`,
                                         duration: lec.duration || 3600,
@@ -539,7 +596,7 @@ window.addEventListener('DOMContentLoaded', () => {
                             if (!prog || !prog.completed) {
                                 uncompleted.push({
                                     courseId: course.id,
-                                    courseTitle: course.title,
+                                    courseTitle: course.title || course.name || 'Subject',
                                     lectureId: lec.id,
                                     title: lec.title || lec.name || lec.displayName || `Lecture ${globalIdx+1}`,
                                     duration: lec.duration || 3600,
@@ -626,15 +683,15 @@ window.addEventListener('DOMContentLoaded', () => {
             const continueContainer = $('continue-container');
             const upcomingContainer = $('upcoming-list-container');
             const finishedContainer = $('finished-list-container');
-            continueContainer.innerHTML = '';
-            upcomingContainer.innerHTML = '';
+            if (continueContainer) continueContainer.innerHTML = '';
+            if (upcomingContainer) upcomingContainer.innerHTML = '';
             if (finishedContainer) finishedContainer.innerHTML = '';
 
             const statsContainer = $('playlist-stats-container');
             if (statsContainer) statsContainer.innerHTML = '';
 
             if (!generatedPlaylist || generatedPlaylist.length === 0) {
-                upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><h2>All goals completed!</h2><p>Great job today.</p></div>';
+                if (upcomingContainer) upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><h2>No goals set for today!</h2><p>Click "New Playlist" to create your goals.</p></div>';
                 return;
             }
 
@@ -706,7 +763,7 @@ window.addEventListener('DOMContentLoaded', () => {
             });
 
             if (firstUncompletedIdx === -1 && generatedPlaylist.length > 0) {
-                upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color: var(--accent-primary);"></i><h2>All goals completed!</h2><p>Great job today.</p></div>';
+                if (upcomingContainer) upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color: var(--accent-primary);"></i><h2>All goals completed!</h2><p>Great job today.</p></div>';
             }
 
             generatedPlaylist.forEach((lec, idx) => {
@@ -764,40 +821,44 @@ window.addEventListener('DOMContentLoaded', () => {
 
                 if (idx === firstUncompletedIdx) {
                     // Continue Card
-                    continueContainer.innerHTML = `
-                        <div class="continue-card" draggable="true" data-index="${idx}" onclick="playLecture('${lec.courseId}', '${lec.lectureId}')">
-                            <div style="width: 200px; height: 160px; background-color: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; margin-right: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
-                                <div style="width: 100%; flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
-                                    ${thumbHtml}
+                    if (continueContainer) {
+                        continueContainer.innerHTML = `
+                            <div class="continue-card" draggable="true" data-index="${idx}" onclick="playLecture('${lec.courseId}', '${lec.lectureId}')">
+                                <div style="width: 200px; height: 160px; background-color: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; margin-right: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
+                                    <div style="width: 100%; flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
+                                        ${thumbHtml}
+                                    </div>
+                                    <div style="padding: 12px 14px; font-weight: 700; font-size: 1rem; color: #fff; height: 50px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        ${lec.courseTitle}
+                                    </div>
                                 </div>
-                                <div style="padding: 12px 14px; font-weight: 700; font-size: 1rem; color: #fff; height: 50px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                    ${lec.courseTitle}
+                                <div class="continue-info">
+                                    <div class="continue-label">Continue Watching</div>
+                                    <h3 class="continue-title" style="margin-bottom: 0.5rem;">${lec.title}</h3>
+                                    <div style="display: flex; gap: 0.75rem; align-items: center; color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
+                                        <div style="border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem;"><i class="far fa-clock"></i> ${durStr}</div>
+                                        <div style="color: ${lecPercentageColor}; font-weight: 700; font-size: 0.85rem;">${lecPercentage}%</div>
+                                        <span>•</span>
+                                        <span>${lec.courseTitle}</span>
+                                        <span>•</span>
+                                        <span>${facultyNameToDisplay}</span>
+                                    </div>
+                                </div>
+                                <div class="play-btn-large">
+                                    <i class="fas fa-play" style="margin-left: 4px;"></i>
                                 </div>
                             </div>
-                            <div class="continue-info">
-                                <div class="continue-label">Continue Watching</div>
-                                <h3 class="continue-title" style="margin-bottom: 0.5rem;">${lec.title}</h3>
-                                <div style="display: flex; gap: 0.75rem; align-items: center; color: var(--text-secondary); font-size: 0.9rem; font-weight: 500;">
-                                    <div style="border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem;"><i class="far fa-clock"></i> ${durStr}</div>
-                                    <div style="color: ${lecPercentageColor}; font-weight: 700; font-size: 0.85rem;">${lecPercentage}%</div>
-                                    <span>•</span>
-                                    <span>${lec.courseTitle}</span>
-                                    <span>•</span>
-                                    <span>${facultyNameToDisplay}</span>
-                                </div>
-                            </div>
-                            <div class="play-btn-large">
-                                <i class="fas fa-play" style="margin-left: 4px;"></i>
-                            </div>
-                        </div>
-                    `;
-                    const cardEl = continueContainer.querySelector('.continue-card');
-                    cardEl.addEventListener('dragstart', handleDragStart);
-                    cardEl.addEventListener('dragover', handleDragOver);
-                    cardEl.addEventListener('dragenter', handleDragEnter);
-                    cardEl.addEventListener('dragleave', handleDragLeave);
-                    cardEl.addEventListener('drop', handleDrop);
-                    cardEl.addEventListener('dragend', handleDragEnd);
+                        `;
+                        const cardEl = continueContainer.querySelector('.continue-card');
+                        if (cardEl) {
+                            cardEl.addEventListener('dragstart', handleDragStart);
+                            cardEl.addEventListener('dragover', handleDragOver);
+                            cardEl.addEventListener('dragenter', handleDragEnter);
+                            cardEl.addEventListener('dragleave', handleDragLeave);
+                            cardEl.addEventListener('drop', handleDrop);
+                            cardEl.addEventListener('dragend', handleDragEnd);
+                        }
+                    }
                 } else {
                     // Upcoming or Finished list
                     const item = document.createElement('div');
@@ -837,16 +898,15 @@ window.addEventListener('DOMContentLoaded', () => {
                         ${isCompleted ? '' : '<i class="fas fa-grip-vertical drag-handle" title="Drag to reorder subjects" style="color: var(--text-tertiary); margin-left: 1rem; cursor: grab;"></i>'}
                     `;
                     item.onclick = (e) => {
-                        // Prevent click if they are just dragging
                         if (e.target.closest('.drag-handle')) return;
-                        if (!isCompleted && idx > firstUncompletedIdx) {
+                        if (!isCompleted && idx > firstUncompletedIdx && firstUncompletedIdx !== -1) {
                             alert("Complete the previous lecture in order to gain access to this!");
                         } else if (!isCompleted) {
                             playLecture(lec.courseId, lec.lectureId);
                         }
                     };
                     
-                    if (!isCompleted) {
+                    if (!isCompleted && upcomingContainer) {
                         item.addEventListener('dragstart', handleDragStart);
                         item.addEventListener('dragover', handleDragOver);
                         item.addEventListener('dragenter', handleDragEnter);
@@ -874,97 +934,140 @@ window.addEventListener('DOMContentLoaded', () => {
         };
 
         // --- EVENT LISTENERS ---
-        $('subject-count-input').onchange = (e) => {
-            const span = $('req-sub-count');
-            if (span) span.textContent = e.target.value;
-            const max = parseInt(e.target.value);
-            const selected = document.querySelectorAll('.subject-card.selected');
-            if (selected.length > max) {
-                for (let i = max; i < selected.length; i++) {
-                    selected[i].classList.remove('selected');
-                }
+        function setupEventListeners() {
+            const subCountInput = $('subject-count-input');
+            if (subCountInput) {
+                subCountInput.onchange = (e) => {
+                    const span = $('req-sub-count');
+                    if (span) span.textContent = e.target.value;
+                    const max = parseInt(e.target.value) || 1;
+                    const selected = document.querySelectorAll('.subject-card.selected');
+                    if (selected.length > max) {
+                        for (let i = max; i < selected.length; i++) {
+                            selected[i].classList.remove('selected');
+                        }
+                    }
+                };
             }
-        };
 
-        $('next-to-step-2').onclick = () => {
-            const max = parseInt($('subject-count-input').value);
-            const selected = document.querySelectorAll('.subject-card.selected');
-            if (selected.length < 1) {
-                $('step-1-error').style.display = 'block';
-                $('step-1-error').innerHTML = `Please select exactly <span id="req-sub-count">${max}</span> subjects.`;
-                return;
+            const nextStep2Btn = $('next-to-step-2');
+            if (nextStep2Btn) {
+                nextStep2Btn.onclick = () => {
+                    const subInput = $('subject-count-input');
+                    const max = subInput ? (parseInt(subInput.value) || 1) : 1;
+                    const selected = document.querySelectorAll('.subject-card.selected');
+                    const step1Err = $('step-1-error');
+                    if (selected.length < 1) {
+                        if (step1Err) {
+                            step1Err.style.display = 'block';
+                            step1Err.innerHTML = `Please select at least 1 subject (up to <span id="req-sub-count">${max}</span>).`;
+                        }
+                        return;
+                    }
+                    if (selected.length > max) {
+                        if (step1Err) {
+                            step1Err.style.display = 'block';
+                            step1Err.innerHTML = `Please select up to <span id="req-sub-count">${max}</span> subjects.`;
+                        }
+                        return;
+                    }
+                    
+                    selectedSubjects = [];
+                    selected.forEach(card => {
+                        const baseName = card.dataset.basename;
+                        const dropdown = card.querySelector('.faculty-dropdown');
+                        let facultyName;
+                        if (dropdown) {
+                            facultyName = dropdown.value;
+                        } else {
+                            const facDiv = card.querySelector('div[data-faculty]');
+                            facultyName = facDiv ? facDiv.dataset.faculty : 'Unknown Faculty';
+                        }
+                        selectedSubjects.push({ groupName: baseName, facultyName: facultyName });
+                    });
+
+                    allocatedLectures = {};
+                    selectedSubjects.forEach(s => allocatedLectures[s.groupName] = 0);
+                    
+                    renderAllocationList();
+                    showStep('step-2');
+                };
             }
-            if (selected.length !== max) {
-                $('step-1-error').style.display = 'block';
-                $('step-1-error').innerHTML = `Please select exactly <span id="req-sub-count">${max}</span> subjects.`;
-                return;
+
+            const backStep1Btn = $('back-to-step-1');
+            if (backStep1Btn) backStep1Btn.onclick = () => showStep('step-1');
+
+            const smartAllocBtn = $('smart-alloc-btn');
+            if (smartAllocBtn) {
+                smartAllocBtn.onclick = () => {
+                    smartSplit();
+                };
             }
-            
-            selectedSubjects = [];
-            selected.forEach(card => {
-                const baseName = card.dataset.basename;
-                const dropdown = card.querySelector('.faculty-dropdown');
-                let facultyName;
-                if (dropdown) {
-                    facultyName = dropdown.value;
-                } else {
-                    facultyName = card.querySelector('div[data-faculty]').dataset.faculty;
-                }
-                selectedSubjects.push({ groupName: baseName, facultyName: facultyName });
-            });
 
-            allocatedLectures = {};
-            selectedSubjects.forEach(s => allocatedLectures[s.courseId] = 0);
-            
-            renderAllocationList();
-            showStep('step-2');
-        };
-
-        $('back-to-step-1').onclick = () => showStep('step-1');
-        $('generate-playlist-btn').onclick = generatePlaylist;
-
-        $('create-new-btn').onclick = () => {
-            if(confirm("Are you sure you want to delete the current playlist and create a new one?")) {
-                localStorage.removeItem('courseflix_goals_playlist');
-                generatedPlaylist = [];
-                document.querySelectorAll('.subject-card.selected').forEach(el => el.classList.remove('selected'));
-                renderSubjectsList();
-                showStep('step-1');
+            const totalLecInput = $('total-lectures-input');
+            if (totalLecInput) {
+                totalLecInput.onchange = validateAllocation;
+                totalLecInput.oninput = validateAllocation;
             }
-        };
+
+            const genPlaylistBtn = $('generate-playlist-btn');
+            if (genPlaylistBtn) genPlaylistBtn.onclick = generatePlaylist;
+
+            const createNewBtn = $('create-new-btn');
+            if (createNewBtn) {
+                createNewBtn.onclick = () => {
+                    if (confirm("Are you sure you want to delete the current playlist and create a new one?")) {
+                        localStorage.removeItem('courseflix_goals_playlist');
+                        generatedPlaylist = [];
+                        document.querySelectorAll('.subject-card.selected').forEach(el => el.classList.remove('selected'));
+                        renderSubjectsList();
+                        showStep('step-1');
+                    }
+                };
+            }
+        }
 
         // --- INIT ---
-        window.onload = async () => {
+        async function startGoalsApp() {
             try {
                 await initDB();
                 await loadData();
-                $('loading').style.display = 'none';
+                const loadingEl = $('loading');
+                if (loadingEl) loadingEl.style.display = 'none';
                 
-                // Always render subjects list so it's ready if they delete the playlist
+                setupEventListeners();
                 renderSubjectsList();
                 
-                // On load, restore the playlist exactly as it is so the user can use the Eye icon to hide/unhide completed lectures
                 const saved = localStorage.getItem('courseflix_goals_playlist');
                 if (saved) {
-                    generatedPlaylist = JSON.parse(saved);
-
-                    if (generatedPlaylist.length > 0) {
-                        $('app-container').style.display = 'flex';
-                        renderDashboard();
-                        showStep('dashboard-view');
-                        return;
-                    }
+                    try {
+                        generatedPlaylist = JSON.parse(saved);
+                        if (generatedPlaylist && generatedPlaylist.length > 0) {
+                            const appCont = $('app-container');
+                            if (appCont) appCont.style.display = 'flex';
+                            renderDashboard();
+                            showStep('dashboard-view');
+                            return;
+                        }
+                    } catch(e) { console.warn(e); }
                 }
                 
-                $('app-container').style.display = 'flex';
+                const appCont = $('app-container');
+                if (appCont) appCont.style.display = 'flex';
                 showStep('step-1');
                 
             } catch (e) {
                 console.error(e);
-                $('loading').innerHTML = `<h3>Error loading data</h3><p>${e.message || e}</p>`;
+                const loadingEl = $('loading');
+                if (loadingEl) loadingEl.innerHTML = `<h3>Error loading data</h3><p>${e.message || e}</p>`;
             }
-        };
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startGoalsApp);
+        } else {
+            startGoalsApp();
+        }
     </script>
 </body>
 </html>
-<script>console.log("goals loaded");</script>

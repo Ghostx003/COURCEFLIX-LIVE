@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import Navbar from './components/Navbar';
+import HomeView from './components/views/HomeView';
 import DashboardViewElView from './components/views/DashboardViewElView';
 import GoalsView from './components/views/GoalsView';
 import PlanView from './components/views/PlanView';
@@ -19,6 +20,7 @@ import HistoryView from './components/views/HistoryView';
 import SearchResultsView from './components/views/SearchResultsView';
 import PlayerView from './components/views/PlayerView';
 import FacultyView from './components/views/FacultyView';
+import ContactView from './components/views/ContactView';
 import CompletionCalculatorModalModal from './components/modals/CompletionCalculatorModalModal';
 import CompletionModal from './components/modals/CompletionModal';
 import ModalOverlayModal from './components/modals/ModalOverlayModal';
@@ -31,12 +33,25 @@ export default function App() {
       window.courseFlixInitialized = true;
       window.initCourseFlix();
     }
+
+    const preventWindowScroll = () => {
+      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || document.body.scrollTop !== 0) {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      }
+    };
+
+    window.addEventListener('scroll', preventWindowScroll, { passive: true });
+    window.scrollTo(0, 0);
+    return () => window.removeEventListener('scroll', preventWindowScroll);
   }, []);
 
 
   return (
     <>
       <Navbar />
+      <HomeView />
       <DashboardViewElView />
       <GoalsView />
       <PlanView />
@@ -56,6 +71,7 @@ export default function App() {
       <SearchResultsView />
       <PlayerView />
       <FacultyView />
+      <ContactView />
       <CompletionCalculatorModalModal />
       <CompletionModal />
       <ModalOverlayModal />
@@ -149,33 +165,151 @@ export default function App() {
         </div>
     </div>
     <div id="shortcuts-modal-overlay" className="modal-overlay hidden" style={{"zIndex":"99999"}}>
-        <div className="modal-content" style={{"maxWidth":"700px","color":"var(--text-primary)"}}>
-            <button className="close-modal-btn" onClick={() => { document.getElementById('shortcuts-modal-overlay').classList.add('hidden') }} style={{"position":"absolute","top":"1rem","right":"1rem","background":"none","border":"none","fontSize":"1.5rem","color":"var(--text-secondary)","cursor":"pointer"}} title="Close">&times;</button>
-            <h2 style={{"marginBottom":"1rem","color":"var(--accent-primary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"0.5rem"}}>Keyboard Shortcuts</h2>
-            <div style={{"display":"grid","gridTemplateColumns":"1fr 1fr","gap":"1rem","fontSize":"0.95rem"}}>
-                <div>
-                    <h3 style={{"marginBottom":"0.5rem","color":"var(--text-secondary)"}}>Playback</h3>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Space</kbd> Play / Pause</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Left/Right</kbd> Skip 10s</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Up/Down</kbd> Volume up/down</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>m</kbd> Toggle Mute (Video & Brown Noise)</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>c</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>x</kbd> Speed up / down by 0.1</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>[</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>]</kbd> Cycle speeds</p>
+        <div className="modal-content" style={{"maxWidth":"850px","width":"92%","maxHeight":"88vh","overflowY":"auto","color":"var(--text-primary)","borderRadius":"16px","padding":"24px","boxShadow":"0 20px 40px rgba(0,0,0,0.5)","border":"1px solid var(--border-primary)"}}>
+            <button className="close-modal-btn" onClick={() => { document.getElementById('shortcuts-modal-overlay').classList.add('hidden') }} style={{"position":"absolute","top":"1.2rem","right":"1.2rem","background":"rgba(255,255,255,0.05)","border":"1px solid var(--border-secondary)","borderRadius":"50%","width":"32px","height":"32px","fontSize":"1.2rem","color":"var(--text-secondary)","cursor":"pointer","display":"flex","alignItems":"center","justifyContent":"center"}} title="Close">&times;</button>
+            
+            <div style={{"display":"flex","alignItems":"center","justify":"space-between","gap":"12px","marginBottom":"1.2rem","borderBottom":"1px solid var(--border-primary)","paddingBottom":"0.8rem"}}>
+                <h2 style={{"margin":"0","color":"var(--accent-primary)","fontSize":"1.4rem","fontWeight":"700","display":"flex","alignItems":"center","gap":"10px"}}>
+                    <i className="fas fa-keyboard" style={{"fontSize":"1.3rem"}}></i> Lecture Player Keyboard Shortcuts
+                </h2>
+                <span style={{"fontSize":"0.75rem","background":"rgba(16,185,129,0.12)","color":"var(--accent-primary)","border":"1px solid rgba(16,185,129,0.3)","padding":"3px 10px","borderRadius":"12px","fontWeight":"600"}}>Press <kbd style={{"background":"var(--bg-tertiary)","padding":"1px 5px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>/</kbd> to toggle</span>
+            </div>
+
+            <div className="shortcuts-grid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fit, minmax(360px, 1fr))","gap":"1.2rem","fontSize":"0.9rem"}}>
+                
+                {/* Category 1: Playback & Seek Navigation */}
+                <div className="shortcut-category-card" style={{"background":"var(--bg-secondary)","border":"1px solid var(--border-secondary)","borderRadius":"12px","padding":"14px 16px"}}>
+                    <h3 style={{"margin":"0 0 10px 0","fontSize":"1rem","fontWeight":"700","color":"#38bdf8","display":"flex","alignItems":"center","gap":"8px"}}>
+                        <i className="fas fa-play-circle"></i> Playback & Seek Navigation
+                    </h3>
+                    <div style={{"display":"flex","flexDirection":"column","gap":"8px"}}>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Play / Pause</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Space</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Skip 30 Seconds</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Ctrl</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&rarr;</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Rewind 30 Seconds</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Ctrl</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&larr;</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Seek 10 Seconds</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&larr;</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&rarr;</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Next / Previous Lecture</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>N</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>P</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Volume Up / Down</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&uarr;</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&darr;</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle Mute</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>M</kbd>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <h3 style={{"marginBottom":"0.5rem","color":"var(--text-secondary)"}}>General & Features</h3>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>f</kbd> Fullscreen</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Esc</kbd> Exit Fullscreen / Close Menus / Default View</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>n</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>p</kbd> Next / Previous Lecture</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Shift+N</kbd> Toggle Notes</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Shift+D</kbd> Toggle DPP</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Shift + &larr;</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Shift + &rarr;</kbd> Open Right Side Panel (Notes / DPP)</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>s</kbd> Capture Doubt</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>z</kbd> Add Bookmark</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>b</kbd> Toggle Brown Noise Mode</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>Page Up/Down</kbd> Brown Noise Volume Up/Down</p>
-                    <p><kbd style={{"background":"var(--bg-tertiary)","padding":"2px 6px","borderRadius":"4px","border":"1px solid var(--border-secondary)"}}>/</kbd> Show this shortcuts menu</p>
+
+                {/* Category 2: Bookmarks & Timeline */}
+                <div className="shortcut-category-card" style={{"background":"var(--bg-secondary)","border":"1px solid var(--border-secondary)","borderRadius":"12px","padding":"14px 16px"}}>
+                    <h3 style={{"margin":"0 0 10px 0","fontSize":"1rem","fontWeight":"700","color":"#f59e0b","display":"flex","alignItems":"center","gap":"8px"}}>
+                        <i className="fas fa-bookmark"></i> Bookmarks & Timeline Navigation
+                    </h3>
+                    <div style={{"display":"flex","flexDirection":"column","gap":"8px"}}>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Add Bookmark at Timestamp</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Z</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Cycle Between Bookmarks</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Ctrl</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Z</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Return to Main Timeline</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Ctrl</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>P</kbd></span>
+                        </div>
+                    </div>
                 </div>
+
+                {/* Category 3: Study Tools & Notes */}
+                <div className="shortcut-category-card" style={{"background":"var(--bg-secondary)","border":"1px solid var(--border-secondary)","borderRadius":"12px","padding":"14px 16px"}}>
+                    <h3 style={{"margin":"0 0 10px 0","fontSize":"1rem","fontWeight":"700","color":"#10b981","display":"flex","alignItems":"center","gap":"8px"}}>
+                        <i className="fas fa-graduation-cap"></i> Study Tools & Notes
+                    </h3>
+                    <div style={{"display":"flex","flexDirection":"column","gap":"8px"}}>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle Lecture Notes Viewer</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Shift</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>N</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle DPP / Assignment Viewer</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Shift</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>D</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle Scratchpad Notes Editor</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Q</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Capture Screenshot & Doubt</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>S</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Switch / Open Side Panel</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Shift</kbd> + <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&larr;</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>&rarr;</kbd></span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Category 4: Speed & Audio Controls */}
+                <div className="shortcut-category-card" style={{"background":"var(--bg-secondary)","border":"1px solid var(--border-secondary)","borderRadius":"12px","padding":"14px 16px"}}>
+                    <h3 style={{"margin":"0 0 10px 0","fontSize":"1rem","fontWeight":"700","color":"#a855f7","display":"flex","alignItems":"center","gap":"8px"}}>
+                        <i className="fas fa-tachometer-alt"></i> Speed & Audio Controls
+                    </h3>
+                    <div style={{"display":"flex","flexDirection":"column","gap":"8px"}}>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Speed Up / Down (+/- 0.1x)</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>C</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>X</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Cycle Preset Speeds</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>[</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>]</kbd></span>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle Focus Brown Noise</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>B</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Brown Noise Volume</span>
+                            <span style={{"display":"flex","gap":"4px"}}><kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>PgUp</kbd> / <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>PgDn</kbd></span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Category 5: General & Interface */}
+                <div className="shortcut-category-card" style={{"background":"var(--bg-secondary)","border":"1px solid var(--border-secondary)","borderRadius":"12px","padding":"14px 16px"}}>
+                    <h3 style={{"margin":"0 0 10px 0","fontSize":"1rem","fontWeight":"700","color":"#ec4899","display":"flex","alignItems":"center","gap":"8px"}}>
+                        <i className="fas fa-desktop"></i> Interface & General
+                    </h3>
+                    <div style={{"display":"flex","flexDirection":"column","gap":"8px"}}>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle Fullscreen Mode</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>F</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Close Panels / Exit Fullscreen</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Esc</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Open Shortcuts Menu</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>/</kbd>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>

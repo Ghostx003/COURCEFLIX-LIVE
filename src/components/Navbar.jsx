@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 export default function Navbar() {
@@ -6,6 +6,28 @@ export default function Navbar() {
   const [dDayMode, setDDayMode] = useState('days'); // 'days' or 'detailed'
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0 });
   const [isDDayPopoverOpen, setIsDDayPopoverOpen] = useState(false);
+  const [hideIgnored, setHideIgnored] = useState(() => localStorage.getItem('courseflix_hide_ignored') === 'true');
+  const [activeView, setActiveView] = useState(() => window.location.hash.replace('#', '') || 'home-view');
+
+  useEffect(() => {
+    const handleHash = () => {
+      const current = window.location.hash.replace('#', '') || 'home-view';
+      setActiveView(current);
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
+
+  const isPracticeActive = activeView === 'practice-view';
+
+  const handleToggleMode = (targetView) => {
+    setActiveView(targetView);
+    if (typeof window.switchView === 'function') {
+      window.switchView(targetView);
+    } else {
+      window.location.hash = `#${targetView}`;
+    }
+  };
 
   useEffect(() => {
     if (targetDate) {
@@ -40,29 +62,152 @@ export default function Navbar() {
     setDDayMode(prev => prev === 'days' ? 'detailed' : 'days');
   };
 
+  const handleToggleHideIgnored = useCallback(() => {
+    setHideIgnored(prev => {
+      const next = !prev;
+      localStorage.setItem('courseflix_hide_ignored', String(next));
+      window.dispatchEvent(new CustomEvent('courseflix-hide-ignored-changed', { detail: { hideIgnored: next } }));
+      return next;
+    });
+  }, []);
+
   return (
     <nav>
-        <h1 id="home-btn">
+        <h1 id="home-btn" data-view="home-view" onClick={() => window.switchView ? window.switchView('home-view') : (window.location.hash = '#home-view')} style={{ cursor: 'pointer' }}>
             <i className="fas fa-play" style={{"fontSize":"0.95rem","color":"#10b981","filter":"drop-shadow(0 0 6px rgba(16, 185, 129, 0.6))"}}></i> 
             <span>CourseFlix</span>
         </h1>
         <div className="nav-links">
-            <a href="#" className="nav-link" data-view="dashboard-view"><i className="fas fa-th-large" style={{"marginRight":"6px","fontSize":"0.85rem"}}></i>Dashboard</a>
-            <a href="#" className="nav-link" data-view="upload-view"><i className="fas fa-cloud-upload-alt" style={{"marginRight":"6px","fontSize":"0.85rem"}}></i>Upload</a>
-            <a href="#" className="nav-link" data-view="review-view"><i className="fas fa-redo-alt" style={{"marginRight":"6px","fontSize":"0.85rem"}}></i>Review</a>
-            <a href="#" className="nav-link" data-view="practice-view"><i className="fas fa-tasks" style={{"marginRight":"6px","fontSize":"0.85rem"}}></i>Practice</a>
-            <a href="#" className="nav-link" data-view="dpp-view"><i className="fas fa-file-alt" style={{"marginRight":"6px","fontSize":"0.85rem"}}></i>DPP</a>
-            <a href="#" className="nav-link" data-view="notes-view"><i className="fas fa-sticky-note" style={{"marginRight":"6px","fontSize":"0.85rem"}}></i>Notes</a>
-            <a href="#" className="nav-link" data-view="intell-view"><i className="fas fa-brain" style={{"marginRight":"6px","color":"#a855f7"}}></i> Intell</a>
-            <a href="#" className="nav-link" data-view="doubts-view"><i className="fas fa-question-circle" style={{"marginRight":"6px","color":"#f59e0b"}}></i> Doubts</a>
-            <a href="#" className="nav-link" data-view="continue-view"><i className="fas fa-play-circle" style={{"marginRight":"6px","color":"#06b6d4"}}></i> Continue</a>
-            <a href="#" className="nav-link" data-view="history-view"><i className="fas fa-history" style={{"marginRight":"6px"}}></i> History</a>
-            <a href="#" className="nav-link" data-view="faculty-view"><i className="fas fa-chalkboard-teacher" style={{"marginRight":"6px"}}></i> Faculty</a>
-            <a href="#" className="nav-link" data-view="goals-view"><i className="fas fa-bullseye" style={{"marginRight":"6px"}}></i> Goals</a>
-            <a href="https://testflix-pro.vercel.app/app/test-dashboard" target="_blank" rel="noopener noreferrer" className="nav-link" style={{"background":"linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)","color":"white","marginLeft":"6px","padding":"5px 12px","fontSize":"0.82rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(225, 29, 72, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-flask" style={{"marginRight":"5px"}}></i> Testflix</a>
-            <a href="#" className="nav-link" data-view="plan-view" style={{"background":"linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)","color":"white","marginLeft":"4px","padding":"5px 12px","fontSize":"0.82rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(109, 40, 217, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-calendar-alt" style={{"marginRight":"5px"}}></i> Planner</a>
-            <a href="#" className="nav-link" data-view="progress-view" style={{"background":"linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)","color":"white","marginLeft":"4px","padding":"5px 12px","fontSize":"0.82rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(29, 78, 216, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-chart-line" style={{"marginRight":"5px"}}></i> Performance</a>
-            <button id="theme-toggle-btn" className="nav-link" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-secondary)","cursor":"pointer","display":"flex","alignItems":"center","justifyContent":"center","width":"34px","height":"34px","borderRadius":"50%","padding":"0","marginLeft":"4px"}} title="Toggle Pure Black Theme"><i className="fas fa-moon"></i></button>
+            <a href="#" className="nav-link" data-view="dashboard-view"><i className="fas fa-th-large" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Dashboard</a>
+            <a href="#" className="nav-link" data-view="upload-view"><i className="fas fa-cloud-upload-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Upload</a>
+            <div 
+                className="nav-mode-toggle-switch"
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    border: '1px solid var(--border-secondary)',
+                    borderRadius: '24px',
+                    padding: '2px',
+                    position: 'relative',
+                    userSelect: 'none',
+                    margin: '0 2px',
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                    flexShrink: 0
+                }}
+            >
+                <div 
+                    style={{
+                        position: 'absolute',
+                        top: '2px',
+                        bottom: '2px',
+                        width: 'calc(50% - 2px)',
+                        left: isPracticeActive ? 'calc(50%)' : '2px',
+                        borderRadius: '20px',
+                        background: isPracticeActive 
+                            ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(29, 78, 216, 0.45) 100%)' 
+                            : 'linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(217, 119, 6, 0.45) 100%)',
+                        border: isPracticeActive 
+                            ? '1px solid rgba(59, 130, 246, 0.6)' 
+                            : '1px solid rgba(245, 158, 11, 0.6)',
+                        boxShadow: isPracticeActive 
+                            ? '0 0 10px rgba(59, 130, 246, 0.35)' 
+                            : '0 0 10px rgba(245, 158, 11, 0.35)',
+                        transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    }}
+                />
+                <button
+                    type="button"
+                    onClick={() => handleToggleMode('review-view')}
+                    title="Switch to Review Mode"
+                    style={{
+                        position: 'relative',
+                        zIndex: 2,
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 10px',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        color: !isPracticeActive ? '#fbbf24' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'color 0.25s ease'
+                    }}
+                >
+                    <i className="fas fa-redo-alt" style={{ fontSize: '0.72rem', transform: !isPracticeActive ? 'rotate(180deg)' : 'none', transition: 'transform 0.4s ease' }}></i>
+                    Review
+                </button>
+                <button
+                    type="button"
+                    onClick={() => handleToggleMode('practice-view')}
+                    title="Switch to Practice Mode"
+                    style={{
+                        position: 'relative',
+                        zIndex: 2,
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 10px',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        color: isPracticeActive ? '#60a5fa' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'color 0.25s ease'
+                    }}
+                >
+                    <i className="fas fa-tasks" style={{ fontSize: '0.72rem', transform: isPracticeActive ? 'scale(1.15)' : 'none', transition: 'transform 0.3s ease' }}></i>
+                    Practice
+                </button>
+            </div>
+            <a href="#" className="nav-link" data-view="dpp-view"><i className="fas fa-file-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>DPP</a>
+            <a href="#" className="nav-link" data-view="notes-view"><i className="fas fa-sticky-note" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Notes</a>
+            <a href="#" className="nav-link" data-view="doubts-view"><i className="fas fa-question-circle" style={{"marginRight":"4px","color":"#f59e0b"}}></i> Doubts</a>
+            <a href="#" className="nav-link" data-view="continue-view"><i className="fas fa-play-circle" style={{"marginRight":"4px","color":"#06b6d4"}}></i> Continue</a>
+            <a href="#" className="nav-link" data-view="history-view"><i className="fas fa-history" style={{"marginRight":"4px"}}></i> History</a>
+            <a href="#" className="nav-link" data-view="faculty-view"><i className="fas fa-chalkboard-teacher" style={{"marginRight":"4px"}}></i> Faculty</a>
+            <a href="#" className="nav-link" data-view="goals-view"><i className="fas fa-bullseye" style={{"marginRight":"4px"}}></i> Goals</a>
+            <button 
+                id="completion-feature-btn" 
+                className="nav-link completion-btn"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-completion-modal'))}
+                style={{"background":"linear-gradient(135deg, #10b981 0%, #059669 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(16, 185, 129, 0.3)","border":"1px solid rgba(255,255,255,0.2)","cursor":"pointer"}}
+                title="Open Completion Planner & Target Tracker"
+            >
+                <i className="fas fa-chart-pie" style={{"marginRight":"4px"}}></i> Completion
+            </button>
+            <a href="https://testflix-pro.vercel.app/app/test-dashboard" target="_blank" rel="noopener noreferrer" className="nav-link" style={{"background":"linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(225, 29, 72, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-flask" style={{"marginRight":"4px"}}></i> Testflix</a>
+            <a href="#" className="nav-link" data-view="plan-view" style={{"background":"linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(109, 40, 217, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-calendar-alt" style={{"marginRight":"4px"}}></i> Planner</a>
+            <a href="#" className="nav-link" data-view="progress-view" style={{"background":"linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(29, 78, 216, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-chart-line" style={{"marginRight":"4px"}}></i> Performance</a>
+            <button id="theme-toggle-btn" className="nav-link" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-secondary)","cursor":"pointer","display":"flex","alignItems":"center","justifyContent":"center","width":"30px","height":"30px","borderRadius":"50%","padding":"0","marginLeft":"3px"}} title="Toggle Pure Black Theme"><i className="fas fa-moon"></i></button>
+            <button
+                id="hide-ignored-btn"
+                className="nav-link"
+                onClick={handleToggleHideIgnored}
+                title={hideIgnored ? 'Ignored items hidden — click to show' : 'Click to hide ignored courses & sub-courses'}
+                style={{
+                    background: hideIgnored ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : 'var(--bg-tertiary)',
+                    border: hideIgnored ? '1px solid rgba(255,255,255,0.2)' : '1px solid var(--border-secondary)',
+                    color: hideIgnored ? 'white' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '30px',
+                    height: '30px',
+                    borderRadius: '50%',
+                    padding: '0',
+                    marginLeft: '3px',
+                    transition: 'all 0.25s ease',
+                    boxShadow: hideIgnored ? '0 4px 12px rgba(239,68,68,0.5)' : 'none',
+                    flexShrink: 0,
+                }}
+            >
+                <i className={`fas ${hideIgnored ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+            </button>
         </div>
         
         <div>
@@ -76,8 +221,8 @@ export default function Navbar() {
                 <span>
                     {targetDate ? (
                         dDayMode === 'days' 
-                            ? `${timeLeft.days} days left` 
-                            : `${timeLeft.days}d ${timeLeft.hours}h left`
+                            ? `${timeLeft.days}` 
+                            : `${timeLeft.days}d ${timeLeft.hours}h`
                     ) : 'Set D-Day'}
                 </span>
             </div>
@@ -180,7 +325,7 @@ export default function Navbar() {
         </div>
 
         <div id="total-time-left-display" className="info-display"></div>
-        <button id="add-course-btn" className="primary-btn" style={{"padding":"6px 12px", "fontSize":"0.9rem"}}><i className="fas fa-plus"></i> Add Course</button>
+        <button id="add-course-btn" className="primary-btn" style={{"padding":"0", "width":"30px", "height":"30px", "borderRadius":"50%", "display":"inline-flex", "alignItems":"center", "justifyContent":"center", "fontSize":"0.85rem", "flexShrink":"0"}} title="Add Course / Sub-Course"><i className="fas fa-plus"></i></button>
     </nav>
   );
 }

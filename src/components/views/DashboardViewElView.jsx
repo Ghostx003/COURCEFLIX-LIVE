@@ -14,7 +14,10 @@ export default function DashboardViewElView() {
             "backdropFilter":"var(--glass-blur)",
             "WebkitBackdropFilter":"var(--glass-blur)",
             "flexWrap":"wrap",
-            "boxShadow":"0 4px 20px rgba(0,0,0,0.05)"
+            "boxShadow":"0 4px 20px rgba(0,0,0,0.05)",
+            "position":"relative",
+            "zIndex":1000,
+            "overflow":"visible"
         }}>
             <div id="search-bar-container" style={{
                 "display":"flex",
@@ -49,49 +52,21 @@ export default function DashboardViewElView() {
             <a id="custom-dashboard-btn" href="#" target="_blank" rel="noopener noreferrer" className="primary-btn" style={{"padding":"7px 14px","fontSize":"0.85rem","textDecoration":"none","display":"none","borderRadius":"10px"}}>
                 <i className="fas fa-link" style={{"marginRight":"6px"}}></i> <span id="custom-dashboard-btn-text" style={{"maxWidth":"150px","overflow":"hidden","textOverflow":"ellipsis","whiteSpace":"nowrap"}}></span>
             </a>
-            <button 
-                id="completion-feature-btn" 
-                className="primary-btn completion-btn"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-completion-modal'))}
-                style={{
-                    "padding":"7px 14px",
-                    "fontSize":"0.85rem",
-                    "borderRadius":"10px",
-                    "background":"linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                    "color":"#ffffff",
-                    "border":"1px solid rgba(255,255,255,0.2)",
-                    "cursor":"pointer",
-                    "display":"inline-flex",
-                    "alignItems":"center",
-                    "gap":"6px",
-                    "boxShadow":"0 4px 12px rgba(16, 185, 129, 0.3)",
-                    "transition":"all 0.25s ease"
-                }}
-                title="Open Completion Planner & Target Tracker"
-            >
-                <i className="fas fa-chart-pie"></i> Completion
-            </button>
-            <div style={{"display":"flex","alignItems":"center","gap":"8px"}}>
-                <label htmlFor="course-sort-select" style={{"fontSize":"0.88rem","color":"var(--text-secondary)","fontWeight":"600"}}>Sort by:</label>
-                <select id="course-sort-select" style={{
-                    "padding":"7px 14px",
-                    "borderRadius":"10px",
-                    "border":"1px solid var(--border-secondary)",
-                    "background":"var(--bg-tertiary)",
-                    "color":"var(--text-primary)",
-                    "fontFamily":"inherit",
-                    "fontSize":"0.85rem",
-                    "fontWeight":"600",
-                    "cursor":"pointer",
-                    "outline":"none",
-                    "transition":"all 0.2s ease"
-                }}>
+            <div className="glass-sort-container">
+                <select id="course-sort-select" style={{ display: 'none' }}>
                     <option value="custom">Custom (Drag & Drop)</option>
                     <option value="completion_asc">Completion (Low to High)</option>
                     <option value="completion_desc">Completion (High to Low)</option>
                     <option value="duration_desc">Duration (High to Low)</option>
                     <option value="duration_asc">Duration (Low to High)</option>
+                    <option value="duration_left_desc">Duration Left (High to Low)</option>
+                    <option value="duration_left_asc">Duration Left (Low to High)</option>
                 </select>
+                <div id="glass-sort-trigger" className="glass-sort-btn" title="Sort & Filter Courses">
+                    <span className="glass-sort-label">Sort by: <strong>Custom (Drag & Drop)</strong></span>
+                    <i className="fas fa-chevron-down glass-sort-arrow"></i>
+                </div>
+                <div id="glass-sort-dropdown-menu" className="glass-sort-menu hidden"></div>
             </div>
             <button 
                 id="open-settings-btn" 

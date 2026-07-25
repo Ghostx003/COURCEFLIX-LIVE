@@ -51,63 +51,76 @@ export default function ModalOverlayModal() {
         <div className="modal-content">
             <button className="close-modal-btn" title="Close">&times;</button>
             <h2>Manage Courses</h2>
+            <div id="add-subcourse-container" style={{display: 'none', width: '100%', marginBottom: '0.6rem'}}>
+                <button id="add-subcourse-btn" className="primary-btn" style={{width: '100%', justifyContent: 'center', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', padding: '10px 14px', borderRadius: '10px', fontSize: '0.88rem'}}>
+                    <i className="fas fa-folder-plus"></i> <span id="add-subcourse-btn-text">Add Sub-Course in this location</span>
+                </button>
+            </div>
             <button id="add-folder-btn" className="secondary-btn"><i className="fas fa-folder-plus"></i> Add Course Folder</button>
             <hr style={{"width":"100%","border":"none","borderTop":"1px solid var(--border-primary)"}} />
             <button id="import-btn" className="secondary-btn"><i className="fas fa-file-import"></i> Import Backup</button>
             <button id="export-btn" className="secondary-btn"><i className="fas fa-file-export"></i> Export Backup</button>
-            
-            <div style={{marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-secondary)'}}>
-                <input 
-                    type="checkbox" 
-                    id="auto-backup-checkbox" 
-                    checked={autoBackup}
-                    onChange={(e) => setAutoBackup(e.target.checked)}
-                    style={{width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-primary)'}}
-                />
-                <label htmlFor="auto-backup-checkbox" style={{cursor: 'pointer', color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap'}}>
-                    Auto trigger backups at 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input 
-                            type="time" 
-                            value={backupTime}
-                            onChange={(e) => setBackupTime(e.target.value)}
-                            onClick={(e) => e.stopPropagation()} /* Prevents toggling the checkbox when clicking time input inside label */
-                            style={{
-                                background: 'var(--bg-secondary)', 
-                                color: 'var(--text-primary)', 
-                                border: '1px solid var(--border-secondary)', 
-                                borderRadius: '6px',
-                                padding: '6px 10px',
-                                cursor: 'pointer',
-                                outline: 'none',
-                                fontFamily: 'inherit',
-                                fontSize: '1rem',
-                                fontWeight: '600'
-                            }}
-                        />
-                        <button 
-                            type="button"
-                            onClick={setTimeToNow}
-                            style={{
-                                background: 'var(--bg-secondary)',
-                                color: 'var(--text-primary)',
-                                border: '1px solid var(--border-secondary)',
-                                borderRadius: '6px',
-                                padding: '6px 12px',
-                                cursor: 'pointer',
-                                fontSize: '0.9rem',
-                                fontWeight: '600',
-                                transition: 'background 0.2s, transform 0.1s'
-                            }}
-                            onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-tertiary)'}
-                            onMouseOut={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-                            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                            Now
-                        </button>
-                    </div>
-                </label>
+            <button id="purge-btn" className="secondary-btn" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', fontWeight: '700' }}><i className="fas fa-trash-alt"></i> Purge Orphan Data</button>
+            <div style={{
+                marginTop: '1.2rem', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                padding: '14px 16px', 
+                background: 'var(--bg-tertiary)', 
+                borderRadius: '12px', 
+                border: '1px solid var(--border-secondary)',
+                gap: '12px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input 
+                        type="checkbox" 
+                        id="auto-backup-checkbox" 
+                        checked={autoBackup}
+                        onChange={(e) => setAutoBackup(e.target.checked)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-primary)', margin: '0' }}
+                    />
+                    <label htmlFor="auto-backup-checkbox" style={{ cursor: 'pointer', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
+                        Auto trigger backups at
+                    </label>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input 
+                        type="time" 
+                        value={backupTime}
+                        onChange={(e) => setBackupTime(e.target.value)}
+                        style={{
+                            background: 'var(--bg-secondary)', 
+                            color: 'var(--text-primary)', 
+                            border: '1px solid var(--border-secondary)', 
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            fontFamily: 'inherit',
+                            fontSize: '0.88rem',
+                            fontWeight: '600'
+                        }}
+                    />
+                    <button 
+                        type="button"
+                        onClick={setTimeToNow}
+                        style={{
+                            background: 'var(--bg-secondary)', 
+                            color: 'var(--text-primary)', 
+                            border: '1px solid var(--border-secondary)', 
+                            borderRadius: '8px',
+                            padding: '6px 12px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        Now
+                    </button>
+                </div>
             </div>
         </div>
     </div>
