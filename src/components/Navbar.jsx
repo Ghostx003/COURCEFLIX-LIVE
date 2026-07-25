@@ -36,7 +36,16 @@ export default function Navbar() {
     const handleHash = () => {
       const current = window.location.hash.replace('#', '') || 'home-view';
       setActiveView(current);
+      const navEl = document.querySelector('nav');
+      if (navEl) {
+        if (current === 'player-view' || current.startsWith('player')) {
+          navEl.classList.add('hidden');
+        } else {
+          navEl.classList.remove('hidden');
+        }
+      }
     };
+    handleHash();
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);

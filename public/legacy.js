@@ -1008,8 +1008,13 @@ window.initCourseFlix = async function() {
 
         // --- View Switching & Rendering ---
         function switchView(viewId, pushState = true) {
-            if (nav) {
-                nav.classList.remove('hidden');
+            const navEl = document.querySelector('nav') || nav;
+            if (navEl) {
+                if (viewId === 'player-view') {
+                    navEl.classList.add('hidden');
+                } else {
+                    navEl.classList.remove('hidden');
+                }
             }
             window.switchView = switchView;
             
@@ -9735,7 +9740,12 @@ window.initCourseFlix = async function() {
             // Always ensure nav is visible for non-player views after init
             const navEl = document.querySelector('nav');
             if (navEl) {
-                navEl.classList.remove('hidden');
+                const activeView = document.querySelector('.view.active')?.id;
+                if (activeView === 'player-view') {
+                    navEl.classList.add('hidden');
+                } else {
+                    navEl.classList.remove('hidden');
+                }
             }
         });
 

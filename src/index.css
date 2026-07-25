@@ -152,7 +152,7 @@
             transform: none !important; animation: none !important;
         }
         nav::-webkit-scrollbar { display: none; }
-        nav.hidden { display: flex !important; }
+        nav.hidden { display: none !important; }
         nav *, nav h1, .nav-links, .nav-link { transform: none !important; }
         nav h1 { 
             margin: 0; font-size: 1.05rem; font-weight: 800; cursor: pointer; white-space: nowrap; 

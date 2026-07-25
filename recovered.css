@@ -15,7 +15,7 @@
             min-height: 40px;
         }
         nav::-webkit-scrollbar { display: none; }
-        nav.hidden { display: none; }
+        nav.hidden { display: none !important; }
         nav h1 { 
             margin: 0; font-size: 1.05rem; font-weight: 800; cursor: pointer; white-space: nowrap; 
             font-family: 'Outfit', sans-serif; letter-spacing: -0.5px;
