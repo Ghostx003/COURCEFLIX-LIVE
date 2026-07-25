@@ -6483,6 +6483,15 @@ window.initCourseFlix = async function() {
                 });
 
                 if (notesInChapter.length > 0) {
+                    notesInChapter.sort((a, b) => {
+                        const idxA = chapter.lectures.findIndex(lec => String(lec.id) === String(a.lectureId));
+                        const idxB = chapter.lectures.findIndex(lec => String(lec.id) === String(b.lectureId));
+                        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                        const nameA = a.lectureName || a.pdfName || String(a.lectureId);
+                        const nameB = b.lectureName || b.pdfName || String(b.lectureId);
+                        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+                    });
+
                     const chapterParts = (chapter.name || '').split('/').filter(Boolean);
                     const lastFolderName = chapterParts.length > 0 ? chapterParts[chapterParts.length - 1].trim() : (chapter.name || 'Note');
 
@@ -6491,10 +6500,13 @@ window.initCourseFlix = async function() {
                                 <div class="notes-list">`;
                     
                     notesInChapter.forEach((note, index) => {
+                        const lectureIndexInChapter = chapter.lectures.findIndex(lec => String(lec.id) === String(note.lectureId));
+                        const num = lectureIndexInChapter !== -1 ? (lectureIndexInChapter + 1) : (index + 1);
+
                         const lecture = course.lectures ? course.lectures.find(l => String(l.id) === String(note.lectureId)) : null;
                         let displayName = note.lectureName || (lecture && (lecture.title || lecture.name));
                         if (!displayName || displayName === 'Unnamed Note' || displayName.endsWith('.pdf')) {
-                            displayName = `${lastFolderName} ${index + 1}`;
+                            displayName = `${lastFolderName} ${num}`;
                         }
                         html += `<div class="notes-item" data-lecture-id="${note.lectureId}" style="display: flex; justify-content: space-between; align-items: center;">
                                     <span class="notes-item-title">${displayName}</span>
