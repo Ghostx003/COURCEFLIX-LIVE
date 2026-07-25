@@ -38,7 +38,18 @@ window.initCourseFlix = async function() {
             dbPromise = new Promise((resolve, reject) => {
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
                 request.onerror = () => { dbPromise = null; reject("Error opening IndexedDB"); };
-                request.onsuccess = () => { db = request.result; window.appDbInitialized = true; resolve(db); };
+                request.onsuccess = () => { 
+                    db = request.result; 
+                    window.appDbInitialized = true; 
+                    
+                    // Close connection if another tab requests an upgrade
+                    db.onversionchange = () => {
+                        db.close();
+                        console.warn("Database upgrade requested by another tab. Closing connection to avoid blocking.");
+                    };
+                    
+                    resolve(db); 
+                };
                 request.onupgradeneeded = (event) => { 
                     const upgradeDb = event.target.result;
                     if (!upgradeDb.objectStoreNames.contains(STORE_NAME)) upgradeDb.createObjectStore(STORE_NAME, { keyPath: 'id' });
