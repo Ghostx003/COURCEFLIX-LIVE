@@ -427,6 +427,24 @@ window.initCourseFlix = async function() {
         }
         window.isSubfolderPathIgnoredOrHidden = isSubfolderPathIgnoredOrHidden;
 
+        function isSubfolderPathHidden(course, subfolderPath) {
+            if (!course) return false;
+            if (!course.subCourseData || !subfolderPath) return false;
+
+            const normSub = String(subfolderPath).toLowerCase().trim();
+            for (const key of Object.keys(course.subCourseData)) {
+                const item = course.subCourseData[key];
+                if (item && item.hidden) {
+                    const normKey = String(key).toLowerCase().trim();
+                    if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        window.isSubfolderPathHidden = isSubfolderPathHidden;
+
         async function hardDeleteHistoryForSubfolder(courseId, targetSubfolder) {
             try {
                 await ensureDB();
@@ -479,11 +497,11 @@ window.initCourseFlix = async function() {
                         continue;
                     }
                     const course = (courses || []).find(c => parseInt(c.id) === parseInt(h.courseId));
-                    if (!course || course.isIgnored) {
+                    if (!course) {
                         toDeleteIds.push(h.id);
                         continue;
                     }
-                    if (h.subfolder && isSubfolderPathIgnoredOrHidden(course, h.subfolder)) {
+                    if (h.subfolder && isSubfolderPathHidden(course, h.subfolder)) {
                         toDeleteIds.push(h.id);
                         continue;
                     }
@@ -513,7 +531,7 @@ window.initCourseFlix = async function() {
                 // Build a map of active lecture IDs per course
                 const activeLectureMap = {};
                 activeCourses.forEach(c => {
-                    if (c && !c.isIgnored && Array.isArray(c.lectures)) {
+                    if (c && Array.isArray(c.lectures)) {
                         activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
                     }
                 });
@@ -522,8 +540,8 @@ window.initCourseFlix = async function() {
                     if (!courseId) return false;
                     const cId = parseInt(courseId);
                     const course = activeCourses.find(c => parseInt(c.id) === cId);
-                    if (!course || course.isIgnored) return false;
-                    if (subfolderPath && isSubfolderPathIgnoredOrHidden(course, subfolderPath)) return false;
+                    if (!course) return false;
+                    if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) return false;
                     
                     // Check missing/deleted lecture if lecture information is available
                     let lecId = lectureId ? String(lectureId) : null;
@@ -2452,11 +2470,11 @@ window.initCourseFlix = async function() {
         async function playLectureFromAnywhere(courseId, lectureId, originView = 'dashboard-view', subfolder = null) {
             lastView = originView;
             const course = courses.find(c => c.id === parseInt(courseId));
-            if (!course || course.isIgnored) {
+            if (!course) {
                 showToast('This course has been deleted.', true);
                 return;
             }
-            if (subfolder && isSubfolderPathIgnoredOrHidden(course, subfolder)) {
+            if (subfolder && isSubfolderPathHidden(course, subfolder)) {
                 showToast('This subcourse has been deleted.', true);
                 return;
             }
@@ -4307,8 +4325,7 @@ window.initCourseFlix = async function() {
                 const cId = parseInt(courseId);
                 const course = activeCourses.find(c => parseInt(c.id) === cId);
                 if (!course) return { valid: false, reason: 'Deleted Subject', courseTitle: `Subject (ID ${cId})` };
-                if (course.isIgnored) return { valid: false, reason: 'Ignored Subject', courseTitle: course.title || `Subject (ID ${cId})` };
-                if (subfolderPath && isSubfolderPathIgnoredOrHidden(course, subfolderPath)) {
+                if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) {
                     return { valid: false, reason: 'Deleted Subfolder', courseTitle: course.title, subfolder: subfolderPath };
                 }
                 
@@ -6637,10 +6654,9 @@ window.initCourseFlix = async function() {
                 if (new Date(h.timestamp) < thirtyHoursAgo) return false;
 
                 const course = (courses || []).find(c => c.id === parseInt(h.courseId));
-                if (!course || course.isIgnored) return false;
+                if (!course) return false;
 
                 if (h.subfolder) {
-                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return false;
                     if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return false;
                 }
                 return true;
@@ -6780,10 +6796,9 @@ window.initCourseFlix = async function() {
                 if (new Date(h.timestamp) < thirtyHoursAgo) return false;
 
                 const course = (courses || []).find(c => c.id === parseInt(h.courseId));
-                if (!course || course.isIgnored) return false;
+                if (!course) return false;
 
                 if (h.subfolder) {
-                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return false;
                     if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return false;
                 }
                 return true;
