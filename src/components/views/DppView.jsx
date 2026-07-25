@@ -1,4 +1,5 @@
 import React from 'react';
+
 export default function DppView() {
   return (
     <div id="dpp-view" className="view">
@@ -12,9 +13,6 @@ export default function DppView() {
                 <div id="dpp-list-container"></div>
             </div>
             <div id="dpp-content-area" style={{"display":"flex","flexDirection":"column"}}>
-                <div id="dpp-viewer-header" className="hidden" style={{"padding":"10px","background":"var(--bg-secondary)","borderBottom":"1px solid var(--border-primary)","display":"flex","justifyContent":"flex-end"}}>
-                    <a id="dpp-open-external" href="#" target="_blank" className="secondary-btn" style={{"textDecoration":"none"}}><i className="fas fa-external-link-alt"></i> Open PDF in Browser</a>
-                </div>
                 <iframe id="dpp-viewer-frame" src="about:blank" style={{"flex":"1","border":"none"}}></iframe>
                 <p id="dpp-no-content-message" style={{"textAlign":"center","color":"var(--text-secondary)","padding":"50px"}}>Select a DPP from the sidebar to view it.</p>
             </div>

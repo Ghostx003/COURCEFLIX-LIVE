@@ -3143,15 +3143,21 @@ window.initCourseFlix = async function() {
                 if (fileType.toLowerCase() === 'dpp') {
                     document.getElementById('dpp-viewer-frame').style.display = 'block';
                     document.getElementById('dpp-viewer-frame').src = activeFileUrl;
-                    document.getElementById('dpp-open-external').href = activeFileUrl;
-                    document.getElementById('dpp-viewer-header').classList.remove('hidden');
+                    const dppOpenExt = document.getElementById('dpp-open-external');
+                    if (dppOpenExt) dppOpenExt.href = activeFileUrl;
+                    const dppHeader = document.getElementById('dpp-viewer-header');
+                    if (dppHeader) dppHeader.classList.remove('hidden');
                     document.getElementById('dpp-no-content-message').classList.add('hidden');
                 } else if (fileType.toLowerCase() === 'note') {
                     document.getElementById('notes-viewer-frame').style.display = 'block';
                     document.getElementById('notes-viewer-frame').src = activeFileUrl;
-                    document.getElementById('notes-open-external').href = activeFileUrl;
-                    document.getElementById('notes-viewer-header').classList.remove('hidden');
+                    const notesOpenExt = document.getElementById('notes-open-external');
+                    if (notesOpenExt) notesOpenExt.href = activeFileUrl;
+                    const notesHeader = document.getElementById('notes-viewer-header');
+                    if (notesHeader) notesHeader.classList.remove('hidden');
                     document.getElementById('notes-no-content-message').classList.add('hidden');
+                    const intellBtn = document.getElementById('notes-intell-hub-btn');
+                    if (intellBtn) intellBtn.style.display = 'none';
                 } else {
                     const uploadPlaceholder = document.getElementById('media-viewer-upload-placeholder');
                     if (uploadPlaceholder) {
@@ -6235,7 +6241,8 @@ window.initCourseFlix = async function() {
                     await renderDppDetailView(courseId);
                     document.getElementById('dpp-viewer-frame').removeAttribute('src'); document.getElementById('dpp-viewer-frame').srcdoc = '';
                     document.getElementById('dpp-viewer-frame').style.display = 'block';
-                    document.getElementById('dpp-viewer-header').classList.add('hidden');
+                    const dppHeader = document.getElementById('dpp-viewer-header');
+                    if (dppHeader) dppHeader.classList.add('hidden');
                     document.getElementById('dpp-no-content-message').innerHTML = 'Select a DPP from the sidebar to view it.';
                     document.getElementById('dpp-no-content-message').classList.remove('hidden');
                 }
@@ -6396,6 +6403,8 @@ window.initCourseFlix = async function() {
             const notesCourseGrid = document.getElementById('notes-course-grid');
             document.getElementById('notes-detail-container').classList.add('hidden');
             notesCourseGrid.classList.remove('hidden');
+            const intellBtn = document.getElementById('notes-intell-hub-btn');
+            if (intellBtn) intellBtn.style.display = 'inline-flex';
 
             const notesProgress = Object.values(courseProgress).filter(p => p.pdfHandle);
             const courseIdsWithNotes = [...new Set(notesProgress.map(p => p.courseId))];
@@ -6513,7 +6522,10 @@ window.initCourseFlix = async function() {
                     showToast('Note deleted');
                     document.getElementById('notes-viewer-frame').removeAttribute('src'); document.getElementById('notes-viewer-frame').srcdoc = '';
                     document.getElementById('notes-viewer-frame').style.display = 'block';
-                    document.getElementById('notes-viewer-header').classList.add('hidden');
+                    const notesHeader = document.getElementById('notes-viewer-header');
+                    if (notesHeader) notesHeader.classList.add('hidden');
+                    const intellBtn = document.getElementById('notes-intell-hub-btn');
+                    if (intellBtn) intellBtn.style.display = 'inline-flex';
                     document.getElementById('notes-no-content-message').innerHTML = 'Select a note from the sidebar to view it.';
                     document.getElementById('notes-no-content-message').classList.remove('hidden');
                 }
