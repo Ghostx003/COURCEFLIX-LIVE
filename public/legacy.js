@@ -8166,19 +8166,6 @@ window.initCourseFlix = async function() {
             }
         });
 
-        const goToFacultyBtn = document.getElementById('go-to-faculty-page-btn');
-        if (goToFacultyBtn) {
-            goToFacultyBtn.addEventListener('click', () => {
-                const overlay = document.getElementById('faculty-profile-overlay');
-                if (overlay) overlay.style.display = 'none';
-                if (typeof switchView === 'function') {
-                    switchView('faculty-view');
-                } else {
-                    window.location.hash = '#faculty-view';
-                }
-            });
-        }
-
         function renderFacultyProfile(facultyName, originView) {
             const overlay = document.getElementById('faculty-profile-overlay');
             const effectiveOrigin = originView || (overlay ? overlay.dataset.originView : 'faculty-view') || 'faculty-view';
@@ -8188,21 +8175,12 @@ window.initCourseFlix = async function() {
             }
             
             const closeBtn = document.getElementById('close-faculty-profile-btn');
-            const navToFacultyBtn = document.getElementById('go-to-faculty-page-btn');
 
             if (closeBtn) {
                 if (effectiveOrigin === 'home-view' || effectiveOrigin === 'dashboard-view') {
                     closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Landing Page';
                 } else {
-                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Faculty Page';
-                }
-            }
-
-            if (navToFacultyBtn) {
-                if (effectiveOrigin === 'home-view' || effectiveOrigin === 'dashboard-view') {
-                    navToFacultyBtn.style.display = 'inline-flex';
-                } else {
-                    navToFacultyBtn.style.display = 'none';
+                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Go to Faculty Page';
                 }
             }
 
