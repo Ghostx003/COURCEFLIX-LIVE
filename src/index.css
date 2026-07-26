@@ -1855,10 +1855,21 @@ select option, select optgroup {
 }
 
 /* --- CONCISE GATE SUBJECT POOL GRID --- */
+.compact-subjects-section {
+    position: relative;
+    z-index: 10;
+}
+.compact-subjects-section:hover,
+.compact-subjects-section:focus-within {
+    z-index: 9999 !important;
+}
+
 .subject-pool-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
+    position: relative;
+    z-index: 10;
 }
 
 .subject-chip-card {
@@ -1873,9 +1884,10 @@ select option, select optgroup {
     cursor: pointer;
     backdrop-filter: blur(12px);
     transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    z-index: 1;
 }
 .subject-chip-card:hover {
-    z-index: 100;
+    z-index: 99999 !important;
     border-color: var(--accent-color, #10b981);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 25px var(--accent-color, rgba(16, 185, 129, 0.25));
     background: rgba(30, 41, 59, 0.85);
@@ -1887,24 +1899,35 @@ select option, select optgroup {
     top: calc(100% + 10px);
     left: 0;
     right: 0;
-    background: rgba(10, 16, 31, 0.96);
+    background: #0b1329 !important;
+    background-color: #0b1329 !important;
     border: 1px solid var(--accent-color, rgba(16, 185, 129, 0.5));
     border-radius: 18px;
     padding: 16px 18px;
-    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(20px);
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.98), 0 0 25px rgba(0, 0, 0, 0.8);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     transform: translateY(-8px) scale(0.96);
     transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0.25s ease;
-    z-index: 200;
+    z-index: 999999 !important;
 }
 
 .subject-chip-card:hover .subject-hover-popover {
-    opacity: 1;
-    visibility: visible;
+    opacity: 1 !important;
+    visibility: visible !important;
     pointer-events: auto;
+    transform: translateY(0) scale(1);
+}
+
+/* Position popover upwards for bottom-row cards to prevent crossing section boundaries */
+.subject-chip-card:nth-last-child(-n+4) .subject-hover-popover {
+    top: auto;
+    bottom: calc(100% + 12px);
+    transform: translateY(8px) scale(0.96);
+}
+
+.subject-chip-card:nth-last-child(-n+4):hover .subject-hover-popover {
     transform: translateY(0) scale(1);
 }
 
@@ -1931,8 +1954,8 @@ select option, select optgroup {
     display: flex;
     align-items: center;
     gap: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #141e3a;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     padding: 8px 12px;
     border-radius: 12px;
 }
@@ -1942,8 +1965,8 @@ select option, select optgroup {
 .popover-lbl { font-size: 0.68rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
 
 .popover-primary-fac {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: #182342;
+    border: 1px solid rgba(245, 158, 11, 0.4);
     border-radius: 12px;
     padding: 10px 14px;
     text-align: left;

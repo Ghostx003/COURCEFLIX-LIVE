@@ -157,6 +157,15 @@ export default function HomeView() {
     }
   ];
 
+  const getFacultyPhoto = (facName) => {
+    try {
+      const meta = JSON.parse(localStorage.getItem('courseflix_faculty_meta')) || {};
+      return meta[facName]?.photo || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
   const getSubjectDetails = (subName) => {
     if (stats.subjectStats && stats.subjectStats[subName]) {
       const live = stats.subjectStats[subName];
@@ -307,7 +316,7 @@ export default function HomeView() {
           <div className="stat-pill">
             <div className="stat-icon-wrapper violet"><i className="fas fa-clock"></i></div>
             <div className="stat-info">
-              <span className="stat-value">{stats.totalHours > 0 ? `${stats.totalHours}h` : '600h+'}</span>
+              <span className="stat-value">{stats.totalHours > 0 ? `${stats.totalHours}h` : '1793h'}</span>
               <span className="stat-label">HD Content</span>
             </div>
           </div>
@@ -456,37 +465,48 @@ export default function HomeView() {
               { name: 'VISHAL SIR', rating: 4, totalHours: 118, coursesCount: 2, lecturesCount: 52 },
               { name: 'VIJAY SIR', rating: 5, totalHours: 94, coursesCount: 2, lecturesCount: 45 }
             ]
-          ).map((fac, i) => (
-            <div 
-              key={i} 
-              className="star-faculty-card" 
-              onClick={() => {
-                if (typeof window.openFacultyProfile === 'function') {
-                  window.openFacultyProfile(fac.name, 'home-view');
-                } else if (typeof window.renderFacultyProfile === 'function') {
-                  navigateTo('faculty-view');
-                  setTimeout(() => window.renderFacultyProfile(fac.name, 'home-view'), 50);
-                } else {
-                  navigateTo('faculty-view');
-                }
-              }}
-            >
-              <div className="faculty-avatar-box">
-                <i className="fas fa-user-tie"></i>
-                <div className="rating-badge">
-                  <i className="fas fa-star"></i> {fac.rating || 5}.0
+          ).map((fac, i) => {
+            const photo = fac.photo || getFacultyPhoto(fac.name);
+            return (
+              <div 
+                key={i} 
+                className="star-faculty-card" 
+                onClick={() => {
+                  if (typeof window.openFacultyProfile === 'function') {
+                    window.openFacultyProfile(fac.name, 'home-view');
+                  } else if (typeof window.renderFacultyProfile === 'function') {
+                    navigateTo('faculty-view');
+                    setTimeout(() => window.renderFacultyProfile(fac.name, 'home-view'), 50);
+                  } else {
+                    navigateTo('faculty-view');
+                  }
+                }}
+              >
+                <div className="faculty-avatar-box">
+                  {photo ? (
+                    <img 
+                      src={photo} 
+                      alt={fac.name} 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }} 
+                    />
+                  ) : (
+                    <i className="fas fa-user-tie"></i>
+                  )}
+                  <div className="rating-badge">
+                    <i className="fas fa-star"></i> {fac.rating || 5}.0
+                  </div>
+                </div>
+                <div className="faculty-details">
+                  <h3>{fac.name}</h3>
+                  <span className="faculty-role">GATE CSE Master Educator</span>
+                  <div className="faculty-metrics-row">
+                    <span><i className="fas fa-video"></i> {fac.lecturesCount} Lecs</span>
+                    <span><i className="fas fa-clock"></i> {fac.totalHours} Hours</span>
+                  </div>
                 </div>
               </div>
-              <div className="faculty-details">
-                <h3>{fac.name}</h3>
-                <span className="faculty-role">GATE CSE Master Educator</span>
-                <div className="faculty-metrics-row">
-                  <span><i className="fas fa-video"></i> {fac.lecturesCount} Lecs</span>
-                  <span><i className="fas fa-clock"></i> {fac.totalHours} Hours</span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

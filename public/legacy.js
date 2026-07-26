@@ -8151,14 +8151,33 @@ window.initCourseFlix = async function() {
             const overlay = document.getElementById('faculty-profile-overlay');
             const origin = overlay ? overlay.dataset.originView : 'faculty-view';
             if (overlay) overlay.style.display = 'none';
-            if (origin === 'home-view') {
+            if (origin === 'home-view' || origin === 'dashboard-view') {
                 if (typeof switchView === 'function') {
                     switchView('home-view');
                 } else {
                     window.location.hash = '#home-view';
                 }
+            } else {
+                if (typeof switchView === 'function') {
+                    switchView('faculty-view');
+                } else {
+                    window.location.hash = '#faculty-view';
+                }
             }
         });
+
+        const goToFacultyBtn = document.getElementById('go-to-faculty-page-btn');
+        if (goToFacultyBtn) {
+            goToFacultyBtn.addEventListener('click', () => {
+                const overlay = document.getElementById('faculty-profile-overlay');
+                if (overlay) overlay.style.display = 'none';
+                if (typeof switchView === 'function') {
+                    switchView('faculty-view');
+                } else {
+                    window.location.hash = '#faculty-view';
+                }
+            });
+        }
 
         function renderFacultyProfile(facultyName, originView) {
             const overlay = document.getElementById('faculty-profile-overlay');
@@ -8169,11 +8188,21 @@ window.initCourseFlix = async function() {
             }
             
             const closeBtn = document.getElementById('close-faculty-profile-btn');
+            const navToFacultyBtn = document.getElementById('go-to-faculty-page-btn');
+
             if (closeBtn) {
-                if (effectiveOrigin === 'home-view') {
-                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Home Page';
+                if (effectiveOrigin === 'home-view' || effectiveOrigin === 'dashboard-view') {
+                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Landing Page';
                 } else {
-                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Faculties';
+                    closeBtn.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Faculty Page';
+                }
+            }
+
+            if (navToFacultyBtn) {
+                if (effectiveOrigin === 'home-view' || effectiveOrigin === 'dashboard-view') {
+                    navToFacultyBtn.style.display = 'inline-flex';
+                } else {
+                    navToFacultyBtn.style.display = 'none';
                 }
             }
 
@@ -8632,15 +8661,10 @@ window.initCourseFlix = async function() {
                         if (!course.lectures) return;
 
                         let validLectures = course.lectures || [];
-                        if (course.subCourseData && Object.keys(course.subCourseData).length > 0) {
-                            const ignoredSubfolders = Object.keys(course.subCourseData).filter(sub => course.subCourseData[sub].isIgnored || course.subCourseData[sub].hidden);
-                            if (ignoredSubfolders.length > 0) {
-                                validLectures = validLectures.filter(l => !l.chapter || !ignoredSubfolders.some(ig => l.chapter === ig || l.chapter.startsWith(ig + '/')));
-                            }
-                        }
 
                         totalLectures += validLectures.length;
-                        const cDur = course.totalDuration || validLectures.reduce((acc, l) => acc + (l.duration || 0), 0);
+                        const lecsDuration = validLectures.reduce((acc, l) => acc + (l.duration || 0), 0);
+                        const cDur = Math.max(course.totalDuration || 0, lecsDuration);
                         totalSec += cDur;
 
                         let hasSubfolders = course.subCourseData && Object.keys(course.subCourseData).length > 0;
@@ -8717,6 +8741,7 @@ window.initCourseFlix = async function() {
                 allFaculties.forEach(f => {
                     const meta = facultyRatings[f.name] || { rating: 0, photo: '' };
                     f.rating = meta.rating || 5;
+                    f.photo = meta.photo || '';
                     f.totalHours = Math.round(f.totalDurationSec / 3600);
                 });
                 allFaculties.sort((a, b) => b.totalDurationSec - a.totalDurationSec);
