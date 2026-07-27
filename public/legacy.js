@@ -3822,7 +3822,8 @@ window.initCourseFlix = async function() {
                     viewEl.dataset.origin = 'dashboard-view';
                 } else {
                     const parentPath = getParentPath(currentPath);
-                    const cId = parseInt(viewEl.dataset.courseId);
+                    const rawCId = viewEl.dataset.courseId;
+                    const cId = (!isNaN(parseInt(rawCId)) && String(parseInt(rawCId)) === String(rawCId)) ? parseInt(rawCId) : rawCId;
                     await renderSubcourseView(cId, parentPath);
                 }
                 return;
@@ -9692,24 +9693,71 @@ window.initCourseFlix = async function() {
             }
             
             async function handleRoute() {
-                const hash = window.location.hash.substring(1);
-                if (hash === 'filter-results-view') {
-                    window.location.hash = '#home-view';
-                    return;
-                }
-                if (!hash || hash === 'home-view') {
+                let hash = window.location.hash ? window.location.hash.substring(1) : '';
+                if (!hash) {
                     switchView('home-view', false);
                     return;
                 }
-                if (hash.startsWith('subcourse/')) {
-                    const parts = hash.split('/');
-                    const courseId = parseInt(parts[1]);
-                    const path = parts.slice(2).join('/');
-                    if (courseId) {
-                        await renderSubcourseView(courseId, decodeURIComponent(path), false);
-                    }
+
+                const decodedHash = decodeURIComponent(hash);
+
+                if (decodedHash === 'filter-results-view') {
+                    window.location.hash = '#home-view';
                     return;
                 }
+                if (decodedHash === 'home-view') {
+                    switchView('home-view', false);
+                    return;
+                }
+
+                let targetCourseStr = decodedHash;
+                if (targetCourseStr.startsWith('subcourse/')) {
+                    targetCourseStr = targetCourseStr.substring('subcourse/'.length);
+                }
+
+                if (targetCourseStr.includes('/')) {
+                    const parts = targetCourseStr.split('/');
+                    const rawId = parts[0];
+                    const path = parts.slice(1).join('/');
+                    
+                    const courseId = (!isNaN(parseInt(rawId)) && String(parseInt(rawId)) === String(rawId)) ? parseInt(rawId) : rawId;
+                    const lowerId = String(rawId).toLowerCase().trim();
+
+                    if (lowerId.includes('practice') || lowerId.includes('pratice') || lowerId.includes('dpp') || lowerId === 'pb') {
+                        if (typeof switchView === 'function') switchView('dpp-view', false);
+                        if (typeof renderDppCourseSelectionView === 'function') renderDppCourseSelectionView();
+                        return;
+                    }
+
+                    const matchedCourse = (courses || []).find(c => 
+                        String(c.id) === String(courseId) || 
+                        (c.title && String(c.title).toLowerCase() === lowerId)
+                    );
+
+                    if (matchedCourse) {
+                        await renderSubcourseView(matchedCourse.id, path, false);
+                        return;
+                    }
+                } else {
+                    const lowerHash = targetCourseStr.toLowerCase().trim();
+                    if (lowerHash.includes('practice') || lowerHash.includes('pratice') || lowerHash.includes('dpp') || lowerHash === 'pb') {
+                        if (typeof switchView === 'function') switchView('dpp-view', false);
+                        if (typeof renderDppCourseSelectionView === 'function') renderDppCourseSelectionView();
+                        return;
+                    }
+
+                    const courseId = (!isNaN(parseInt(targetCourseStr)) && String(parseInt(targetCourseStr)) === String(targetCourseStr)) ? parseInt(targetCourseStr) : targetCourseStr;
+                    const matchedCourse = (courses || []).find(c => 
+                        String(c.id) === String(courseId) || 
+                        (c.title && String(c.title).toLowerCase() === lowerHash)
+                    );
+
+                    if (matchedCourse) {
+                        await renderSubcourseView(matchedCourse.id, '', false);
+                        return;
+                    }
+                }
+
                 if (hash.endsWith('-view')) {
                     switchView(hash, false);
                     return;
