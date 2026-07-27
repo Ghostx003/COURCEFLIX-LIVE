@@ -1704,7 +1704,7 @@ window.initCourseFlix = async function() {
         }
 
         async function renderSubcourseView(courseId, basePath = '', pushState = true) {
-            const course = courses.find(c => c.id === parseInt(courseId));
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course || !course.handle) return;
             
             if (pushState) {
@@ -2016,7 +2016,7 @@ window.initCourseFlix = async function() {
         }
 
         async function renderUploadSubfolderView(courseId, basePath = '') {
-            const course = courses.find(c => c.id === parseInt(courseId));
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course || !course.handle) return;
 
             if (await course.handle.queryPermission({ mode: 'read' }) !== 'granted') {
@@ -3594,7 +3594,12 @@ window.initCourseFlix = async function() {
                         message: 'Do you really want to delete it?',
                         onConfirm: async () => {
                             await new Promise(resolve => getStore(STORE_NAME, 'readwrite').delete(courseId).onsuccess = resolve); 
+                            if (typeof addDeletedDppKey === 'function') addDeletedDppKey(`${courseId}::*`);
+                            if (typeof courses !== 'undefined' && Array.isArray(courses)) {
+                                courses = courses.filter(c => String(c.id) !== String(courseId));
+                            }
                             await purgeAllDataForDeletedCoursesAndSubfolders();
+                            await purgeEmptyDppAndNotesEngine();
                             await loadCoursesFromDB(); 
                             if (typeof renderHistoryView === 'function') renderHistoryView();
                             showToast('Course deleted successfully');
@@ -3719,6 +3724,39 @@ window.initCourseFlix = async function() {
             }
             if(e.target.closest('#back-to-dpp-grid')) {
                 renderDppCourseSelectionView();
+            }
+
+            const dppCourseDeleteBtn = e.target.closest('#dpp-course-grid .course-card .delete-all-dpps-btn');
+            if (dppCourseDeleteBtn) {
+                e.stopPropagation();
+                const courseId = parseInt(dppCourseDeleteBtn.closest('.course-card').dataset.courseId);
+                const course = courses.find(c => String(c.id) === String(courseId));
+                const title = course ? course.title : 'this subject';
+                if (confirm(`Are you sure you want to delete all DPPs for ${title}? This will also clean up all orphan entries.`)) {
+                    const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                    const courseDpps = allDpps.filter(d => String(d.courseId) === String(courseId));
+                    for (const dpp of courseDpps) {
+                        await deleteDppEntryAndOrphans(dpp);
+                    }
+
+                    const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                    for (const prog of allProgress) {
+                        if (prog && String(prog.courseId) === String(courseId)) {
+                            if (prog.assignmentHandle || prog.assignmentName || prog.assignmentType) {
+                                delete prog.assignmentHandle;
+                                delete prog.assignmentName;
+                                delete prog.assignmentType;
+                                await saveLectureProgress(prog);
+                            }
+                        }
+                    }
+
+                    await purgeEmptyDppAndNotesEngine();
+                    if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
+                    if (typeof showToast === 'function') showToast(`All DPPs for ${title} deleted`);
+                    await renderDppCourseSelectionView();
+                }
+                return;
             }
 
             const notesCourseDeleteBtn = e.target.closest('#notes-course-grid .course-card .delete-all-notes-btn');
@@ -6698,11 +6736,46 @@ window.initCourseFlix = async function() {
              }
         });
 
+        function getDeletedDppsList() {
+            try {
+                return new Set(JSON.parse(localStorage.getItem('deleted_dpps_list') || '[]'));
+            } catch(e) {
+                return new Set();
+            }
+        }
+
+        function addDeletedDppKey(key) {
+            try {
+                const list = getDeletedDppsList();
+                list.add(String(key));
+                localStorage.setItem('deleted_dpps_list', JSON.stringify([...list]));
+            } catch(e) {}
+        }
+
+        function isDppKeyDeleted(courseId, folderName, fileName) {
+            const list = getDeletedDppsList();
+            if (list.size === 0) return false;
+            const cIdStr = String(courseId);
+            const fName = folderName || '';
+            const fNoExt = (fileName || '').replace(/\.[^/.]+$/, "");
+            
+            if (list.has(`${cIdStr}::*`)) return true;
+            if (list.has(`*::${fNoExt}`)) return true;
+            if (list.has(`*::${fileName}`)) return true;
+            if (list.has(`${cIdStr}::${fName}::${fNoExt}`)) return true;
+            if (list.has(`${cIdStr}::${fName}::${fileName}`)) return true;
+            if (list.has(`${cIdStr}::::${fNoExt}`)) return true;
+            if (list.has(`${cIdStr}::::${fileName}`)) return true;
+            return false;
+        }
+        window.addDeletedDppKey = addDeletedDppKey;
+        window.isDppKeyDeleted = isDppKeyDeleted;
+
         async function purgeEmptyDppAndNotesEngine() {
             try {
                 await ensureDB();
 
-                // 1. Purge DPP_STORE entries that have no fileHandle, empty fileHandle, or non-existent courseId
+                // 1. Purge DPP_STORE entries that have no fileHandle, empty fileHandle, non-existent courseId, or are marked deleted
                 const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
                 const dppIdsToDelete = [];
 
@@ -6715,6 +6788,10 @@ window.initCourseFlix = async function() {
                     } else if (dpp.fileHandle instanceof Blob || dpp.fileHandle instanceof File) {
                         if (dpp.fileHandle.size === 0) isInvalid = true;
                     } else if (typeof dpp.fileHandle === 'string' && dpp.fileHandle.trim() === '') {
+                        isInvalid = true;
+                    }
+
+                    if (!isInvalid && isDppKeyDeleted(dpp.courseId, dpp.folderName, dpp.fileName)) {
                         isInvalid = true;
                     }
 
@@ -6766,6 +6843,95 @@ window.initCourseFlix = async function() {
         }
         window.purgeEmptyDppAndNotesEngine = purgeEmptyDppAndNotesEngine;
 
+        async function deleteDppEntryAndOrphans(dppOrId) {
+            try {
+                await ensureDB();
+                let dppId = typeof dppOrId === 'object' && dppOrId ? dppOrId.id : dppOrId;
+                let dpp = typeof dppOrId === 'object' && dppOrId ? dppOrId : null;
+
+                if (!dpp && dppId !== undefined && dppId !== null) {
+                    dpp = await new Promise(r => getStore(DPP_STORE, 'readonly').get(dppId).onsuccess = e => r(e.target.result));
+                    if (!dpp && typeof dppId === 'string' && !isNaN(parseInt(dppId))) {
+                        dpp = await new Promise(r => getStore(DPP_STORE, 'readonly').get(parseInt(dppId)).onsuccess = e => r(e.target.result));
+                    }
+                }
+
+                const dppFileName = dpp ? dpp.fileName : null;
+                const courseId = dpp ? dpp.courseId : null;
+
+                if (courseId && dppFileName) {
+                    addDeletedDppKey(`${courseId}::${dpp ? (dpp.folderName || '') : ''}::${dppFileName}`);
+                    addDeletedDppKey(`${courseId}::*::${dppFileName}`);
+                }
+                if (dppFileName) {
+                    addDeletedDppKey(`*::${dppFileName}`);
+                }
+
+                // 1. Delete from DPP_STORE
+                if (dppId !== undefined && dppId !== null) {
+                    await new Promise(r => getStore(DPP_STORE, 'readwrite').delete(dppId).onsuccess = r);
+                    if (typeof dppId === 'string' && !isNaN(parseInt(dppId))) {
+                        await new Promise(r => getStore(DPP_STORE, 'readwrite').delete(parseInt(dppId)).onsuccess = r);
+                    }
+                }
+
+                // 2. Clean matching entries in PROGRESS_STORE
+                const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                for (const prog of allProgress) {
+                    if (!prog) continue;
+                    let isMatch = false;
+                    if (courseId && String(prog.courseId) === String(courseId)) {
+                        if (dpp && dpp.lectureId && String(prog.lectureId) === String(dpp.lectureId)) {
+                            isMatch = true;
+                        }
+                        if (dppFileName) {
+                            const pName = (prog.assignmentName || "").replace(/\.[^/.]+$/, "");
+                            if (prog.assignmentName === dppFileName || pName === dppFileName) {
+                                isMatch = true;
+                            }
+                        }
+                    } else if (!courseId && dppFileName) {
+                        const pName = (prog.assignmentName || "").replace(/\.[^/.]+$/, "");
+                        if (prog.assignmentName === dppFileName || pName === dppFileName) {
+                            isMatch = true;
+                        }
+                    }
+
+                    if (isMatch) {
+                        delete prog.assignmentHandle;
+                        delete prog.assignmentName;
+                        delete prog.assignmentType;
+                        await saveLectureProgress(prog);
+                    }
+                }
+
+                // 3. Clean localStorage orphan entries
+                try {
+                    let cfDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
+                    if (Array.isArray(cfDpps)) {
+                        cfDpps = cfDpps.filter(d => {
+                            if (dppId && String(d.id) === String(dppId)) return false;
+                            if (dppFileName && (d.fileName === dppFileName || d.name === dppFileName)) return false;
+                            return true;
+                        });
+                        localStorage.setItem('courseflix_dpps', JSON.stringify(cfDpps));
+                    }
+                    let dppStatuses = JSON.parse(localStorage.getItem('dppStatuses') || '{}');
+                    if (dppId && dppStatuses[dppId]) {
+                        delete dppStatuses[dppId];
+                        localStorage.setItem('dppStatuses', JSON.stringify(dppStatuses));
+                    }
+                } catch(e) {}
+
+                // 4. Run purge engine to clean up any remaining orphan entries across stores
+                await purgeEmptyDppAndNotesEngine();
+                if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
+            } catch(e) {
+                console.error("Error in deleteDppEntryAndOrphans:", e);
+            }
+        }
+        window.deleteDppEntryAndOrphans = deleteDppEntryAndOrphans;
+
         async function scanDirectoryHandleForPdfs(dirHandle, course, basePath, allDpps) {
             const cIdStr = String(course.id);
             async function recurse(currentHandle, path) {
@@ -6782,6 +6948,10 @@ window.initCourseFlix = async function() {
                         try {
                             const file = await entry.getFile();
                             const fileNameNoExt = entry.name.replace(/\.[^/.]+$/, "");
+
+                            if (isDppKeyDeleted(course.id, folderName, entry.name) || isDppKeyDeleted(course.id, folderName, fileNameNoExt)) {
+                                continue;
+                            }
 
                             const existing = allDpps.find(d => 
                                 String(d.courseId) === cIdStr && 
@@ -6835,8 +7005,7 @@ window.initCourseFlix = async function() {
             if (!f1 || !f2) return false;
             const s1 = f1.trim().toLowerCase();
             const s2 = f2.trim().toLowerCase();
-            if (s1 === s2) return true;
-            return s1.split('/').pop() === s2.split('/').pop();
+            return s1 === s2;
         }
 
         // --- DPP Functions ---
@@ -6883,6 +7052,10 @@ window.initCourseFlix = async function() {
                     }
                     const folderLabel = (folder && folder !== 'Uncategorized' && folder !== '') ? folder.split('/').pop() : (course ? course.title : 'DPP');
                     const autoName = prog.assignmentName || `${folderLabel} ${num}`;
+
+                    if (isDppKeyDeleted(prog.courseId, folder, autoName) || isDppKeyDeleted(prog.courseId, folder, prog.assignmentName)) {
+                        continue;
+                    }
 
                     const existingIndex = allDpps.findIndex(d => 
                         String(d.courseId) === String(prog.courseId) && (
@@ -6941,11 +7114,11 @@ window.initCourseFlix = async function() {
 
             let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
 
-            // Only filter DPPs that actually have a file attached
-            const validDpps = allDpps.filter(dpp => dpp && (dpp.fileHandle || dpp.handle));
+            // Only filter DPPs that actually have a file attached and are not marked deleted
+            const validDpps = allDpps.filter(dpp => dpp && (dpp.fileHandle || dpp.handle) && !isDppKeyDeleted(dpp.courseId, dpp.folderName, dpp.fileName));
 
             const courseIdsWithDpps = [...new Set(validDpps.map(dpp => String(dpp.courseId)))];
-            const coursesWithDpps = courses.filter(c => courseIdsWithDpps.includes(String(c.id)));
+            const coursesWithDpps = courses.filter(c => courseIdsWithDpps.includes(String(c.id)) && !isDppKeyDeleted(c.id, '', '*'));
 
             dppCourseGrid.innerHTML = '';
             if (coursesWithDpps.length === 0) {
@@ -6971,6 +7144,7 @@ window.initCourseFlix = async function() {
                 ).join('');
 
                 card.innerHTML = `
+                    <button class="delete-all-dpps-btn" title="Delete all DPPs for this subject"><i class="fas fa-times"></i></button>
                     <div class="thumbnail-placeholder ${course.thumbnail ? 'has-thumbnail' : ''}" style="${course.thumbnail ? `background-image: url('${course.thumbnail}')` : ''}">
                         <i class="fas fa-file-invoice" style="font-size: 3rem;"></i>
                     </div>
@@ -7286,15 +7460,16 @@ window.initCourseFlix = async function() {
 
         async function processDppUploadFiles(files) {
             if (!files || files.length === 0) return;
-            const courseId = parseInt(document.getElementById('dpp-upload-view').dataset.courseId);
-            const course = courses.find(c => c.id === courseId);
-            if (!courseId || !course) return;
+            const rawCourseId = document.getElementById('dpp-upload-view').dataset.courseId;
+            const course = courses.find(c => String(c.id) === String(rawCourseId));
+            if (!rawCourseId || !course) return;
+            const courseId = course.id;
 
             const selectedFolderEl = document.querySelector('#dpp-folder-list .dpp-folder-item.selected');
             const folderName = selectedFolderEl ? selectedFolderEl.dataset.folderName : '';
 
             const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
-            const existingFolderDpps = allDpps.filter(d => d.courseId === courseId && (d.folderName || '') === folderName);
+            const existingFolderDpps = allDpps.filter(d => String(d.courseId) === String(courseId) && (d.folderName || '') === folderName);
 
             const baseName = folderName ? folderName.split('/').pop() : course.title;
 
@@ -7348,7 +7523,7 @@ window.initCourseFlix = async function() {
                 showToast("Folder name cannot be empty.", true);
                 return;
             }
-            const course = courses.find(c => c.id === courseId);
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course) return;
 
             if (!course.dppFolders) course.dppFolders = [];
@@ -7359,20 +7534,20 @@ window.initCourseFlix = async function() {
 
             course.dppFolders.push(folderName);
             await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
-            await renderDppUploadView(courseId, folderName);
+            await renderDppUploadView(course.id, folderName);
         }
 
         async function deleteDppFolder(courseId, folderName) {
             if (!confirm(`Are you sure you want to delete the folder "${folderName}"? DPPs inside will be moved to the root.`)) return;
             
-            const course = courses.find(c => c.id === courseId);
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course || !course.dppFolders) return;
             
             course.dppFolders = course.dppFolders.filter(f => f !== folderName);
             await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
 
             const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            const dppsToUpdate = allDpps.filter(dpp => dpp.courseId === courseId && dpp.folderName === folderName);
+            const dppsToUpdate = allDpps.filter(dpp => String(dpp.courseId) === String(course.id) && dpp.folderName === folderName);
             
             const tx = db.transaction(DPP_STORE, 'readwrite');
             const store = tx.objectStore(DPP_STORE);
@@ -7521,23 +7696,9 @@ window.initCourseFlix = async function() {
             // Handle button clicks
             if (e.target.closest('.delete-dpp-btn')) {
                 e.stopPropagation();
-                if (confirm(`Are you sure you want to delete the DPP "${dpp.fileName}"?`)) {
-                    await new Promise(r => getStore(DPP_STORE, 'readwrite').delete(dppId).onsuccess = r);
+                if (confirm(`Are you sure you want to delete the DPP "${dpp.fileName || 'this item'}"?`)) {
+                    await deleteDppEntryAndOrphans(dpp || dppId);
                     
-                    const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-                    for (const prog of allProgress) {
-                        if (prog.assignmentHandle && prog.courseId === dpp.courseId) {
-                            const progFileName = (prog.assignmentName || "Assignment").replace(/\.[^/.]+$/, "");
-                            if (progFileName === dpp.fileName) {
-                                prog.assignmentHandle = null;
-                                prog.assignmentName = null;
-                                prog.assignmentType = null;
-                                await saveLectureProgress(prog);
-                            }
-                        }
-                    }
-                    
-                    if (typeof syncCourseflixSubjects === 'function') syncCourseflixSubjects();
                     const courseId = parseInt(document.getElementById('dpp-detail-container').dataset.courseId);
                     await renderDppDetailView(courseId);
                     document.getElementById('dpp-viewer-frame').removeAttribute('src'); document.getElementById('dpp-viewer-frame').srcdoc = '';

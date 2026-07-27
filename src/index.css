@@ -1283,11 +1283,13 @@
         .dpp-item-btn { width: 24px; height: 24px; font-size: 0.9rem; color: var(--text-secondary); }
         .dpp-item-btn.completed { color: var(--accent-primary); }
         .dpp-item-btn.starred { color: var(--dpp-star); }
+        .dpp-item-btn.delete-dpp-btn { opacity: 0; pointer-events: none; transition: opacity 0.2s ease, color 0.2s ease; }
+        .dpp-item:hover .dpp-item-btn.delete-dpp-btn { opacity: 1; pointer-events: auto; }
         .dpp-item-btn.delete-dpp-btn:hover { color: var(--accent-danger); }
         .dpp-status-btn { font-size: 0.8rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; min-width: 50px; text-align: center; }
-        #notes-course-grid .course-card { position: relative; }
-        #notes-course-grid .course-card .delete-all-notes-btn { position: absolute; top: 10px; right: 10px; background: var(--accent-danger, #ff4444); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; transition-delay: 0s; z-index: 10; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-        #notes-course-grid .course-card:hover .delete-all-notes-btn { opacity: 1; pointer-events: auto; transition-delay: 0s; }
+        #dpp-course-grid .course-card, #notes-course-grid .course-card { position: relative; }
+        #dpp-course-grid .course-card .delete-all-dpps-btn, #notes-course-grid .course-card .delete-all-notes-btn { position: absolute; top: 10px; right: 10px; background: var(--accent-danger, #ff4444); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; transition-delay: 0s; z-index: 10; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+        #dpp-course-grid .course-card:hover .delete-all-dpps-btn, #notes-course-grid .course-card:hover .delete-all-notes-btn { opacity: 1; pointer-events: auto; transition-delay: 0s; }
         .dpp-status-btn.doubt { background-color: var(--dpp-doubt); color: white; }
         .dpp-status-btn.fail { background-color: var(--dpp-fail); color: white; }
         .dpp-status-btn.solved { background-color: var(--dpp-solved); color: white; }
