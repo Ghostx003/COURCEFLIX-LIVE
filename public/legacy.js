@@ -3193,21 +3193,35 @@ window.initCourseFlix = async function() {
                 activeFileUrl = URL.createObjectURL(blobToView);
                 
                 if (fileType.toLowerCase() === 'dpp') {
-                    document.getElementById('dpp-viewer-frame').style.display = 'block';
-                    document.getElementById('dpp-viewer-frame').src = activeFileUrl;
+                    const dppFrame = document.getElementById('dpp-viewer-frame');
+                    if (dppFrame) {
+                        dppFrame.style.display = 'block';
+                        dppFrame.src = `/pdf-viewer.html?file=${encodeURIComponent(activeFileUrl)}`;
+                    }
                     const dppOpenExt = document.getElementById('dpp-open-external');
                     if (dppOpenExt) dppOpenExt.href = activeFileUrl;
                     const dppHeader = document.getElementById('dpp-viewer-header');
                     if (dppHeader) dppHeader.classList.remove('hidden');
-                    document.getElementById('dpp-no-content-message').classList.add('hidden');
+                    const dppNoMsg = document.getElementById('dpp-no-content-message');
+                    if (dppNoMsg) {
+                        dppNoMsg.classList.add('hidden');
+                        dppNoMsg.style.display = 'none';
+                    }
                 } else if (fileType.toLowerCase() === 'note') {
-                    document.getElementById('notes-viewer-frame').style.display = 'block';
-                    document.getElementById('notes-viewer-frame').src = activeFileUrl;
+                    const notesFrame = document.getElementById('notes-viewer-frame');
+                    if (notesFrame) {
+                        notesFrame.style.display = 'block';
+                        notesFrame.src = `/pdf-viewer.html?file=${encodeURIComponent(activeFileUrl)}`;
+                    }
                     const notesOpenExt = document.getElementById('notes-open-external');
                     if (notesOpenExt) notesOpenExt.href = activeFileUrl;
                     const notesHeader = document.getElementById('notes-viewer-header');
                     if (notesHeader) notesHeader.classList.remove('hidden');
-                    document.getElementById('notes-no-content-message').classList.add('hidden');
+                    const notesNoMsg = document.getElementById('notes-no-content-message');
+                    if (notesNoMsg) {
+                        notesNoMsg.classList.add('hidden');
+                        notesNoMsg.style.display = 'none';
+                    }
                     const intellBtn = document.getElementById('notes-intell-hub-btn');
                     if (intellBtn) intellBtn.style.display = 'none';
                 } else {
@@ -6752,6 +6766,79 @@ window.initCourseFlix = async function() {
         }
         window.purgeEmptyDppAndNotesEngine = purgeEmptyDppAndNotesEngine;
 
+        async function scanDirectoryHandleForPdfs(dirHandle, course, basePath, allDpps) {
+            const cIdStr = String(course.id);
+            async function recurse(currentHandle, path) {
+                const folderName = path || '';
+                const entries = [];
+                try {
+                    for await (const entry of currentHandle.values()) {
+                        entries.push(entry);
+                    }
+                } catch(e) { return; }
+
+                for (const entry of entries) {
+                    if (entry.kind === 'file' && /\.pdf$/i.test(entry.name)) {
+                        try {
+                            const file = await entry.getFile();
+                            const fileNameNoExt = entry.name.replace(/\.[^/.]+$/, "");
+
+                            const existing = allDpps.find(d => 
+                                String(d.courseId) === cIdStr && 
+                                (d.fileName === fileNameNoExt || d.fileName === entry.name) &&
+                                (d.folderName || '') === folderName
+                            );
+
+                            if (!existing) {
+                                const newDpp = {
+                                    courseId: course.id,
+                                    folderName: folderName,
+                                    fileName: fileNameNoExt,
+                                    fileHandle: file,
+                                    completed: false,
+                                    starred: false,
+                                    status: null
+                                };
+                                await new Promise(r => getStore(DPP_STORE, 'readwrite').add(newDpp).onsuccess = r);
+                                allDpps.push(newDpp);
+                            }
+                        } catch(e) {
+                            console.error(`Error reading pdf file ${entry.name}:`, e);
+                        }
+                    } else if (entry.kind === 'directory') {
+                        await recurse(entry, path ? `${path}/${entry.name}` : entry.name);
+                    }
+                }
+            }
+            await recurse(dirHandle, basePath);
+        }
+
+        async function scanAllCoursesForDppsAndNotes() {
+            await ensureDB();
+            if (typeof courses === 'undefined' || !Array.isArray(courses)) return;
+            let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+
+            for (const course of courses) {
+                if (!course) continue;
+                if (course.isLinked && course.handle) {
+                    try {
+                        await scanDirectoryHandleForPdfs(course.handle, course, '', allDpps);
+                    } catch(err) {
+                        console.warn(`Could not scan directory handle for course ${course.title}:`, err);
+                    }
+                }
+            }
+        }
+
+        function isSameFolder(f1, f2) {
+            if (!f1 && !f2) return true;
+            if (!f1 || !f2) return false;
+            const s1 = f1.trim().toLowerCase();
+            const s2 = f2.trim().toLowerCase();
+            if (s1 === s2) return true;
+            return s1.split('/').pop() === s2.split('/').pop();
+        }
+
         // --- DPP Functions ---
         async function syncDppsFromProgress() {
             await ensureDB();
@@ -6763,9 +6850,7 @@ window.initCourseFlix = async function() {
             const duplicateIdsToDelete = [];
 
             for (const dpp of allDpps) {
-                const numMatch = (dpp.fileName || '').match(/(\d+)$/);
-                const num = numMatch ? numMatch[1] : dpp.fileName;
-                const key = `${dpp.courseId}_${dpp.folderName || ''}_${num}`;
+                const key = `${dpp.courseId}_${dpp.folderName || ''}_${dpp.lectureId || dpp.fileName}`;
                 if (seenDppKeys.has(key)) {
                     if (dpp.id) duplicateIdsToDelete.push(dpp.id);
                 } else {
@@ -6785,26 +6870,27 @@ window.initCourseFlix = async function() {
 
             for (const prog of allProgress) {
                 if (prog.assignmentHandle) {
-                    const course = courses.find(c => c.id === prog.courseId);
+                    const course = courses.find(c => String(c.id) === String(prog.courseId));
                     let folder = '';
                     let num = 1;
                     if (course && course.lectures) {
-                        const lec = course.lectures.find(l => String(l.id) === String(prog.lectureId));
+                        const lec = course.lectures.find(l => String(l.id) === String(prog.lectureId) || l.name === prog.lectureId);
                         if (lec && lec.chapter) folder = lec.chapter;
                         let lectures = course.lectures;
                         if (folder) lectures = course.lectures.filter(l => l.chapter === folder || (l.chapter && l.chapter.startsWith(folder + '/')));
-                        const idx = lectures.findIndex(l => String(l.id) === String(prog.lectureId));
+                        const idx = lectures.findIndex(l => String(l.id) === String(prog.lectureId) || l.name === prog.lectureId);
                         if (idx !== -1) num = idx + 1;
                     }
                     const folderLabel = (folder && folder !== 'Uncategorized' && folder !== '') ? folder.split('/').pop() : (course ? course.title : 'DPP');
-                    const autoName = `${folderLabel} ${num}`;
+                    const autoName = prog.assignmentName || `${folderLabel} ${num}`;
 
                     const existingIndex = allDpps.findIndex(d => 
-                        d.courseId === prog.courseId && (
+                        String(d.courseId) === String(prog.courseId) && (
                             (d.lectureId && String(d.lectureId) === String(prog.lectureId)) ||
-                            d.fileName === autoName || 
-                            d.fileName === prog.assignmentName ||
-                            (d.fileName && d.fileName.match(/(\d+)$/) && autoName.match(/(\d+)$/) && d.fileName.match(/(\d+)$/)[1] === String(num))
+                            (isSameFolder(d.folderName, folder) && (
+                                d.fileName === autoName || 
+                                (prog.assignmentName && d.fileName === prog.assignmentName)
+                            ))
                         )
                     );
                     if (existingIndex === -1) {
@@ -6823,9 +6909,10 @@ window.initCourseFlix = async function() {
                         addedAny = true;
                     } else {
                         const existing = allDpps[existingIndex];
-                        if (existing.fileName !== autoName || existing.folderName !== folder) {
+                        if (existing.fileName !== autoName || existing.folderName !== folder || !existing.fileHandle) {
                             existing.fileName = autoName;
                             existing.folderName = folder;
+                            existing.fileHandle = prog.assignmentHandle;
                             await new Promise(r => getStore(DPP_STORE, 'readwrite').put(existing).onsuccess = r);
                         }
                     }
@@ -6844,6 +6931,7 @@ window.initCourseFlix = async function() {
 
         async function renderDppCourseSelectionView() {
             await ensureDB();
+            await scanAllCoursesForDppsAndNotes();
             await purgeEmptyDppAndNotesEngine();
             await syncDppsFromProgress();
             nav.classList.remove('hidden');
@@ -6854,10 +6942,10 @@ window.initCourseFlix = async function() {
             let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
 
             // Only filter DPPs that actually have a file attached
-            const validDpps = allDpps.filter(dpp => dpp && dpp.fileHandle && (dpp.fileHandle instanceof Blob ? dpp.fileHandle.size > 0 : true));
+            const validDpps = allDpps.filter(dpp => dpp && (dpp.fileHandle || dpp.handle));
 
-            const courseIdsWithDpps = [...new Set(validDpps.map(dpp => dpp.courseId))];
-            const coursesWithDpps = courses.filter(c => courseIdsWithDpps.includes(c.id));
+            const courseIdsWithDpps = [...new Set(validDpps.map(dpp => String(dpp.courseId)))];
+            const coursesWithDpps = courses.filter(c => courseIdsWithDpps.includes(String(c.id)));
 
             dppCourseGrid.innerHTML = '';
             if (coursesWithDpps.length === 0) {
@@ -6866,7 +6954,7 @@ window.initCourseFlix = async function() {
             }
 
             coursesWithDpps.forEach(course => {
-                const courseDpps = validDpps.filter(d => d.courseId === course.id);
+                const courseDpps = validDpps.filter(d => String(d.courseId) === String(course.id));
                 if (courseDpps.length === 0) return;
 
                 const card = document.createElement('div');
@@ -6919,9 +7007,10 @@ window.initCourseFlix = async function() {
 
         async function renderDppDetailView(courseId) {
             await ensureDB();
+            await scanAllCoursesForDppsAndNotes();
             await syncDppsFromProgress();
             if (nav) nav.classList.remove('hidden');
-            const course = courses.find(c => c.id === courseId);
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course) {
                 showToast("Error: Course not found.", true);
                 switchView('dpp-view'); // Go back to course selection
@@ -6936,7 +7025,7 @@ window.initCourseFlix = async function() {
             document.getElementById('dpp-detail-course-title').textContent = course.title;
             const dppListContainer = document.getElementById('dpp-list-container');
             const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            const courseDpps = allDpps.filter(dpp => dpp.courseId === courseId);
+            const courseDpps = allDpps.filter(dpp => String(dpp.courseId) === String(courseId));
 
             if (courseDpps.length === 0) {
                 dppListContainer.innerHTML = `<p id="no-content-message">No DPPs uploaded for this course yet.</p>`;
@@ -6987,7 +7076,7 @@ window.initCourseFlix = async function() {
         async function renderDppUploadView(courseId, targetFolderName = null) {
             await ensureDB();
             await syncDppsFromProgress();
-            const course = courses.find(c => c.id === courseId);
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course) return;
 
             const view = document.getElementById('dpp-upload-view');
@@ -6997,7 +7086,7 @@ window.initCourseFlix = async function() {
             const folderList = document.getElementById('dpp-folder-list');
 
             const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
-            const courseDpps = allDpps.filter(dpp => dpp.courseId === courseId);
+            const courseDpps = allDpps.filter(dpp => String(dpp.courseId) === String(courseId));
 
             const dppCountMap = {};
             const foldersSet = new Set(course.dppFolders || []);
@@ -7010,16 +7099,22 @@ window.initCourseFlix = async function() {
 
             courseDpps.forEach(dpp => {
                 const fn = dpp.folderName || '';
-                dppCountMap[fn] = (dppCountMap[fn] || 0) + 1;
                 if (fn) foldersSet.add(fn);
             });
 
             const allFoldersList = Array.from(foldersSet).sort((a, b) => naturalSort({name: a}, {name: b}));
 
+            allFoldersList.forEach(folder => {
+                const count = courseDpps.filter(d => isSameFolder(d.folderName, folder)).length;
+                dppCountMap[folder] = count;
+            });
+
+            const rootCount = courseDpps.filter(d => !d.folderName).length;
+            dppCountMap[''] = rootCount;
+
             const currentSelectedEl = folderList.querySelector('.dpp-folder-item.selected');
             let selectedFolder = targetFolderName !== null ? targetFolderName : (currentSelectedEl ? currentSelectedEl.dataset.folderName : '');
 
-            const rootCount = dppCountMap[''] || 0;
             if (targetFolderName === null && selectedFolder === '' && rootCount === 0) {
                 const folderWithDpps = allFoldersList.find(f => (dppCountMap[f] || 0) > 0);
                 if (folderWithDpps) {
@@ -7046,7 +7141,7 @@ window.initCourseFlix = async function() {
                     const deleteBtn = isManual ? `<button class="file-btn delete-dpp-folder-btn" title="Delete folder" data-folder-name="${folder}" style="margin-left: ${count > 0 ? '0' : 'auto'};"><i class="fas fa-trash"></i></button>` : '';
                     
                     return `
-                        <div class="dpp-folder-item ${selectedFolder === folder ? 'selected' : ''}" data-folder-name="${folder}" style="display:flex; align-items:center;">
+                        <div class="dpp-folder-item ${isSameFolder(selectedFolder, folder) ? 'selected' : ''}" data-folder-name="${folder}" style="display:flex; align-items:center;">
                             <span><i class="fas fa-folder"></i> ${folder}</span>
                             ${badge}
                             ${deleteBtn}
@@ -7074,9 +7169,9 @@ window.initCourseFlix = async function() {
             const filesListEl = document.getElementById('dpp-upload-files-list');
             if (!titleEl || !filesListEl) return;
 
-            const course = courses.find(c => c.id === courseId);
+            const course = courses.find(c => String(c.id) === String(courseId));
             const folderDisplay = folderName ? folderName : 'No Folder (Root)';
-            const folderFiles = courseDpps.filter(d => (d.folderName || '') === folderName);
+            const folderFiles = courseDpps.filter(d => (d.folderName || '') === folderName || isSameFolder(d.folderName, folderName));
             
             titleEl.innerHTML = `<i class="fas fa-folder-open" style="color:var(--accent-primary); margin-right:8px;"></i> ${folderDisplay} <span style="font-size:0.85rem; color:var(--text-secondary); font-weight:normal; margin-left:8px;">(${folderFiles.length} DPP${folderFiles.length === 1 ? '' : 's'})</span>`;
 
@@ -7412,9 +7507,16 @@ window.initCourseFlix = async function() {
             const dppItem = e.target.closest('.dpp-item');
             if (!dppItem) return;
             
-            const dppId = parseInt(dppItem.dataset.dppId);
-            const dpp = await new Promise(r => getStore(DPP_STORE, 'readonly').get(dppId).onsuccess = e => r(e.target.result));
-            if (!dpp) return;
+            const rawId = dppItem.dataset.dppId;
+            const dppId = parseInt(rawId);
+            let dpp = await new Promise(r => getStore(DPP_STORE, 'readonly').get(dppId).onsuccess = e => r(e.target.result));
+            if (!dpp && rawId) {
+                dpp = await new Promise(r => getStore(DPP_STORE, 'readonly').get(rawId).onsuccess = e => r(e.target.result));
+            }
+            if (!dpp) {
+                if (typeof showToast === 'function') showToast("DPP entry not found.", true);
+                return;
+            }
 
             // Handle button clicks
             if (e.target.closest('.delete-dpp-btn')) {
@@ -7475,7 +7577,18 @@ window.initCourseFlix = async function() {
             } else { // Click on the item itself to view
                 document.querySelectorAll('#dpp-list-container .dpp-item').forEach(item => item.classList.remove('active'));
                 dppItem.classList.add('active');
-                await showMediaViewer(dpp.fileHandle, 'dpp', dpp.fileName, null);
+                let fileHandle = dpp ? (dpp.fileHandle || dpp.handle) : null;
+                if (!fileHandle && dpp && dpp.lectureId) {
+                    const detailContainer = document.getElementById('dpp-detail-container');
+                    const courseId = detailContainer ? parseInt(detailContainer.dataset.courseId) : dpp.courseId;
+                    const prog = getLectureProgress(courseId, dpp.lectureId);
+                    if (prog && prog.assignmentHandle) fileHandle = prog.assignmentHandle;
+                }
+                if (!fileHandle) {
+                    if (typeof showToast === 'function') showToast("File for this DPP is not available.", true);
+                    return;
+                }
+                await showMediaViewer(fileHandle, 'dpp', dpp.fileName, null);
             }
         });
 
@@ -7616,6 +7729,7 @@ window.initCourseFlix = async function() {
         // --- Notes Functions ---
         async function renderNotesCourseSelectionView() {
             await ensureDB();
+            await scanAllCoursesForDppsAndNotes();
             await purgeEmptyDppAndNotesEngine();
             nav.classList.remove('hidden');
             const gridHeader = document.getElementById('notes-grid-header');
@@ -7634,8 +7748,8 @@ window.initCourseFlix = async function() {
             }
 
             const notesProgress = Object.values(courseProgress).filter(p => p && p.pdfHandle && (p.pdfHandle instanceof Blob ? p.pdfHandle.size > 0 : true));
-            const courseIdsWithNotes = [...new Set(notesProgress.map(p => p.courseId))];
-            const coursesWithNotes = courses.filter(c => courseIdsWithNotes.includes(c.id));
+            const courseIdsWithNotes = [...new Set(notesProgress.map(p => String(p.courseId)))];
+            const coursesWithNotes = courses.filter(c => courseIdsWithNotes.includes(String(c.id)));
 
             notesCourseGrid.innerHTML = '';
             if (coursesWithNotes.length === 0) {
@@ -7644,7 +7758,7 @@ window.initCourseFlix = async function() {
             }
 
             coursesWithNotes.forEach(course => {
-                const notesCount = notesProgress.filter(p => p.courseId === course.id).length;
+                const notesCount = notesProgress.filter(p => String(p.courseId) === String(course.id)).length;
                 if (notesCount === 0) return;
 
                 const card = document.createElement('div');
@@ -7678,8 +7792,9 @@ window.initCourseFlix = async function() {
 
         async function renderNotesDetailView(courseId) {
             await ensureDB();
+            await scanAllCoursesForDppsAndNotes();
             if (nav) nav.classList.remove('hidden');
-            const course = courses.find(c => c.id === courseId);
+            const course = courses.find(c => String(c.id) === String(courseId));
              if (!course) {
                 showToast("Error: Course not found.", true);
                 switchView('notes-view');
@@ -7703,7 +7818,7 @@ window.initCourseFlix = async function() {
             
             const notesListContainer = document.getElementById('notes-list-container');
             
-            const courseNotes = Object.values(courseProgress).filter(p => p.courseId === courseId && p.pdfHandle);
+            const courseNotes = Object.values(courseProgress).filter(p => String(p.courseId) === String(courseId) && p.pdfHandle);
 
             if (courseNotes.length === 0 || !course.chapters) {
                 notesListContainer.innerHTML = `<p id="no-content-message">No notes found for this course.</p>`;

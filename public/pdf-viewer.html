@@ -242,6 +242,15 @@
         // Setup scroll observer for page tracking
         setupIntersectionObserver();
 
+        // Re-fit after initial slide-in transition finishes (player panel transition is 300ms)
+        [100, 350, 600].forEach(delay => {
+          setTimeout(() => {
+            if (window.currentScale === 'fit' && window.pdfDocument) {
+              window.setZoom('fit');
+            }
+          }, delay);
+        });
+
       } catch (err) {
         console.error("PDF.js Load Error:", err);
         loadingEl.innerHTML = `<p style="color: #ef4444;"><i class="fas fa-exclamation-circle"></i> Failed to load PDF document.</p>`;
@@ -273,8 +282,13 @@
       let scale = window.currentScale;
       if (scale === 'fit') {
         const viewportRaw = page.getViewport({ scale: 1.0, rotation: window.currentRotation });
-        const containerWidth = scrollView.clientWidth;
+        let containerWidth = scrollView.clientWidth;
+        if (!containerWidth || containerWidth <= 50) {
+          containerWidth = (scrollView.parentElement ? scrollView.parentElement.clientWidth : 0) || (window.innerWidth ? window.innerWidth * 0.45 : 500);
+        }
+        containerWidth = Math.max(100, containerWidth - 24);
         scale = containerWidth / viewportRaw.width;
+        if (isNaN(scale) || scale <= 0) scale = 1.0;
       } else {
         scale = parseFloat(scale) || 1.5;
       }
@@ -284,6 +298,7 @@
       const cssViewport = page.getViewport({ scale: scale, rotation: window.currentRotation });
 
       const context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
 
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
@@ -387,17 +402,22 @@
       }
     });
 
-    // Auto-fit on container resize
+    // Auto-fit on container, window, or transition resize
     let resizeDebounce = null;
-    const resizeObserver = new ResizeObserver(() => {
+    const triggerRefit = () => {
       if (window.currentScale === 'fit' && window.pdfDocument) {
         clearTimeout(resizeDebounce);
         resizeDebounce = setTimeout(() => {
           window.setZoom('fit');
-        }, 150);
+        }, 100);
       }
-    });
+    };
+
+    const resizeObserver = new ResizeObserver(triggerRefit);
     resizeObserver.observe(scrollView);
+    if (document.body) resizeObserver.observe(document.body);
+    window.addEventListener('resize', triggerRefit);
+    document.addEventListener('transitionend', triggerRefit);
 
     // Initialize
     const fileUrl = parseParams();
