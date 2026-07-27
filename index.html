@@ -2,6 +2,7 @@
 <html lang="en" data-theme="dark" data-accent="green">
   <head>
     <meta charset="UTF-8" />
+    <base href="/" />
     <link rel="icon" type="image/jpeg" href="/favicon.jpg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CourseFlix</title>
@@ -15,5 +16,19 @@
     <script type="module" src="/src/main.jsx"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
       <script src="/legacy.js"></script>
+      <script>
+        // Global click handler to resolve clicks from deep nested subfolders back to root uploaded handlers
+        document.addEventListener('click', function(e) {
+          var targetFile = e.target.closest('.dpp-item, .notes-item, .lecture-item, .course-card');
+          if (!targetFile || e.target.closest('.delete-dpp-btn, .delete-note-btn, .delete-all-dpps-btn, .delete-all-notes-btn')) return;
+          
+          // Normalize deep nested pathname back to root root-relative routing
+          if (window.location.pathname !== '/' && !window.location.pathname.endsWith('index.html')) {
+            try {
+              window.history.replaceState(null, '', '/' + (window.location.hash || ''));
+            } catch(err) {}
+          }
+        }, true);
+      </script>
   </body>
 </html>

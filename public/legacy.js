@@ -2524,7 +2524,7 @@ window.initCourseFlix = async function() {
 
         async function playLectureFromAnywhere(courseId, lectureId, originView = 'dashboard-view', subfolder = null) {
             lastView = originView;
-            const course = courses.find(c => c.id === parseInt(courseId));
+            const course = courses.find(c => String(c.id) === String(courseId));
             if (!course) {
                 showToast('This course has been deleted.', true);
                 return;
