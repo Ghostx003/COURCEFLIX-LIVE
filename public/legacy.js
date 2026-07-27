@@ -4812,116 +4812,772 @@ window.initCourseFlix = async function() {
             });
         }
 
-        exportBtn.addEventListener('click', async () => {
-            if (courses.length === 0) {
-                return showToast("There are no courses to export.", true);
+        function formatBytes(bytes, decimals = 1) {
+            if (!bytes || bytes <= 0) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        async function getHandleSize(handle) {
+            if (!handle) return 0;
+            if (typeof handle === 'number') return handle;
+            if (handle instanceof Blob || handle instanceof File) return handle.size;
+            if (typeof handle.getFile === 'function') {
+                try {
+                    const file = await handle.getFile();
+                    return file ? file.size : 0;
+                } catch (e) {
+                    return 0;
+                }
             }
-            exportBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Exporting...`;
-            exportBtn.disabled = true;
+            if (typeof handle === 'string') {
+                if (handle.startsWith('data:')) {
+                    const base64Str = handle.split(',')[1] || '';
+                    return Math.round((base64Str.length * 3) / 4);
+                }
+                return new Blob([handle]).size;
+            }
+            return 0;
+        }
+
+        async function analyzeExportData() {
+            await ensureDB();
+            const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            const allHistory = await new Promise(r => getStore(HISTORY_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+            const localStoreData = { ...localStorage };
+
+            // Backup ProgressAppDB assignmentFiles
+            const progressFiles = [];
+            try {
+                const progRequest = indexedDB.open('ProgressAppDB', 1);
+                await new Promise((resolve) => {
+                    progRequest.onsuccess = async (e) => {
+                        const db = e.target.result;
+                        if (db.objectStoreNames.contains('assignmentFiles')) {
+                            const tx = db.transaction('assignmentFiles', 'readonly');
+                            const store = tx.objectStore('assignmentFiles');
+                            const allReq = store.getAll();
+                            const keysReq = store.getAllKeys();
+                            allReq.onsuccess = async () => {
+                                keysReq.onsuccess = async () => {
+                                    const handles = allReq.result;
+                                    const keys = keysReq.result;
+                                    for (let i = 0; i < handles.length; i++) {
+                                        const handle = handles[i];
+                                        const id = keys[i];
+                                        let file;
+                                        try {
+                                            if (handle instanceof File) {
+                                                file = handle;
+                                            } else if (handle && typeof handle.getFile === 'function') {
+                                                if (await handle.queryPermission() === 'granted') {
+                                                    file = await handle.getFile();
+                                                }
+                                            }
+                                            if (file) {
+                                                const filename = `prog_${id}_${file.name}`;
+                                                progressFiles.push({ id: id, filename: filename, file: file, size: file.size });
+                                            }
+                                        } catch (err) {
+                                            console.warn("Could not inspect progress file size", id, err);
+                                        }
+                                    }
+                                    resolve();
+                                };
+                            };
+                        } else {
+                            resolve();
+                        }
+                    };
+                    progRequest.onerror = () => resolve();
+                });
+            } catch (e) { console.error("Error reading ProgressAppDB", e); }
+
+            // Helper to resolve Subject Title
+            const getSubjectTitle = (cId) => {
+                if (!cId) return 'General / Other';
+                const found = courses.find(c => String(c.id) === String(cId));
+                return found ? (found.title || `Subject ${cId}`) : `Subject #${cId}`;
+            };
+
+            // 1. Lecture Notes PDFs Grouped by Subject
+            const notesSubjectsMap = {};
+            let totalNotesPdfSize = 0;
+            for (const prog of allProgress) {
+                if (prog && prog.pdfHandle) {
+                    const size = await getHandleSize(prog.pdfHandle);
+                    totalNotesPdfSize += size;
+                    const cId = String(prog.courseId || 'other');
+                    if (!notesSubjectsMap[cId]) {
+                        notesSubjectsMap[cId] = {
+                            courseId: cId,
+                            title: getSubjectTitle(cId),
+                            count: 0,
+                            size: 0
+                        };
+                    }
+                    notesSubjectsMap[cId].count++;
+                    notesSubjectsMap[cId].size += size;
+                }
+            }
+
+            // 2. DPP & Assignment Files Grouped by Subject (Deduplicated)
+            const dppSubjectsMap = {};
+            let totalDppPdfSize = 0;
+            const processedDppHandles = new Set();
+
+            // DPPs from DPP_STORE
+            for (const dpp of allDpps) {
+                if (dpp && dpp.fileHandle) {
+                    if (!processedDppHandles.has(dpp.fileHandle)) {
+                        processedDppHandles.add(dpp.fileHandle);
+                        const size = await getHandleSize(dpp.fileHandle);
+                        totalDppPdfSize += size;
+                        const cId = String(dpp.courseId || 'other');
+                        if (!dppSubjectsMap[cId]) {
+                            dppSubjectsMap[cId] = {
+                                courseId: cId,
+                                title: getSubjectTitle(cId),
+                                dppCount: 0,
+                                assignCount: 0,
+                                totalCount: 0,
+                                size: 0
+                            };
+                        }
+                        dppSubjectsMap[cId].dppCount++;
+                        dppSubjectsMap[cId].totalCount++;
+                        dppSubjectsMap[cId].size += size;
+                    }
+                }
+            }
+
+            // Assignments from PROGRESS_STORE (only if not already counted via DPP_STORE)
+            for (const prog of allProgress) {
+                if (prog && prog.assignmentHandle) {
+                    if (!processedDppHandles.has(prog.assignmentHandle)) {
+                        processedDppHandles.add(prog.assignmentHandle);
+                        const size = await getHandleSize(prog.assignmentHandle);
+                        totalDppPdfSize += size;
+                        const cId = String(prog.courseId || 'other');
+                        if (!dppSubjectsMap[cId]) {
+                            dppSubjectsMap[cId] = {
+                                courseId: cId,
+                                title: getSubjectTitle(cId),
+                                dppCount: 0,
+                                assignCount: 0,
+                                totalCount: 0,
+                                size: 0
+                            };
+                        }
+                        dppSubjectsMap[cId].assignCount++;
+                        dppSubjectsMap[cId].totalCount++;
+                        dppSubjectsMap[cId].size += size;
+                    }
+                }
+            }
+
+            // ProgressAppDB assignmentFiles (only if not already counted)
+            for (const pf of progressFiles) {
+                if (pf.file && !processedDppHandles.has(pf.file)) {
+                    processedDppHandles.add(pf.file);
+                    totalDppPdfSize += (pf.size || 0);
+                }
+            }
+
+            // 3. Courses JSON + Thumbnails (Deduplicated base64)
+            let coursesSize = 0;
+            try {
+                const cleanCoursesForCalc = [];
+                for (const c of courses) {
+                    const cleanC = { ...c };
+                    if (cleanC.thumbnail && typeof cleanC.thumbnail === 'string' && cleanC.thumbnail.startsWith('data:')) {
+                        try {
+                            coursesSize += base64ToBlob(cleanC.thumbnail).size;
+                        } catch (e) {}
+                        delete cleanC.thumbnail;
+                    }
+                    if (cleanC.subCourseData) {
+                        const newSub = {};
+                        for (const sub in cleanC.subCourseData) {
+                            const subObj = { ...cleanC.subCourseData[sub] };
+                            if (subObj.thumbnail && typeof subObj.thumbnail === 'string' && subObj.thumbnail.startsWith('data:')) {
+                                try {
+                                    coursesSize += base64ToBlob(subObj.thumbnail).size;
+                                } catch (e) {}
+                                delete subObj.thumbnail;
+                            }
+                            newSub[sub] = subObj;
+                        }
+                        cleanC.subCourseData = newSub;
+                    }
+                    cleanCoursesForCalc.push(cleanC);
+                }
+                coursesSize += new Blob([JSON.stringify(cleanCoursesForCalc)]).size;
+            } catch (e) {}
+
+            // 4. Doubts Size
+            let doubtsSize = 0;
+            try {
+                doubtsSize = new Blob([JSON.stringify(allDoubts)]).size;
+            } catch (e) {}
+
+            // 5. History Size (Deduplicated base64)
+            let historySize = 0;
+            try {
+                const cleanHistForCalc = [];
+                if (Array.isArray(allHistory)) {
+                    for (const h of allHistory) {
+                        const cleanH = { ...h };
+                        if (cleanH.thumbnail && typeof cleanH.thumbnail === 'string' && cleanH.thumbnail.startsWith('data:')) {
+                            try {
+                                historySize += base64ToBlob(cleanH.thumbnail).size;
+                            } catch (e) {}
+                            delete cleanH.thumbnail;
+                        }
+                        cleanHistForCalc.push(cleanH);
+                    }
+                }
+                historySize += new Blob([JSON.stringify(cleanHistForCalc)]).size;
+            } catch (e) {}
+
+            // 6. Settings / LocalStorage Size (Deduplicated base64)
+            let settingsSize = 0;
+            try {
+                const cleanLS = { ...localStoreData };
+                const facultyMetaRaw = cleanLS['courseflix_faculty_meta'];
+                if (facultyMetaRaw) {
+                    try {
+                        const facultyMeta = JSON.parse(facultyMetaRaw);
+                        for (const [fName, meta] of Object.entries(facultyMeta)) {
+                            if (meta.photo && typeof meta.photo === 'string' && meta.photo.startsWith('data:')) {
+                                try {
+                                    settingsSize += base64ToBlob(meta.photo).size;
+                                } catch (e) {}
+                                delete meta.photo;
+                            }
+                        }
+                        cleanLS['courseflix_faculty_meta'] = JSON.stringify(facultyMeta);
+                    } catch (e) {}
+                }
+                settingsSize += new Blob([JSON.stringify(cleanLS)]).size;
+            } catch (e) {}
+
+            return {
+                notesData: {
+                    totalSize: totalNotesPdfSize,
+                    subjects: Object.values(notesSubjectsMap).sort((a, b) => b.size - a.size)
+                },
+                dppsData: {
+                    totalSize: totalDppPdfSize,
+                    subjects: Object.values(dppSubjectsMap).sort((a, b) => b.size - a.size)
+                },
+                categorySizes: {
+                    courses: coursesSize,
+                    doubts: doubtsSize,
+                    history: historySize,
+                    settings: settingsSize
+                },
+                raw: {
+                    allProgress,
+                    allDpps,
+                    allDoubts,
+                    allHistory,
+                    courses,
+                    localStoreData,
+                    progressFiles
+                }
+            };
+        }
+
+        async function openExportBackupModal(analysis) {
+            let modal = document.getElementById('export-backup-modal');
+            if (modal) modal.remove();
+
+            const { notesData, dppsData, categorySizes } = analysis;
+
+            // Generate Subject Rows HTML for DPPs / Assignments
+            const dppSubjectRowsHtml = dppsData.subjects.length === 0
+                ? `<div style="padding: 8px 12px; font-size: 0.82rem; color: #94a3b8; font-style: italic;">No DPP or Assignment PDFs found</div>`
+                : dppsData.subjects.map(s => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.25); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                            <input type="checkbox" class="export-dpp-subj-cb" data-course-id="${s.courseId}" checked style="width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;" />
+                            <span style="font-size: 0.88rem; font-weight: 600; color: #f1f5f9;">${s.title}</span>
+                        </label>
+                        <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 600; background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px;">
+                            ${s.totalCount} item${s.totalCount > 1 ? 's' : ''} (${formatBytes(s.size)})
+                        </span>
+                    </div>
+                `).join('');
+
+            // Generate Subject Rows HTML for Lecture Notes PDFs
+            const notesSubjectRowsHtml = notesData.subjects.length === 0
+                ? `<div style="padding: 8px 12px; font-size: 0.82rem; color: #94a3b8; font-style: italic;">No Lecture Notes PDFs found</div>`
+                : notesData.subjects.map(s => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.25); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                            <input type="checkbox" class="export-notes-subj-cb" data-course-id="${s.courseId}" checked style="width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;" />
+                            <span style="font-size: 0.88rem; font-weight: 600; color: #f1f5f9;">${s.title}</span>
+                        </label>
+                        <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 600; background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px;">
+                            ${s.count} PDF${s.count > 1 ? 's' : ''} (${formatBytes(s.size)})
+                        </span>
+                    </div>
+                `).join('');
+
+            modal = document.createElement('div');
+            modal.id = 'export-backup-modal';
+            modal.className = 'modal-overlay';
+            modal.style.cssText = 'z-index: 1000000; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s ease-out;';
+
+            modal.innerHTML = `
+                <style>
+                    #export-backup-modal ::-webkit-scrollbar,
+                    #export-backup-modal *::-webkit-scrollbar {
+                        display: none !important;
+                        width: 0 !important;
+                        height: 0 !important;
+                    }
+                    #export-backup-modal,
+                    #export-backup-modal * {
+                        -ms-overflow-style: none !important;
+                        scrollbar-width: none !important;
+                    }
+                </style>
+                <div class="modal-content glass-modal" style="max-width: 680px; width: 100%; max-height: 88vh; display: flex; flex-direction: column; padding: 1.4rem; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(15, 23, 42, 0.96); box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8); color: #ffffff; font-family: inherit;">
+                    
+                    <!-- Header -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 0.85rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="width: 42px; height: 42px; border-radius: 12px; background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                                <i class="fas fa-file-export"></i>
+                            </div>
+                            <div>
+                                <h2 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #ffffff;">Export Backup Options</h2>
+                                <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: #94a3b8;">Select which items and subject PDFs to include in your export</p>
+                            </div>
+                        </div>
+                        <button id="close-export-modal-btn" style="background: none; border: none; font-size: 1.6rem; color: #94a3b8; cursor: pointer; padding: 4px 8px; line-height: 1; transition: color 0.2s;">&times;</button>
+                    </div>
+
+                    <!-- Body List (DPP & Notes at TOP, NO SCROLLBAR) -->
+                    <div style="flex: 1; overflow-y: auto; margin: 0.85rem 0; padding-right: 0; display: flex; flex-direction: column; gap: 10px; scrollbar-width: none; -ms-overflow-style: none;">
+                        
+                        <!-- 1. DPP & Assignment Files (TOP ITEM) -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; transition: border-color 0.2s;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-dpps-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.98rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-tasks" style="color: #10b981;"></i> DPP & Assignment Files
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Daily practice problems and lecture assignment attachments</div>
+                                    </div>
+                                </label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span id="export-cat-dpps-size" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                        ${formatBytes(dppsData.totalSize)}
+                                    </span>
+                                    <button id="toggle-dpps-subject-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #e2e8f0; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" title="Show Subject Wise PDFs">
+                                        <i class="fas fa-chevron-down" id="dpps-chevron-icon" style="transition: transform 0.2s ease;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Subject Breakdown Container -->
+                            <div id="dpps-subject-container" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.1); flex-direction: column; gap: 8px;">
+                                ${dppSubjectRowsHtml}
+                            </div>
+                        </div>
+
+                        <!-- 2. Lecture Notes PDFs (TOP ITEM) -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; transition: border-color 0.2s;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-notes-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.98rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-book-open" style="color: #3b82f6;"></i> Lecture Notes PDFs
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Downloaded and attached lecture PDF notes</div>
+                                    </div>
+                                </label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span id="export-cat-notes-size" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                        ${formatBytes(notesData.totalSize)}
+                                    </span>
+                                    <button id="toggle-notes-subject-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #e2e8f0; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" title="Show Subject Wise PDFs">
+                                        <i class="fas fa-chevron-down" id="notes-chevron-icon" style="transition: transform 0.2s ease;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Subject Breakdown Container -->
+                            <div id="notes-subject-container" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.1); flex-direction: column; gap: 8px;">
+                                ${notesSubjectRowsHtml}
+                            </div>
+                        </div>
+
+                        <!-- 3. Course Structure & Metadata -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-courses-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-layer-group" style="color: #a855f7;"></i> Course Structure & Metadata
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Courses, chapters, lecture hierarchy, and thumbnails</div>
+                                    </div>
+                                </label>
+                                <span style="background: rgba(168, 85, 247, 0.15); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                    ${formatBytes(categorySizes.courses)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 4. Doubts & Discussion Data -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-doubts-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-question-circle" style="color: #f59e0b;"></i> Doubts & Discussion Data
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Saved doubts, comments, and query entries</div>
+                                    </div>
+                                </label>
+                                <span style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                    ${formatBytes(categorySizes.doubts)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 5. Study History & Logs -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-history-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-history" style="color: #ec4899;"></i> Study History & Logs
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Watch history, completion logs, and progress metrics</div>
+                                    </div>
+                                </label>
+                                <span style="background: rgba(236, 72, 153, 0.15); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                    ${formatBytes(categorySizes.history)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 6. App Settings & Preferences -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-settings-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.95rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-cog" style="color: #64748b;"></i> App Settings & LocalStorage
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">LocalStorage options, theme settings, and faculty info</div>
+                                    </div>
+                                </label>
+                                <span style="background: rgba(100, 116, 139, 0.15); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                    ${formatBytes(categorySizes.settings)}
+                                </span>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Footer -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem; gap: 16px; flex-wrap: wrap;">
+                        <div>
+                            <div style="font-size: 0.78rem; color: #94a3b8; font-weight: 500;">Total Backup Size</div>
+                            <div id="export-total-size-display" style="font-size: 1.15rem; font-weight: 700; color: #3b82f6;">0 MB</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button id="export-cancel-btn" class="secondary-btn" style="padding: 10px 18px; border-radius: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">Cancel</button>
+                            <button id="export-confirm-btn" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #ffffff; padding: 10px 22px; border-radius: 12px; font-weight: 600; font-size: 0.92rem; border: 1px solid rgba(255, 255, 255, 0.2); cursor: pointer; box-shadow: 0 4px 18px rgba(37, 99, 235, 0.45); display: inline-flex; align-items: center; justify-content: center; gap: 10px; white-space: nowrap; word-break: keep-all; flex-shrink: 0; line-height: 1.2; transition: all 0.2s ease;">
+                                <i class="fas fa-file-export" style="font-size: 0.95rem;"></i>
+                                <span>Export Selected</span>
+                                <span id="export-btn-size-span" style="background: rgba(255, 255, 255, 0.22); backdrop-filter: blur(4px); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.3); display: inline-flex; align-items: center; margin-left: 2px;">0 MB</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Element references
+            const catDppsCb = modal.querySelector('#export-cat-dpps-cb');
+            const catNotesCb = modal.querySelector('#export-cat-notes-cb');
+            const catCoursesCb = modal.querySelector('#export-cat-courses-cb');
+            const catDoubtsCb = modal.querySelector('#export-cat-doubts-cb');
+            const catHistoryCb = modal.querySelector('#export-cat-history-cb');
+            const catSettingsCb = modal.querySelector('#export-cat-settings-cb');
+
+            const dppSubjCbs = modal.querySelectorAll('.export-dpp-subj-cb');
+            const notesSubjCbs = modal.querySelectorAll('.export-notes-subj-cb');
+
+            const toggleDppsBtn = modal.querySelector('#toggle-dpps-subject-btn');
+            const toggleNotesBtn = modal.querySelector('#toggle-notes-subject-btn');
+            const dppsSubjContainer = modal.querySelector('#dpps-subject-container');
+            const notesSubjContainer = modal.querySelector('#notes-subject-container');
+            const dppsChevronIcon = modal.querySelector('#dpps-chevron-icon');
+            const notesChevronIcon = modal.querySelector('#notes-chevron-icon');
+
+            const totalSizeDisplay = modal.querySelector('#export-total-size-display');
+            const btnSizeSpan = modal.querySelector('#export-btn-size-span');
+            const confirmBtn = modal.querySelector('#export-confirm-btn');
+            const cancelBtn = modal.querySelector('#export-cancel-btn');
+            const closeBtn = modal.querySelector('#close-export-modal-btn');
+
+            // Accordion toggle handlers
+            if (toggleDppsBtn && dppsSubjContainer) {
+                toggleDppsBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const isHidden = dppsSubjContainer.style.display === 'none';
+                    dppsSubjContainer.style.display = isHidden ? 'flex' : 'none';
+                    if (dppsChevronIcon) dppsChevronIcon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+                });
+            }
+
+            if (toggleNotesBtn && notesSubjContainer) {
+                toggleNotesBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const isHidden = notesSubjContainer.style.display === 'none';
+                    notesSubjContainer.style.display = isHidden ? 'flex' : 'none';
+                    if (notesChevronIcon) notesChevronIcon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+                });
+            }
+
+            // Recalculate size function
+            const updateSelectionSizes = () => {
+                let bytes = 0;
+
+                if (catCoursesCb && catCoursesCb.checked) bytes += categorySizes.courses;
+                if (catDoubtsCb && catDoubtsCb.checked) bytes += categorySizes.doubts;
+                if (catHistoryCb && catHistoryCb.checked) bytes += categorySizes.history;
+                if (catSettingsCb && catSettingsCb.checked) bytes += categorySizes.settings;
+
+                // Sum DPPs selected subject sizes
+                dppSubjCbs.forEach(cb => {
+                    if (cb.checked) {
+                        const cId = cb.dataset.courseId;
+                        const subj = dppsData.subjects.find(s => String(s.courseId) === String(cId));
+                        if (subj) bytes += subj.size;
+                    }
+                });
+
+                // Sum Notes selected subject sizes
+                notesSubjCbs.forEach(cb => {
+                    if (cb.checked) {
+                        const cId = cb.dataset.courseId;
+                        const subj = notesData.subjects.find(s => String(s.courseId) === String(cId));
+                        if (subj) bytes += subj.size;
+                    }
+                });
+
+                const formatted = formatBytes(bytes);
+                if (totalSizeDisplay) totalSizeDisplay.textContent = formatted;
+                if (btnSizeSpan) btnSizeSpan.textContent = formatted;
+                if (confirmBtn) confirmBtn.disabled = (bytes === 0 && !catCoursesCb?.checked && !catSettingsCb?.checked && !catDoubtsCb?.checked && !catHistoryCb?.checked);
+            };
+
+            // Master checkbox listeners
+            if (catDppsCb) {
+                catDppsCb.addEventListener('change', () => {
+                    dppSubjCbs.forEach(cb => cb.checked = catDppsCb.checked);
+                    updateSelectionSizes();
+                });
+            }
+
+            if (catNotesCb) {
+                catNotesCb.addEventListener('change', () => {
+                    notesSubjCbs.forEach(cb => cb.checked = catNotesCb.checked);
+                    updateSelectionSizes();
+                });
+            }
+
+            // Subject checkbox listeners
+            dppSubjCbs.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const checkedCount = Array.from(dppSubjCbs).filter(c => c.checked).length;
+                    if (catDppsCb) catDppsCb.checked = (checkedCount > 0);
+                    updateSelectionSizes();
+                });
+            });
+
+            notesSubjCbs.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const checkedCount = Array.from(notesSubjCbs).filter(c => c.checked).length;
+                    if (catNotesCb) catNotesCb.checked = (checkedCount > 0);
+                    updateSelectionSizes();
+                });
+            });
+
+            [catCoursesCb, catDoubtsCb, catHistoryCb, catSettingsCb].forEach(cb => {
+                cb?.addEventListener('change', updateSelectionSizes);
+            });
+
+            // Initial calculation
+            updateSelectionSizes();
+
+            const closeModal = () => modal.remove();
+
+            closeBtn?.addEventListener('click', closeModal);
+            cancelBtn?.addEventListener('click', closeModal);
+
+            confirmBtn?.addEventListener('click', async () => {
+                const selectedDppSubjectIds = new Set(Array.from(dppSubjCbs).filter(cb => cb.checked).map(cb => String(cb.dataset.courseId)));
+                const selectedNotesSubjectIds = new Set(Array.from(notesSubjCbs).filter(cb => cb.checked).map(cb => String(cb.dataset.courseId)));
+
+                const options = {
+                    exportCourses: catCoursesCb ? catCoursesCb.checked : true,
+                    exportDoubts: catDoubtsCb ? catDoubtsCb.checked : true,
+                    exportHistory: catHistoryCb ? catHistoryCb.checked : true,
+                    exportSettings: catSettingsCb ? catSettingsCb.checked : true,
+                    exportDppPdf: catDppsCb ? catDppsCb.checked : true,
+                    selectedDppSubjectIds,
+                    exportNotesPdf: catNotesCb ? catNotesCb.checked : true,
+                    selectedNotesSubjectIds
+                };
+
+                await executeSelectiveExport(analysis, options);
+            });
+        }
+
+        async function executeSelectiveExport(analysis, options) {
+            const confirmBtn = document.getElementById('export-confirm-btn');
+            if (confirmBtn) {
+                confirmBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Generating Zip...`;
+                confirmBtn.disabled = true;
+            }
 
             try {
                 const zip = new JSZip();
+                const { raw } = analysis;
+
+                // 1. Courses
                 const serializableCourses = [];
-                const serializableProgress = [];
-                const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-                
-                for (const course of courses) {
-                    const cleanCourse = { ...course };
-                    delete cleanCourse.handle; 
-                    
-                    if (cleanCourse.lectures) {
-                        cleanCourse.lectures = cleanCourse.lectures.map(l => {
-                            const cleanL = { ...l };
-                            delete cleanL.handle;
-                            return cleanL;
-                        });
-                    }
-                    if (cleanCourse.chapters) {
-                        cleanCourse.chapters = cleanCourse.chapters.map(c => {
-                            const cleanC = { ...c };
-                            cleanC.lectures = cleanC.lectures.map(l => {
+                if (options.exportCourses) {
+                    for (const course of raw.courses) {
+                        const cleanCourse = { ...course };
+                        delete cleanCourse.handle;
+                        if (cleanCourse.lectures) {
+                            cleanCourse.lectures = cleanCourse.lectures.map(l => {
                                 const cleanL = { ...l };
                                 delete cleanL.handle;
                                 return cleanL;
-                    return cleanC;
                             });
-                            return cleanC;
-                        });
-                    }
-                    
-                    if(course.handle) cleanCourse.folderName = course.handle.name;
-                    
-                    // Backup custom subfolder handles and extract subcourse thumbnails
-                    if(cleanCourse.subCourseData) {
-                        const newSubData = {};
-                        let subIdx = 0;
-                        for(const sub in cleanCourse.subCourseData) {
-                            const subObj = { ...cleanCourse.subCourseData[sub] };
-                            delete subObj.handle;
-                            if (subObj.thumbnail && typeof subObj.thumbnail === 'string' && subObj.thumbnail.startsWith('data:')) {
-                                try {
-                                    const subThumbBlob = base64ToBlob(subObj.thumbnail);
-                                    const subThumbFilename = `sub_${course.id}_${subIdx++}.png`;
-                                    zip.folder('sub_thumbnails').file(subThumbFilename, subThumbBlob);
-                                    subObj.thumbnailFilename = subThumbFilename;
-                                    delete subObj.thumbnail;
-                                } catch (e) {
-                                    console.warn("Could not backup sub-course thumbnail for", sub, e);
-                                }
-                            }
-                            newSubData[sub] = subObj;
                         }
-                        cleanCourse.subCourseData = newSubData;
+                        if (cleanCourse.chapters) {
+                            cleanCourse.chapters = cleanCourse.chapters.map(c => {
+                                const cleanC = { ...c };
+                                cleanC.lectures = cleanC.lectures.map(l => {
+                                    const cleanL = { ...l };
+                                    delete cleanL.handle;
+                                    return cleanL;
+                                });
+                                return cleanC;
+                            });
+                        }
+                        if (course.handle) cleanCourse.folderName = course.handle.name;
+
+                        if (cleanCourse.subCourseData) {
+                            const newSubData = {};
+                            let subIdx = 0;
+                            for (const sub in cleanCourse.subCourseData) {
+                                const subObj = { ...cleanCourse.subCourseData[sub] };
+                                delete subObj.handle;
+                                if (subObj.thumbnail && typeof subObj.thumbnail === 'string' && subObj.thumbnail.startsWith('data:')) {
+                                    try {
+                                        const subThumbBlob = base64ToBlob(subObj.thumbnail);
+                                        const subThumbFilename = `sub_${course.id}_${subIdx++}.png`;
+                                        zip.folder('sub_thumbnails').file(subThumbFilename, subThumbBlob);
+                                        subObj.thumbnailFilename = subThumbFilename;
+                                        delete subObj.thumbnail;
+                                    } catch (e) {
+                                        console.warn("Could not backup sub-course thumbnail for", sub, e);
+                                    }
+                                }
+                                newSubData[sub] = subObj;
+                            }
+                            cleanCourse.subCourseData = newSubData;
+                        }
+
+                        if (course.thumbnail) {
+                            const thumbBlob = base64ToBlob(course.thumbnail);
+                            const thumbFilename = `thumb_${course.id}.png`;
+                            zip.folder('thumbnails').file(thumbFilename, thumbBlob);
+                            cleanCourse.thumbnailFilename = thumbFilename;
+                        }
+                        delete cleanCourse.thumbnail;
+                        serializableCourses.push(cleanCourse);
                     }
-                    
-                    if (course.thumbnail) {
-                        const thumbBlob = base64ToBlob(course.thumbnail);
-                        const thumbFilename = `thumb_${course.id}.png`;
-                        zip.folder('thumbnails').file(thumbFilename, thumbBlob);
-                        cleanCourse.thumbnailFilename = thumbFilename;
-                    }
-                    delete cleanCourse.thumbnail;
-                    serializableCourses.push(cleanCourse);
                 }
 
-                for (const progress of allProgress) {
+                // 2. Progress & Lecture Notes / Lecture Assignments
+                const serializableProgress = [];
+                for (const progress of raw.allProgress) {
                     const cleanProgress = { ...progress };
+                    const progCourseId = String(progress.courseId || 'other');
+
                     if (progress.pdfHandle) {
-                        const pdfFilename = `pdf_${progress.id}.pdf`;
-                        zip.folder('pdfs').file(pdfFilename, progress.pdfHandle);
-                        cleanProgress.pdfFilename = pdfFilename;
+                        if (options.exportNotesPdf && options.selectedNotesSubjectIds.has(progCourseId)) {
+                            const pdfFilename = `pdf_${progress.id}.pdf`;
+                            zip.folder('pdfs').file(pdfFilename, progress.pdfHandle);
+                            cleanProgress.pdfFilename = pdfFilename;
+                        }
+                        delete cleanProgress.pdfHandle;
                     }
-                     if (progress.assignmentHandle) {
-                        const assignFilename = `assign_${progress.id}_${progress.assignmentName}`;
-                        zip.folder('assignments').file(assignFilename, progress.assignmentHandle);
-                        cleanProgress.assignmentFilename = assignFilename;
+
+                    if (progress.assignmentHandle) {
+                        if (options.exportDppPdf && options.selectedDppSubjectIds.has(progCourseId)) {
+                            const assignFilename = `assign_${progress.id}_${progress.assignmentName || 'file'}`;
+                            zip.folder('assignments').file(assignFilename, progress.assignmentHandle);
+                            cleanProgress.assignmentFilename = assignFilename;
+                        }
+                        delete cleanProgress.assignmentHandle;
                     }
-                    delete cleanProgress.pdfHandle;
-                    delete cleanProgress.assignmentHandle;
+
                     serializableProgress.push(cleanProgress);
                 }
 
-                // Export DPPs
-                const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
+                // 3. DPPs
                 const serializableDpps = [];
-                for (const dpp of allDpps) {
-                    const cleanDpp = {...dpp};
+                for (const dpp of raw.allDpps) {
+                    const cleanDpp = { ...dpp };
+                    const dppCourseId = String(dpp.courseId || 'other');
+
                     if (dpp.fileHandle) {
-                        const dppFilename = `dpp_${dpp.id}_${dpp.fileName}`;
-                        zip.folder('dpps').file(dppFilename, dpp.fileHandle);
-                        cleanDpp.dppFilename = dppFilename;
+                        if (options.exportDppPdf && options.selectedDppSubjectIds.has(dppCourseId)) {
+                            const dppFilename = `dpp_${dpp.id}_${dpp.fileName || 'file'}`;
+                            zip.folder('dpps').file(dppFilename, dpp.fileHandle);
+                            cleanDpp.dppFilename = dppFilename;
+                        }
+                        delete cleanDpp.fileHandle;
                     }
-                    delete cleanDpp.fileHandle;
                     serializableDpps.push(cleanDpp);
                 }
 
-                // Export Doubts, History, and localStorage
-                const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-                const allHistory = await new Promise(r => getStore(HISTORY_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
+                // 4. Doubts
+                const allDoubts = options.exportDoubts ? raw.allDoubts : [];
+
+                // 5. History
                 const serializableHistory = [];
-                if (Array.isArray(allHistory)) {
+                if (options.exportHistory && Array.isArray(raw.allHistory)) {
                     let histIdx = 0;
-                    for (const hist of allHistory) {
+                    for (const hist of raw.allHistory) {
                         const cleanHist = { ...hist };
                         if (hist.thumbnail && typeof hist.thumbnail === 'string' && hist.thumbnail.startsWith('data:')) {
                             try {
@@ -4930,89 +5586,46 @@ window.initCourseFlix = async function() {
                                 zip.folder('history_thumbnails').file(histThumbFilename, histThumbBlob);
                                 cleanHist.thumbnailFilename = histThumbFilename;
                                 delete cleanHist.thumbnail;
-                            } catch (e) {
-                                console.warn("Could not backup history thumbnail for", hist.id, e);
-                            }
+                            } catch (e) {}
                         }
                         histIdx++;
                         serializableHistory.push(cleanHist);
                     }
                 }
-                const localStoreData = { ...localStorage };
 
-                // Backup Faculty Faces as Files
-                const facultyMetaRaw = localStoreData['courseflix_faculty_meta'];
-                if (facultyMetaRaw) {
-                    try {
-                        const facultyMeta = JSON.parse(facultyMetaRaw);
-                        for (const [facultyName, meta] of Object.entries(facultyMeta)) {
-                            if (meta.photo && typeof meta.photo === 'string' && meta.photo.startsWith('data:')) {
-                                try {
-                                    const photoBlob = base64ToBlob(meta.photo);
-                                    const sanitizedName = facultyName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                                    const photoFilename = `faculty_${sanitizedName}.png`;
-                                    zip.folder('faculty_faces').file(photoFilename, photoBlob);
-                                    meta.photoFilename = photoFilename;
-                                    delete meta.photo;
-                                } catch (e) {
-                                    console.warn("Could not backup faculty photo for", facultyName, e);
+                // 6. Settings / LocalStorage
+                let localStoreData = {};
+                if (options.exportSettings) {
+                    localStoreData = { ...raw.localStoreData };
+                    const facultyMetaRaw = localStoreData['courseflix_faculty_meta'];
+                    if (facultyMetaRaw) {
+                        try {
+                            const facultyMeta = JSON.parse(facultyMetaRaw);
+                            for (const [facultyName, meta] of Object.entries(facultyMeta)) {
+                                if (meta.photo && typeof meta.photo === 'string' && meta.photo.startsWith('data:')) {
+                                    try {
+                                        const photoBlob = base64ToBlob(meta.photo);
+                                        const sanitizedName = facultyName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                                        const photoFilename = `faculty_${sanitizedName}.png`;
+                                        zip.folder('faculty_faces').file(photoFilename, photoBlob);
+                                        meta.photoFilename = photoFilename;
+                                        delete meta.photo;
+                                    } catch (e) {}
                                 }
                             }
-                        }
-                        localStoreData['courseflix_faculty_meta'] = JSON.stringify(facultyMeta);
-                    } catch (e) {
-                        console.error("Error parsing faculty meta for backup", e);
+                            localStoreData['courseflix_faculty_meta'] = JSON.stringify(facultyMeta);
+                        } catch (e) {}
                     }
                 }
 
-                // Backup ProgressAppDB assignmentFiles
+                // 7. ProgressAppDB assignmentFiles
                 const progressFiles = [];
-                try {
-                    const progRequest = indexedDB.open('ProgressAppDB', 1);
-                    await new Promise((resolve, reject) => {
-                        progRequest.onsuccess = async (e) => {
-                            const db = e.target.result;
-                            if (db.objectStoreNames.contains('assignmentFiles')) {
-                                const tx = db.transaction('assignmentFiles', 'readonly');
-                                const store = tx.objectStore('assignmentFiles');
-                                const allReq = store.getAll();
-                                const keysReq = store.getAllKeys();
-                                
-                                allReq.onsuccess = async () => {
-                                    keysReq.onsuccess = async () => {
-                                        const handles = allReq.result;
-                                        const keys = keysReq.result;
-                                        for (let i = 0; i < handles.length; i++) {
-                                            const handle = handles[i];
-                                            const id = keys[i];
-                                            let file;
-                                            try {
-                                                if (handle instanceof File) {
-                                                    file = handle;
-                                                } else {
-                                                    if (await handle.queryPermission() === 'granted') {
-                                                        file = await handle.getFile();
-                                                    }
-                                                }
-                                                if (file) {
-                                                    const filename = `prog_${id}_${file.name}`;
-                                                    zip.folder('progress_assignments').file(filename, file);
-                                                    progressFiles.push({ id: id, filename: filename });
-                                                }
-                                            } catch (err) {
-                                                console.warn("Could not backup progress file", id, err);
-                                            }
-                                        }
-                                        resolve();
-                                    };
-                                };
-                            } else {
-                                resolve();
-                            }
-                        };
-                        progRequest.onerror = () => resolve(); 
-                    });
-                } catch(e) { console.error("Error backing up ProgressAppDB", e); }
+                if (options.exportDppPdf && raw.progressFiles && raw.progressFiles.length > 0) {
+                    for (const pf of raw.progressFiles) {
+                        zip.folder('progress_assignments').file(pf.filename, pf.file);
+                        progressFiles.push({ id: pf.id, filename: pf.filename });
+                    }
+                }
 
                 const backupData = {
                     courses: serializableCourses,
@@ -5029,13 +5642,56 @@ window.initCourseFlix = async function() {
                 zip.file("backup.json", JSON.stringify(backupData));
                 const zipBlob = await zip.generateAsync({ type: "blob" });
                 downloadBlob(zipBlob, `CourseFlix_Backup_${new Date().toISOString().split('T')[0]}.zip`);
-                showToast("Export successful!");
+
+                showToast("Backup exported successfully!");
+                document.getElementById('export-backup-modal')?.remove();
+                document.getElementById('modal-overlay')?.classList.add('hidden');
             } catch (err) {
-                console.error("Export failed:", err);
+                console.error("Selective export failed:", err);
                 showToast("Export failed. Check the console for errors.", true);
             } finally {
-                exportBtn.innerHTML = `<i class="fas fa-file-export"></i> Export Backup`;
-                exportBtn.disabled = false;
+                if (confirmBtn) {
+                    const currentSize = document.getElementById('export-total-size-display')?.textContent || '0 MB';
+                    confirmBtn.innerHTML = `<i class="fas fa-file-export" style="font-size: 0.95rem;"></i><span>Export Selected</span><span id="export-btn-size-span" style="background: rgba(255, 255, 255, 0.22); backdrop-filter: blur(4px); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.3); display: inline-flex; align-items: center; margin-left: 2px;">${currentSize}</span>`;
+                    confirmBtn.disabled = false;
+                }
+            }
+        }
+
+        async function triggerExportBackup(btn) {
+            const exportBtnEl = btn || document.getElementById('export-btn');
+            if (typeof courses === 'undefined' || !courses || courses.length === 0) {
+                return showToast("There are no courses to export.", true);
+            }
+            if (exportBtnEl) {
+                exportBtnEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Analyzing...`;
+                exportBtnEl.disabled = true;
+            }
+
+            try {
+                const analysis = await analyzeExportData();
+                openExportBackupModal(analysis);
+            } catch (err) {
+                console.error("Export analysis failed:", err);
+                showToast("Error preparing export options.", true);
+            } finally {
+                if (exportBtnEl) {
+                    exportBtnEl.innerHTML = `<i class="fas fa-file-export"></i> Export Backup`;
+                    exportBtnEl.disabled = false;
+                }
+            }
+        }
+        window.triggerExportBackup = triggerExportBackup;
+        window.analyzeExportData = analyzeExportData;
+        window.openExportBackupModal = openExportBackupModal;
+
+        // Global Event Delegation for #export-btn
+        document.addEventListener('click', (e) => {
+            const targetBtn = e.target.closest('#export-btn');
+            if (targetBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                triggerExportBackup(targetBtn);
             }
         });
 
@@ -6028,9 +6684,78 @@ window.initCourseFlix = async function() {
              }
         });
 
+        async function purgeEmptyDppAndNotesEngine() {
+            try {
+                await ensureDB();
+
+                // 1. Purge DPP_STORE entries that have no fileHandle, empty fileHandle, or non-existent courseId
+                const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                const dppIdsToDelete = [];
+
+                for (const dpp of allDpps) {
+                    if (!dpp) continue;
+                    let isInvalid = false;
+
+                    if (!dpp.fileHandle) {
+                        isInvalid = true;
+                    } else if (dpp.fileHandle instanceof Blob || dpp.fileHandle instanceof File) {
+                        if (dpp.fileHandle.size === 0) isInvalid = true;
+                    } else if (typeof dpp.fileHandle === 'string' && dpp.fileHandle.trim() === '') {
+                        isInvalid = true;
+                    }
+
+                    if (!isInvalid && typeof courses !== 'undefined' && Array.isArray(courses) && courses.length > 0) {
+                        const courseExists = courses.some(c => String(c.id) === String(dpp.courseId));
+                        if (!courseExists) isInvalid = true;
+                    }
+
+                    if (isInvalid && dpp.id) {
+                        dppIdsToDelete.push(dpp.id);
+                    }
+                }
+
+                if (dppIdsToDelete.length > 0) {
+                    for (const delId of dppIdsToDelete) {
+                        await new Promise(r => getStore(DPP_STORE, 'readwrite').delete(delId).onsuccess = r);
+                    }
+                }
+
+                // 2. Clean invalid pdfHandle/assignmentHandle entries in PROGRESS_STORE
+                const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                for (const prog of allProgress) {
+                    if (!prog) continue;
+                    let modified = false;
+
+                    if (prog.pdfHandle) {
+                        if ((prog.pdfHandle instanceof Blob || prog.pdfHandle instanceof File) && prog.pdfHandle.size === 0) {
+                            delete prog.pdfHandle;
+                            delete prog.pdfFilename;
+                            modified = true;
+                        }
+                    }
+
+                    if (prog.assignmentHandle) {
+                        if ((prog.assignmentHandle instanceof Blob || prog.assignmentHandle instanceof File) && prog.assignmentHandle.size === 0) {
+                            delete prog.assignmentHandle;
+                            delete prog.assignmentName;
+                            modified = true;
+                        }
+                    }
+
+                    if (modified && typeof saveLectureProgress === 'function') {
+                        await saveLectureProgress(prog);
+                    }
+                }
+            } catch (e) {
+                console.error("Error in purgeEmptyDppAndNotesEngine:", e);
+            }
+        }
+        window.purgeEmptyDppAndNotesEngine = purgeEmptyDppAndNotesEngine;
+
         // --- DPP Functions ---
         async function syncDppsFromProgress() {
             await ensureDB();
+            await purgeEmptyDppAndNotesEngine();
             let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
 
             // Clean up duplicate entries in DPP_STORE
@@ -6119,6 +6844,7 @@ window.initCourseFlix = async function() {
 
         async function renderDppCourseSelectionView() {
             await ensureDB();
+            await purgeEmptyDppAndNotesEngine();
             await syncDppsFromProgress();
             nav.classList.remove('hidden');
             const dppCourseGrid = document.getElementById('dpp-course-grid');
@@ -6127,7 +6853,10 @@ window.initCourseFlix = async function() {
 
             let allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
 
-            const courseIdsWithDpps = [...new Set(allDpps.map(dpp => dpp.courseId))];
+            // Only filter DPPs that actually have a file attached
+            const validDpps = allDpps.filter(dpp => dpp && dpp.fileHandle && (dpp.fileHandle instanceof Blob ? dpp.fileHandle.size > 0 : true));
+
+            const courseIdsWithDpps = [...new Set(validDpps.map(dpp => dpp.courseId))];
             const coursesWithDpps = courses.filter(c => courseIdsWithDpps.includes(c.id));
 
             dppCourseGrid.innerHTML = '';
@@ -6137,11 +6866,13 @@ window.initCourseFlix = async function() {
             }
 
             coursesWithDpps.forEach(course => {
+                const courseDpps = validDpps.filter(d => d.courseId === course.id);
+                if (courseDpps.length === 0) return;
+
                 const card = document.createElement('div');
                 card.className = 'course-card';
                 card.dataset.courseId = course.id;
 
-                const courseDpps = allDpps.filter(d => d.courseId === course.id);
                 const totalDpps = courseDpps.length;
                 const solvedDpps = courseDpps.filter(d => d.completed).length;
                 const remainingDpps = totalDpps - solvedDpps;
@@ -6885,6 +7616,7 @@ window.initCourseFlix = async function() {
         // --- Notes Functions ---
         async function renderNotesCourseSelectionView() {
             await ensureDB();
+            await purgeEmptyDppAndNotesEngine();
             nav.classList.remove('hidden');
             const gridHeader = document.getElementById('notes-grid-header');
             if (gridHeader) gridHeader.style.display = 'flex';
@@ -6901,7 +7633,7 @@ window.initCourseFlix = async function() {
                 }
             }
 
-            const notesProgress = Object.values(courseProgress).filter(p => p.pdfHandle);
+            const notesProgress = Object.values(courseProgress).filter(p => p && p.pdfHandle && (p.pdfHandle instanceof Blob ? p.pdfHandle.size > 0 : true));
             const courseIdsWithNotes = [...new Set(notesProgress.map(p => p.courseId))];
             const coursesWithNotes = courses.filter(c => courseIdsWithNotes.includes(c.id));
 
@@ -6912,12 +7644,14 @@ window.initCourseFlix = async function() {
             }
 
             coursesWithNotes.forEach(course => {
+                const notesCount = notesProgress.filter(p => p.courseId === course.id).length;
+                if (notesCount === 0) return;
+
                 const card = document.createElement('div');
                 card.className = 'course-card';
                 card.dataset.courseId = course.id;
 
-                const notesCount = notesProgress.filter(p => p.courseId === course.id).length;
-                 const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
+                const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
                     `<i class="fa-star ${ (course.rating || 0) > i ? 'fas' : 'far'}"></i>`
                 ).join('');
 

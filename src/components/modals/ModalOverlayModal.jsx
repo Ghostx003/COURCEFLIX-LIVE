@@ -59,7 +59,12 @@ export default function ModalOverlayModal() {
             <button id="add-folder-btn" className="secondary-btn"><i className="fas fa-folder-plus"></i> Add Course Folder</button>
             <hr style={{"width":"100%","border":"none","borderTop":"1px solid var(--border-primary)"}} />
             <button id="import-btn" className="secondary-btn"><i className="fas fa-file-import"></i> Import Backup</button>
-            <button id="export-btn" className="secondary-btn"><i className="fas fa-file-export"></i> Export Backup</button>
+            <button id="export-btn" className="secondary-btn" onClick={(e) => {
+                e.preventDefault();
+                if (typeof window.triggerExportBackup === 'function') {
+                    window.triggerExportBackup(e.currentTarget);
+                }
+            }}><i className="fas fa-file-export"></i> Export Backup</button>
             <button id="purge-btn" className="secondary-btn" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', fontWeight: '700' }}><i className="fas fa-trash-alt"></i> Purge Orphan Data</button>
             <div style={{
                 marginTop: '1.2rem', 
