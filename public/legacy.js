@@ -9920,7 +9920,13 @@ window.initCourseFlix = async function() {
 
             window.openSubjectPage = function(subjectName) {
                 const allCourses = courses || [];
-                const sLower = subjectName.toLowerCase();
+                const sLower = (subjectName || '').toLowerCase().trim();
+
+                if (sLower.includes('practice') || sLower.includes('pratice') || sLower.includes('dpp') || sLower === 'pb') {
+                    if (typeof switchView === 'function') switchView('dpp-view');
+                    if (typeof renderDppCourseSelectionView === 'function') renderDppCourseSelectionView();
+                    return;
+                }
                 
                 const subjectAliases = {
                     'data structures & algorithms': ['dsa', 'data structures', 'algorithms', 'ds & algo', 'algo', 'ds'],
@@ -9933,7 +9939,8 @@ window.initCourseFlix = async function() {
                     'digital logic & design': ['dld', 'digital logic', 'digital', 'dl'],
                     'discrete mathematics': ['discrete', 'dm', 'discrete maths'],
                     'engineering mathematics': ['maths', 'em', 'engg maths', 'linear algebra', 'calculus', 'probability'],
-                    'general aptitude': ['aptitude', 'apti', 'ga', 'general apt']
+                    'general aptitude': ['aptitude', 'apti', 'ga', 'general apt'],
+                    'practice batches': ['practice', 'practice batches', 'pratice batches', 'practice batch', 'pratice batch', 'practice batchs', 'pb', 'practice courses', 'dpp']
                 };
 
                 const aliases = subjectAliases[sLower] || [];

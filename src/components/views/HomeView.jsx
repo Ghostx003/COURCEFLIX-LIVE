@@ -97,6 +97,7 @@ export default function HomeView() {
     { name: 'Discrete Mathematics', tag: 'Scoring', icon: 'fa-square-root-variable', color: '#f43f5e' },
     { name: 'Engineering Mathematics', tag: 'Scoring', icon: 'fa-calculator', color: '#eab308' },
     { name: 'General Aptitude', tag: '15 Marks', icon: 'fa-brain', color: '#a855f7' },
+    { name: 'Practice Batches', tag: 'DPPs & Tests', icon: 'fa-file-invoice', color: '#3b82f6' },
   ];
 
   // Default fallback subject metrics for quick stats hover using real faculty page data
