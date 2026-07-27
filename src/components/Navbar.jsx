@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 export default function Navbar() {
@@ -9,6 +9,20 @@ export default function Navbar() {
   const [hideIgnored, setHideIgnored] = useState(() => localStorage.getItem('courseflix_hide_ignored') === 'true');
   const [activeView, setActiveView] = useState(() => window.location.hash.replace('#', '') || 'home-view');
   const [doubtsCount, setDoubtsCount] = useState(0);
+  const [focusedToggle, setFocusedToggle] = useState(null);
+  const toggleRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (toggleRef.current && !toggleRef.current.contains(event.target)) {
+        setFocusedToggle(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     const updateDoubtsCount = () => {
@@ -50,10 +64,9 @@ export default function Navbar() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  const isPracticeActive = activeView === 'practice-view';
-
   const handleToggleMode = (targetView) => {
     setActiveView(targetView);
+    setFocusedToggle(targetView);
     if (typeof window.switchView === 'function') {
       window.switchView(targetView);
     } else {
@@ -113,6 +126,7 @@ export default function Navbar() {
             <a href="#" className="nav-link" data-view="dashboard-view"><i className="fas fa-th-large" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Dashboard</a>
             <a href="#" className="nav-link" data-view="upload-view"><i className="fas fa-cloud-upload-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Upload</a>
             <div 
+                ref={toggleRef}
                 className="nav-mode-toggle-switch"
                 style={{
                     display: 'inline-flex',
@@ -134,18 +148,25 @@ export default function Navbar() {
                         top: '2px',
                         bottom: '2px',
                         width: 'calc(50% - 2px)',
-                        left: isPracticeActive ? 'calc(50%)' : '2px',
+                        left: focusedToggle === 'practice-view' ? 'calc(50%)' : '2px',
                         borderRadius: '20px',
-                        background: isPracticeActive 
+                        background: focusedToggle === 'practice-view'
                             ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(29, 78, 216, 0.45) 100%)' 
-                            : 'linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(217, 119, 6, 0.45) 100%)',
-                        border: isPracticeActive 
+                            : focusedToggle === 'review-view'
+                                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(217, 119, 6, 0.45) 100%)'
+                                : 'transparent',
+                        border: focusedToggle === 'practice-view'
                             ? '1px solid rgba(59, 130, 246, 0.6)' 
-                            : '1px solid rgba(245, 158, 11, 0.6)',
-                        boxShadow: isPracticeActive 
+                            : focusedToggle === 'review-view'
+                                ? '1px solid rgba(245, 158, 11, 0.6)'
+                                : '1px solid transparent',
+                        boxShadow: focusedToggle === 'practice-view'
                             ? '0 0 10px rgba(59, 130, 246, 0.35)' 
-                            : '0 0 10px rgba(245, 158, 11, 0.35)',
-                        transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                            : focusedToggle === 'review-view'
+                                ? '0 0 10px rgba(245, 158, 11, 0.35)'
+                                : 'none',
+                        transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        opacity: focusedToggle ? 1 : 0
                     }}
                 />
                 <button
@@ -161,14 +182,14 @@ export default function Navbar() {
                         fontSize: '0.75rem',
                         fontWeight: '700',
                         cursor: 'pointer',
-                        color: !isPracticeActive ? '#fbbf24' : 'var(--text-secondary)',
+                        color: focusedToggle === 'review-view' ? '#fbbf24' : 'var(--text-secondary)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
                         transition: 'color 0.25s ease'
                     }}
                 >
-                    <i className="fas fa-redo-alt" style={{ fontSize: '0.72rem', transform: !isPracticeActive ? 'rotate(180deg)' : 'none', transition: 'transform 0.4s ease' }}></i>
+                    <i className="fas fa-redo-alt" style={{ fontSize: '0.72rem', transform: focusedToggle === 'review-view' ? 'rotate(180deg)' : 'none', transition: 'transform 0.4s ease' }}></i>
                     Review
                 </button>
                 <button
@@ -184,14 +205,14 @@ export default function Navbar() {
                         fontSize: '0.75rem',
                         fontWeight: '700',
                         cursor: 'pointer',
-                        color: isPracticeActive ? '#60a5fa' : 'var(--text-secondary)',
+                        color: focusedToggle === 'practice-view' ? '#60a5fa' : 'var(--text-secondary)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
                         transition: 'color 0.25s ease'
                     }}
                 >
-                    <i className="fas fa-tasks" style={{ fontSize: '0.72rem', transform: isPracticeActive ? 'scale(1.15)' : 'none', transition: 'transform 0.3s ease' }}></i>
+                    <i className="fas fa-tasks" style={{ fontSize: '0.72rem', transform: focusedToggle === 'practice-view' ? 'scale(1.15)' : 'none', transition: 'transform 0.3s ease' }}></i>
                     Practice
                 </button>
             </div>

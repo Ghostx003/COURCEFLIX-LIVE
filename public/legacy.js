@@ -693,7 +693,14 @@ window.initCourseFlix = async function() {
             await ensureDB();
             return new Promise((resolve, reject) => {
                 const request = getStore(CALENDAR_STORE, 'readwrite').add(eventData);
-                request.onsuccess = e => resolve(e.target.result);
+                request.onsuccess = e => {
+                    eventData.id = e.target.result;
+                    if (!window.isUndoingCalendar) {
+                        window.calendarUndoStack = window.calendarUndoStack || [];
+                        window.calendarUndoStack.push({ action: 'add', event: { ...eventData } });
+                    }
+                    resolve(eventData);
+                };
                 request.onerror = reject;
             });
         }
@@ -711,8 +718,20 @@ window.initCourseFlix = async function() {
 
         async function deleteCalendarEvent(id) {
             await ensureDB();
+            const numericId = Number(id);
+            const ev = await new Promise((resolve) => {
+                try {
+                    const req = getStore(CALENDAR_STORE, 'readonly').get(numericId);
+                    req.onsuccess = e => resolve(e.target.result);
+                    req.onerror = () => resolve(null);
+                } catch(e) { resolve(null); }
+            });
+            if (ev && !window.isUndoingCalendar) {
+                window.calendarUndoStack = window.calendarUndoStack || [];
+                window.calendarUndoStack.push({ action: 'delete', event: ev });
+            }
             return new Promise((resolve, reject) => {
-                const request = getStore(CALENDAR_STORE, 'readwrite').delete(id);
+                const request = getStore(CALENDAR_STORE, 'readwrite').delete(numericId);
                 request.onsuccess = resolve;
                 request.onerror = reject;
             });
@@ -1853,8 +1872,7 @@ window.initCourseFlix = async function() {
             const studyTogetherBtn = coursesToShow.length > 1 ? `<button class="primary-btn study-together-btn" data-status="${status}" style="background-color: #8b5cf6; margin-left: auto;"><i class="fas fa-layer-group"></i> Study Together</button>` : '';
 
             let header = `
-                <div class="view-header" style="display: flex; gap: 10px;">
-                    <button class="primary-btn" id="back-to-status-view-btn" data-view="${status}-view"><i class="fas fa-arrow-left"></i> Back to ${status.charAt(0).toUpperCase() + status.slice(1)}</button>
+                <div class="view-header" style="display: flex; gap: 10px; justify-content: flex-end;">
                     ${studyTogetherBtn}
                 </div>
                 <main id="filter-results-grid" class="grid-container"></main>
@@ -1866,7 +1884,28 @@ window.initCourseFlix = async function() {
                 grid.innerHTML = `<p id="no-content-message">No courses have lectures marked for ${status}.</p>`;
             } else {
                 coursesToShow.forEach(course => {
-                    const progress = calculateCourseProgress(course);
+                    const statusItems = allItems.filter(p => p.courseId === course.id);
+                    let totalStatusLectures = statusItems.length;
+                    let completedStatusLectures = 0;
+                    let remainingDurationSec = 0;
+                    let totalDurationSec = 0;
+
+                    statusItems.forEach(item => {
+                        const lecture = (course.lectures || []).find(l => l.id === item.lectureId);
+                        const dur = (lecture && lecture.duration) ? lecture.duration : 0;
+                        totalDurationSec += dur;
+
+                        if (item.completed) {
+                            completedStatusLectures++;
+                        } else {
+                            remainingDurationSec += dur;
+                        }
+                    });
+
+                    const percentage = totalStatusLectures > 0 ? (completedStatusLectures / totalStatusLectures) * 100 : 0;
+                    const hoursLeftText = formatDuration(remainingDurationSec);
+                    const hoursTotalText = formatDuration(totalDurationSec);
+
                     const card = document.createElement('div');
                     card.className = 'course-card';
                     card.dataset.courseIdFilter = course.id;
@@ -1888,14 +1927,16 @@ window.initCourseFlix = async function() {
                                 <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
                             </div>
                              <div class="course-progress-container" style="margin-top: auto;">
-                                 <div class="course-progress-bar"><div class="course-progress-fill" style="width: ${progress.percentage}%"></div></div>
-                                 <div class="course-progress-text">${progress.completed} / ${progress.total || course.videoCount || 0} completed</div>
+                                 <div class="course-duration-text" style="color: #10b981; font-weight: 500; font-size: 0.85rem; margin-bottom: 4px;">${hoursTotalText} total • ${hoursLeftText} left</div>
+                                 <div class="course-progress-text" style="margin-bottom: 8px; font-weight: 500;">${completedStatusLectures} / ${totalStatusLectures} lectures completed</div>
+                                 <div class="course-progress-bar"><div class="course-progress-fill" style="width: ${percentage}%"></div></div>
                              </div>
+                             <button class="watch-lecture-btn" data-id="${course.id}" style="margin-top: 12px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; width: 100%; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">Watch Lecture</button>
                          </div>`;
                     grid.appendChild(card);
                 });
             }
-            switchView('filter-results-view');
+            switchView('filter-results-view', false);
         }
 
         function renderStatusGrid(status, filter = null) {
@@ -3402,12 +3443,6 @@ window.initCourseFlix = async function() {
                 return;
             }
             
-            const backToStatusBtn = e.target.closest('#back-to-status-view-btn');
-            if(backToStatusBtn) {
-                switchView(backToStatusBtn.dataset.view);
-                return;
-            }
-
             const removeStatusBtn = e.target.closest('.remove-status-btn');
             if (removeStatusBtn) {
                 e.stopPropagation();
@@ -8555,6 +8590,10 @@ window.initCourseFlix = async function() {
             
             async function handleRoute() {
                 const hash = window.location.hash.substring(1);
+                if (hash === 'filter-results-view') {
+                    window.location.hash = '#home-view';
+                    return;
+                }
                 if (!hash || hash === 'home-view') {
                     switchView('home-view', false);
                     return;
@@ -10208,6 +10247,49 @@ window.initCourseFlix = async function() {
             return uncompleted;
         }
 
+        window.calendarUndoStack = window.calendarUndoStack || [];
+        window.isUndoingCalendar = false;
+        document.addEventListener('keydown', async (e) => {
+            if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
+                const calView = document.getElementById('calendar-view');
+                if (calView && !calView.classList.contains('hidden') && !calView.closest('.hidden')) {
+                    if (window.calendarUndoStack.length > 0) {
+                        e.preventDefault();
+                        const lastAction = window.calendarUndoStack.pop();
+                        window.isUndoingCalendar = true;
+                        await ensureDB();
+                        if (lastAction.action === 'delete') {
+                            await new Promise(r => {
+                                const req = getStore(CALENDAR_STORE, 'readwrite').put(lastAction.event);
+                                req.onsuccess = r;
+                                req.onerror = r;
+                            });
+                        } else if (lastAction.action === 'add') {
+                            await new Promise(r => {
+                                const req = getStore(CALENDAR_STORE, 'readwrite').delete(Number(lastAction.event.id));
+                                req.onsuccess = r;
+                                req.onerror = r;
+                            });
+                        } else if (lastAction.action === 'update') {
+                            await new Promise(r => {
+                                const req = getStore(CALENDAR_STORE, 'readwrite').put(lastAction.event);
+                                req.onsuccess = r;
+                                req.onerror = r;
+                            });
+                        } else if (lastAction.action === 'hide_history') {
+                            const hidden = JSON.parse(localStorage.getItem('cal_hidden_history') || '[]');
+                            const newHidden = hidden.filter(hId => hId !== lastAction.id);
+                            localStorage.setItem('cal_hidden_history', JSON.stringify(newHidden));
+                        }
+                        window.isUndoingCalendar = false;
+                        if (typeof window.renderCalendarDay === 'function' && typeof currentCalendarDate !== 'undefined') {
+                            window.renderCalendarDay(currentCalendarDate);
+                        }
+                    }
+                }
+            }
+        });
+
         // Main calendar open function (exposed to window)
         window.openCalendarView = function(targetDate) {
             currentCalendarDate = targetDate || dateToStr(new Date());
@@ -10362,7 +10444,9 @@ window.initCourseFlix = async function() {
             const allDayEvents = [];
 
             // History-derived events (ticked/completed tasks)
+            const hiddenHistory = JSON.parse(localStorage.getItem('cal_hidden_history') || '[]');
             dayTickedEvents.forEach(h => {
+                if (hiddenHistory.includes(h.id)) return;
                 const endTime = new Date(h.timestamp);
                 const durationSecs = h.duration || 3600;
                 const course = courses.find(c => c.id === parseInt(h.courseId));
@@ -10374,13 +10458,13 @@ window.initCourseFlix = async function() {
                     label: h.courseTitle || 'Unknown Subject',
                     tooltip: `${h.lectureName || 'Lecture'} — ${faculty}`,
                     type: 'history',
-                    id: null,
+                    id: h.id,
                     courseId: h.courseId,
                     lectureId: h.lectureId,
                     subfolder: h.subfolder || '',
                     isCompleted: true,
-                    canDelete: false,
-                    onDelete: null
+                    canDelete: (!future || isUnlocked),
+                    onDelete: () => renderCalendarDay(dateStr, isUnlocked)
                 });
             });
 
@@ -10426,23 +10510,17 @@ window.initCourseFlix = async function() {
 
             // Calculate horizontal column layout for overlapping events
             layoutDayEvents(allDayEvents);
+            window.currentCalendarAllDayEvents = allDayEvents;
 
             // Render all events
             allDayEvents.forEach(ev => {
                 placeCalendarBlock(timeline, ev, HOUR_HEIGHT);
             });
 
-            // Scroll to first event or 8am
-            let scrollTo = 8 * HOUR_HEIGHT;
-            if (dayTickedEvents.length > 0 || storedEvents.length > 0) {
-                const allEndMins = [
-                    ...dayTickedEvents.map(h => { const t = new Date(h.timestamp); return t.getHours() * 60 + t.getMinutes(); }),
-                    ...storedEvents.map(ev => ev.endMinute)
-                ];
-                const minMin = Math.min(...allEndMins);
-                const startMin = Math.max(0, minMin - Math.round((dayTickedEvents[0]?.duration || 3600) / 60) - 30);
-                scrollTo = Math.floor(startMin / 60) * HOUR_HEIGHT;
-            }
+            // Scroll to current system time minus 4 hours
+            const currentHour = new Date().getHours();
+            let scrollTo = Math.max(0, (currentHour - 4) * HOUR_HEIGHT);
+
             requestAnimationFrame(() => { timeline.scrollTop = Math.max(0, scrollTo); });
         }
         // Expose after definition
@@ -10451,14 +10529,13 @@ window.initCourseFlix = async function() {
         function layoutDayEvents(events) {
             if (!events || events.length === 0) return;
 
-            // Remove exact duplicate event entries (same label/courseId & startMinute & endMinute)
             const uniqueMap = new Map();
             const uniqueEvents = [];
             events.forEach(ev => {
                 const dMins = ev.durationMins && ev.durationMins > 0 ? ev.durationMins : 60;
                 ev.startMinute = Math.max(0, ev.endMinute - dMins);
                 ev.durationMins = dMins;
-                const key = `${ev.courseId || ev.label}_${ev.lectureId || ''}_${ev.startMinute}_${ev.endMinute}`;
+                const key = ev.id || `${ev.courseId || ev.label}_${ev.startMinute}_${ev.endMinute}_${Math.random()}`;
                 if (!uniqueMap.has(key)) {
                     uniqueMap.set(key, ev);
                     uniqueEvents.push(ev);
@@ -10468,30 +10545,48 @@ window.initCourseFlix = async function() {
             events.length = 0;
             uniqueEvents.forEach(e => events.push(e));
 
-            events.sort((a, b) => a.startMinute - b.startMinute || b.durationMins - a.durationMins);
+            // Sort by start minute ascending, then end minute descending
+            events.sort((a, b) => a.startMinute - b.startMinute || b.endMinute - a.endMinute);
 
-            const clusters = [];
-            let currentCluster = [];
-            let clusterEnd = -1;
+            const overlapGroups = [];
+            let currentGroup = [];
+            let groupEnd = -1;
 
             events.forEach(ev => {
-                if (currentCluster.length === 0) {
-                    currentCluster.push(ev);
-                    clusterEnd = ev.endMinute;
-                } else if (ev.startMinute < clusterEnd) {
-                    currentCluster.push(ev);
-                    if (ev.endMinute > clusterEnd) clusterEnd = ev.endMinute;
+                if (currentGroup.length === 0) {
+                    currentGroup.push(ev);
+                    groupEnd = ev.endMinute;
+                } else if (ev.startMinute < groupEnd) {
+                    currentGroup.push(ev);
+                    if (ev.endMinute > groupEnd) groupEnd = ev.endMinute;
                 } else {
-                    clusters.push(currentCluster);
-                    currentCluster = [ev];
-                    clusterEnd = ev.endMinute;
+                    overlapGroups.push(currentGroup);
+                    currentGroup = [ev];
+                    groupEnd = ev.endMinute;
                 }
             });
-            if (currentCluster.length > 0) clusters.push(currentCluster);
+            if (currentGroup.length > 0) overlapGroups.push(currentGroup);
 
-            clusters.forEach(cluster => {
+            overlapGroups.forEach(group => {
+                // Sweep-line to find max overlaps
+                const points = [];
+                group.forEach(ev => {
+                    points.push({ time: ev.startMinute, type: 1 });
+                    points.push({ time: ev.endMinute, type: -1 });
+                });
+                points.sort((a, b) => a.time - b.time || a.type - b.type);
+                
+                let currentOverlap = 0;
+                let maxOverlap = 0;
+                points.forEach(p => {
+                    currentOverlap += p.type;
+                    if (currentOverlap > maxOverlap) maxOverlap = currentOverlap;
+                });
+                
+                const totalCols = Math.max(1, maxOverlap);
+
                 const columns = [];
-                cluster.forEach(ev => {
+                group.forEach(ev => {
                     let placed = false;
                     for (let c = 0; c < columns.length; c++) {
                         if (columns[c] <= ev.startMinute) {
@@ -10505,38 +10600,52 @@ window.initCourseFlix = async function() {
                         ev.colIndex = columns.length;
                         columns.push(ev.endMinute);
                     }
-                });
-
-                cluster.forEach(ev => {
-                    const maxOverlapAtEv = cluster.filter(o => ev.startMinute < o.endMinute && o.startMinute < ev.endMinute).length;
-                    ev.totalCols = Math.max(1, maxOverlapAtEv);
-                    if (ev.totalCols === 1) {
-                        ev.colIndex = 0;
-                    }
+                    ev.totalCols = totalCols;
                 });
             });
         }
 
         function placeCalendarBlock(timeline, eventData, HOUR_HEIGHT, defaultCanDelete, defaultOnDelete) {
             const {
-                endMinute, durationMins, label, tooltip, type, id, courseId, lectureId, subfolder, isCompleted,
-                colIndex = 0, totalCols = 1
+                endMinute, durationMins, label, tooltip, type, id, courseId, lectureId, subfolder, isCompleted
             } = eventData;
+            
             const canDelete = eventData.canDelete !== undefined ? eventData.canDelete : defaultCanDelete;
             const onDelete = eventData.onDelete !== undefined ? eventData.onDelete : defaultOnDelete;
 
-            const dMins = (!durationMins || durationMins <= 0) ? 60 : durationMins;
-            const startMinute = Math.max(0, endMinute - dMins);
-            const startH = Math.floor(startMinute / 60);
-
-            const targetSlot = timeline.querySelector(`[data-hour="${startH}"]`);
-            if (!targetSlot) return;
-
             const block = document.createElement('div');
             block.className = `cal-event cal-event-${type}`;
+            eventData.element = block;
 
-            const topOffsetWithinHour = (startMinute % 60) / 60 * HOUR_HEIGHT;
-            const blockHeight = Math.max(30, (dMins / 60) * HOUR_HEIGHT);
+            const applyVisuals = (ev, el, isDrag = false) => {
+                const absoluteTop = (ev.startMinute / 60) * HOUR_HEIGHT;
+                const blockHeight = Math.max(30, (ev.durationMins / 60) * HOUR_HEIGHT);
+
+                const leftCss = ev.totalCols === 1
+                    ? '64px'
+                    : `calc(64px + (${ev.colIndex} * ((100% - 72px) / ${ev.totalCols})))`;
+                const widthCss = ev.totalCols === 1
+                    ? 'auto'
+                    : `calc(((100% - 72px) / ${ev.totalCols}) - 4px)`;
+                const rightCss = ev.totalCols === 1 ? '8px' : 'auto';
+
+                if (!isDrag) {
+                    el.style.top = absoluteTop + 'px';
+                }
+                el.style.left = leftCss;
+                el.style.width = widthCss;
+                el.style.right = rightCss;
+                el.style.height = blockHeight + 'px';
+                
+                if (!el.dataset.initAnim) {
+                    requestAnimationFrame(() => {
+                        el.style.transition = 'top 200ms ease-out, left 200ms ease-out, width 200ms ease-out, height 200ms ease-out, transform 0s, z-index 0.2s, box-shadow 0.2s, opacity 0.2s';
+                        el.dataset.initAnim = 'true';
+                    });
+                }
+            };
+            
+            applyVisuals(eventData, block);
 
             function formatTimeMin(min) {
                 const h = Math.floor(min / 60) % 24;
@@ -10547,7 +10656,12 @@ window.initCourseFlix = async function() {
                 return `${displayH}:${displayM} ${ampm}`;
             }
 
-            const timeRangeStr = `${formatTimeMin(startMinute)} - ${formatTimeMin(endMinute)}`;
+            const updateTimeLabel = (el, sm, em) => {
+                const timeStr = `${formatTimeMin(sm)} - ${formatTimeMin(em)}`;
+                const tooltipEl = el.querySelector('.cal-event-tooltip');
+                if (tooltipEl) tooltipEl.innerHTML = `🕒 ${timeStr} • ${tooltip}`;
+                el.title = `${label} (${timeStr})\n${tooltip}${isCompleted || type === 'history' ? '\n✓ Completed' : ''}\n(Click to play lecture • Right-click to delete)`;
+            };
 
             const PALETTE = [
                 { bg: 'linear-gradient(135deg, rgba(99, 102, 241, 0.68), rgba(139, 92, 246, 0.58))', border: 'rgba(139, 92, 246, 0.65)', shadow: 'rgba(99, 102, 241, 0.25)' },
@@ -10571,33 +10685,15 @@ window.initCourseFlix = async function() {
             const colorScheme = PALETTE[Math.abs(hash) % PALETTE.length];
             const isDone = type === 'history' || isCompleted;
 
-            const leftCss = totalCols === 1
-                ? '64px'
-                : `calc(64px + (${colIndex} * ((100% - 72px) / ${totalCols})))`;
-            const widthCss = totalCols === 1
-                ? 'auto'
-                : `calc(((100% - 72px) / ${totalCols}) - 4px)`;
-            const rightCss = totalCols === 1 ? '8px' : 'auto';
-
-            block.style.cssText = `
-                position: absolute;
-                top: ${topOffsetWithinHour}px;
-                left: ${leftCss};
-                width: ${widthCss};
-                right: ${rightCss};
-                height: ${blockHeight}px;
-                z-index: 5;
-                background: ${colorScheme.bg};
-                border: 1px solid ${colorScheme.border};
-                box-shadow: 0 2px 12px ${colorScheme.shadow};
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
-                cursor: pointer;
-                opacity: ${isDone ? '0.88' : '1'};
-                transition: transform 0.2s, z-index 0.2s, box-shadow 0.2s;
-            `;
-
-            block.title = `${label} (${timeRangeStr})\n${tooltip}${isDone ? '\n✓ Completed' : ''}\n(Click to play lecture • Right-click to delete)`;
+            block.style.position = 'absolute';
+            block.style.zIndex = '5';
+            block.style.background = colorScheme.bg;
+            block.style.border = `1px solid ${colorScheme.border}`;
+            block.style.boxShadow = `0 2px 12px ${colorScheme.shadow}`;
+            block.style.backdropFilter = 'blur(8px)';
+            block.style.cursor = (type === 'planned' && id && !isCompleted) ? 'grab' : 'pointer';
+            block.style.opacity = isDone ? '0.88' : '1';
+            block.tabIndex = 0;
 
             block.innerHTML = `
                 <div class="cal-event-inner ${isDone ? 'cal-event-done' : ''}">
@@ -10605,28 +10701,24 @@ window.initCourseFlix = async function() {
                         ${isDone ? '<i class="fas fa-check-circle" style="color: #34d399; margin-right: 6px;"></i>' : ''}
                         ${label}
                     </div>
-                    <div class="cal-event-tooltip">🕒 ${timeRangeStr} • ${tooltip}</div>
+                    <div class="cal-event-tooltip"></div>
                     ${isDone ? '<div class="cal-strike-arrow"></div>' : ''}
                     ${canDelete && id ? `<button class="cal-event-delete" data-id="${id}" title="Remove event">×</button>` : ''}
                 </div>
             `;
+            
+            updateTimeLabel(block, eventData.startMinute, eventData.endMinute);
 
-            // Hover elevation
-            block.addEventListener('mouseenter', () => { block.style.zIndex = '20'; });
-            block.addEventListener('mouseleave', () => { block.style.zIndex = '5'; });
+            block.addEventListener('mouseenter', () => { if (block.style.cursor !== 'grabbing') block.style.zIndex = '20'; });
+            block.addEventListener('mouseleave', () => { if (block.style.cursor !== 'grabbing') block.style.zIndex = '5'; });
 
-            // Click listener to play/navigate to lecture
-            block.addEventListener('click', async (e) => {
-                if (e.target.closest('.cal-event-delete')) return;
-                
+            const playLecture = async () => {
                 let targetCourseId = courseId;
                 let targetLectureId = lectureId;
-
                 if (!targetCourseId && label) {
                     const matchC = courses.find(c => c.title === label);
                     if (matchC) targetCourseId = matchC.id;
                 }
-
                 if (targetCourseId) {
                     const matchC = courses.find(c => String(c.id) === String(targetCourseId));
                     if (matchC && matchC.lectures && matchC.lectures.length > 0) {
@@ -10636,14 +10728,193 @@ window.initCourseFlix = async function() {
                         await playLectureFromAnywhere(targetCourseId, targetLectureId || null, 'history-view', subfolder || null);
                     }
                 }
-            });
+            };
 
-            // Delete handler on click
             if (canDelete && id) {
                 block.querySelector('.cal-event-delete').addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    await deleteCalendarEvent(id);
+                    if (type === 'history' || isCompleted) {
+                        const hidden = JSON.parse(localStorage.getItem('cal_hidden_history') || '[]');
+                        hidden.push(id);
+                        localStorage.setItem('cal_hidden_history', JSON.stringify(hidden));
+                        window.calendarUndoStack = window.calendarUndoStack || [];
+                        window.calendarUndoStack.push({ action: 'hide_history', id: id });
+                    } else {
+                        await deleteCalendarEvent(id);
+                    }
                     if (onDelete) onDelete();
+                });
+            }
+
+            // Keyboard Accessibility
+            block.addEventListener('keydown', async (e) => {
+                if (type === 'planned' && id && !isCompleted) {
+                    const dMins = eventData.durationMins;
+                    let step = e.shiftKey ? 60 : 15;
+                    let newSm = eventData.startMinute;
+                    
+                    if (e.key === 'ArrowUp') {
+                        newSm = Math.max(0, newSm - step);
+                        e.preventDefault();
+                    } else if (e.key === 'ArrowDown') {
+                        newSm = Math.min(24 * 60 - dMins, newSm + step);
+                        e.preventDefault();
+                    } else if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        playLecture();
+                        return;
+                    } else {
+                        return;
+                    }
+
+                    if (newSm !== eventData.startMinute) {
+                        eventData.startMinute = newSm;
+                        eventData.endMinute = newSm + dMins;
+                        
+                        await ensureDB();
+                        const evRecord = await new Promise(r => {
+                            const req = getStore(CALENDAR_STORE, 'readonly').get(Number(id));
+                            req.onsuccess = ev => r(ev.target.result);
+                            req.onerror = () => r(null);
+                        });
+
+                        if (evRecord) {
+                            window.calendarUndoStack = window.calendarUndoStack || [];
+                            window.calendarUndoStack.push({ action: 'update', event: { ...evRecord } });
+                            evRecord.endMinute = eventData.endMinute;
+                            await new Promise(r => {
+                                const req = getStore(CALENDAR_STORE, 'readwrite').put(evRecord);
+                                req.onsuccess = r;
+                            });
+                            if (onDelete) onDelete();
+                        }
+                    }
+                } else {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        playLecture();
+                    }
+                }
+            });
+
+            // Pointer Event State Machine for Drag & Drop
+            if (type === 'planned' && id && !isCompleted) {
+                let isDragging = false;
+                let startY = 0;
+                let initialAbsoluteTop = 0;
+                let initialStartMinute = eventData.startMinute;
+                let pointerId = null;
+                
+                block.addEventListener('pointerdown', (e) => {
+                    if (e.target.closest('.cal-event-delete')) return;
+                    if (e.button !== 0 && e.pointerType === 'mouse') return;
+                    
+                    pointerId = e.pointerId;
+                    block.setPointerCapture(pointerId);
+                    
+                    isDragging = false; // Pending
+                    startY = e.clientY;
+                    initialAbsoluteTop = (eventData.startMinute / 60) * HOUR_HEIGHT;
+                    initialStartMinute = eventData.startMinute;
+                    
+                    block.addEventListener('pointermove', onPointerMove);
+                    block.addEventListener('pointerup', onPointerUp);
+                    block.addEventListener('pointercancel', onPointerUp);
+                });
+
+                const onPointerMove = (e) => {
+                    const deltaY = e.clientY - startY;
+                    
+                    if (!isDragging) {
+                        if (Math.abs(deltaY) > 6) { // 6px threshold
+                            isDragging = true;
+                            block.style.cursor = 'grabbing';
+                            block.style.zIndex = '1000';
+                            block.style.opacity = '0.96';
+                            block.style.boxShadow = `0 12px 24px ${colorScheme.shadow}`;
+                            block.style.transition = 'left 200ms ease-out, width 200ms ease-out, height 200ms ease-out';
+                        } else {
+                            return;
+                        }
+                    }
+
+                    // Live following cursor
+                    let newAbsoluteTop = initialAbsoluteTop + deltaY;
+                    newAbsoluteTop = Math.max(0, Math.min(newAbsoluteTop, 24 * HOUR_HEIGHT - block.offsetHeight));
+                    block.style.transform = `translateY(${newAbsoluteTop - initialAbsoluteTop}px) scale(1.02)`;
+
+                    // Live snapping
+                    const topMinutes = (newAbsoluteTop / HOUR_HEIGHT) * 60;
+                    const snappedStartMins = Math.round(topMinutes / 15) * 15;
+                    
+                    if (snappedStartMins !== eventData.startMinute) {
+                        eventData.startMinute = snappedStartMins;
+                        eventData.endMinute = snappedStartMins + eventData.durationMins;
+                        updateTimeLabel(block, eventData.startMinute, eventData.endMinute);
+                        
+                        const allEvents = window.currentCalendarAllDayEvents || [];
+                        layoutDayEvents(allEvents);
+                        allEvents.forEach(ev => {
+                            if (ev.element) {
+                                applyVisuals(ev, ev.element, ev === eventData);
+                            }
+                        });
+                    }
+
+                    // Auto scroll
+                    const rect = timeline.getBoundingClientRect();
+                    const edgeThreshold = 40;
+                    if (e.clientY < rect.top + edgeThreshold) {
+                        timeline.scrollTop -= 15;
+                    } else if (e.clientY > rect.bottom - edgeThreshold) {
+                        timeline.scrollTop += 15;
+                    }
+                };
+
+                const onPointerUp = async (e) => {
+                    block.removeEventListener('pointermove', onPointerMove);
+                    block.removeEventListener('pointerup', onPointerUp);
+                    block.removeEventListener('pointercancel', onPointerUp);
+                    if (pointerId !== null) block.releasePointerCapture(pointerId);
+
+                    if (!isDragging) {
+                        playLecture();
+                        return;
+                    }
+
+                    isDragging = false;
+                    block.style.cursor = 'grab';
+                    block.style.zIndex = '5';
+                    block.style.opacity = '1';
+                    block.style.transform = 'none';
+                    block.style.boxShadow = `0 2px 12px ${colorScheme.shadow}`;
+                    block.style.transition = 'top 200ms ease-out, left 200ms ease-out, width 200ms ease-out, height 200ms ease-out, transform 0s, z-index 0.2s, box-shadow 0.2s, opacity 0.2s';
+                    
+                    if (eventData.startMinute !== initialStartMinute) {
+                        await ensureDB();
+                        const evRecord = await new Promise(r => {
+                            const req = getStore(CALENDAR_STORE, 'readonly').get(Number(id));
+                            req.onsuccess = ev => r(ev.target.result);
+                            req.onerror = () => r(null);
+                        });
+
+                        if (evRecord) {
+                            window.calendarUndoStack = window.calendarUndoStack || [];
+                            window.calendarUndoStack.push({ action: 'update', event: { ...evRecord } });
+                            evRecord.endMinute = eventData.endMinute;
+                            await new Promise(r => {
+                                const req = getStore(CALENDAR_STORE, 'readwrite').put(evRecord);
+                                req.onsuccess = r;
+                            });
+                        }
+                    }
+                    
+                    applyVisuals(eventData, block, false);
+                };
+            } else {
+                block.addEventListener('click', async (e) => {
+                    if (e.target.closest('.cal-event-delete')) return;
+                    playLecture();
                 });
             }
 
@@ -10686,7 +10957,15 @@ window.initCourseFlix = async function() {
                     evt.stopPropagation();
                     menu.remove();
                     if (id) {
-                        await deleteCalendarEvent(id);
+                        if (type === 'history' || isCompleted) {
+                            const hidden = JSON.parse(localStorage.getItem('cal_hidden_history') || '[]');
+                            hidden.push(id);
+                            localStorage.setItem('cal_hidden_history', JSON.stringify(hidden));
+                            window.calendarUndoStack = window.calendarUndoStack || [];
+                            window.calendarUndoStack.push({ action: 'hide_history', id: id });
+                        } else {
+                            await deleteCalendarEvent(id);
+                        }
                         if (onDelete) onDelete();
                     }
                 });
@@ -10706,7 +10985,7 @@ window.initCourseFlix = async function() {
                 }, 10);
             });
 
-            targetSlot.appendChild(block);
+            timeline.appendChild(block);
         }
 
         function showAddEventModal(dateStr, hour, minute, isUnlocked, onSave) {
@@ -10847,76 +11126,27 @@ window.initCourseFlix = async function() {
 
         // Make Playlist from calendar day events
         window.makeCalendarPlaylist = async function(dateStr, isUnlocked, onDone) {
-            await cleanupOrphanedHistoryEntries();
-            const allHistory = await getHistoryEntries();
-            const dayTickedEvents = [];
-            const seenKeys = new Set();
-            allHistory.forEach(h => {
-                if (!h.timestamp || !h.timestamp.startsWith(dateStr)) return;
-                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
-                if (!course || course.isIgnored) return;
-                if (h.subfolder) {
-                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return;
-                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return;
-                }
-                const progKey = `${h.courseId}_${h.lectureId}`;
-                const prog = courseProgress[progKey];
-                if (prog && prog.completed) {
-                    seenKeys.add(progKey);
-                    dayTickedEvents.push(h);
-                }
-            });
+            const currentEvents = window.currentCalendarAllDayEvents || [];
+            
+            // Sort events exactly by their visual top position (startMinute)
+            const sortedEvents = [...currentEvents].sort((a, b) => a.startMinute - b.startMinute);
 
-            Object.values(courseProgress).forEach(prog => {
-                if (!prog.completed) return;
-                const ts = prog.completedAt || prog.lastStudiedAt;
-                if (ts && ts.startsWith(dateStr)) {
-                    const progKey = prog.id || `${prog.courseId}_${prog.lectureId}`;
-                    if (!seenKeys.has(progKey)) {
-                        seenKeys.add(progKey);
-                        const course = courses.find(c => String(c.id) === String(prog.courseId));
-                        const lecture = course?.lectures?.find(l => String(l.id) === String(prog.lectureId));
-                        dayTickedEvents.push({
-                            courseId: prog.courseId,
-                            courseTitle: prog.courseTitle || course?.title || 'Course',
-                            lectureId: prog.lectureId,
-                            lectureName: prog.lectureName || lecture?.displayName || 'Lecture',
-                            duration: prog.lectureDuration || lecture?.duration || 3600,
-                            subfolder: prog.subfolder || ''
-                        });
-                    }
-                }
-            });
-
-            const storedEvents = await getCalendarEventsForDate(dateStr);
             const playlist = [];
-
-            // Add completed events for this date
-            dayTickedEvents.forEach(h => {
-                const course = courses.find(c => c.id === parseInt(h.courseId));
-                if (course) {
-                    playlist.push({
-                        courseId: h.courseId,
-                        courseTitle: h.courseTitle || course.title,
-                        lectureId: h.lectureId,
-                        title: h.lectureName || 'Lecture',
-                        duration: h.duration || 3600,
-                        facultyName: getSubfolderFacultyName(course, h.subfolder || ''),
-                        chName: h.subfolder || ''
-                    });
+            sortedEvents.forEach(ev => {
+                const course = courses.find(c => String(c.id) === String(ev.courseId));
+                let faculty = ev.faculty || '';
+                if (!faculty && course) {
+                    faculty = getSubfolderFacultyName(course, ev.subfolder || '');
                 }
-            });
-
-            // Add planned events for this date
-            storedEvents.forEach(ev => {
+                
                 playlist.push({
                     courseId: ev.courseId,
-                    courseTitle: ev.courseTitle,
+                    courseTitle: ev.courseTitle || (course ? course.title : 'Course'),
                     lectureId: ev.lectureId,
-                    title: ev.lectureName || 'Lecture',
+                    title: ev.label || 'Lecture',
                     duration: (ev.durationMins || 60) * 60,
-                    facultyName: ev.faculty || '',
-                    chName: ''
+                    facultyName: faculty,
+                    chName: ev.subfolder || ''
                 });
             });
 
@@ -10929,8 +11159,8 @@ window.initCourseFlix = async function() {
             localStorage.setItem('courseflix_calendar_playlist', JSON.stringify(playlist));
 
             // Start playlist from first item that has a valid course
-            const firstItem = playlist[0];
-            if (firstItem && firstItem.courseId && firstItem.lectureId) {
+            const firstItem = playlist.find(p => p.courseId && p.lectureId);
+            if (firstItem) {
                 await renderCalendarPlayer(firstItem.courseId, firstItem.lectureId);
             } else {
                 alert('Playlist created! Navigate to the player to start watching.');
