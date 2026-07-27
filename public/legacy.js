@@ -3074,7 +3074,9 @@ window.initCourseFlix = async function() {
                     } catch (err) {
                         console.warn("Autoplay blocked by browser. User interaction required to start unmuted:", err.message);
                         // User requested NO muted autoplay fallback. Let it stay paused.
-                        showPlayIcon(centerPlayOverlay);
+                        if (typeof centerPlayOverlay !== 'undefined' && centerPlayOverlay) {
+                            centerPlayOverlay.classList.remove('hidden');
+                        }
                         playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
                     }
                 }, { once: true });
@@ -3216,7 +3218,7 @@ window.initCourseFlix = async function() {
                     }
                     if (mediaViewerFrame) {
                         mediaViewerFrame.style.display = 'block';
-                        mediaViewerFrame.src = activeFileUrl;
+                        mediaViewerFrame.src = `/pdf-viewer.html?file=${encodeURIComponent(activeFileUrl)}`;
                     }
                     viewerTitle.textContent = fileName || file.name || (fileType.toLowerCase() === 'pdf' ? 'Notes.pdf' : 'DPP.pdf');
                     activeViewerFileType = fileType.toLowerCase();
@@ -3230,6 +3232,79 @@ window.initCourseFlix = async function() {
                     mediaViewerToggleBtn.classList.add('hidden');
                     deleteViewerFileBtn.dataset.type = activeViewerFileType;
                     deleteViewerFileBtn.classList.add('visible');
+                    
+                    let popOutBtnDynamic = document.getElementById('pop-out-btn-dynamic');
+                    if (!popOutBtnDynamic) {
+                        popOutBtnDynamic = document.createElement('button');
+                        popOutBtnDynamic.id = 'pop-out-btn-dynamic';
+                        popOutBtnDynamic.title = 'Pop Out';
+                        popOutBtnDynamic.innerHTML = '<i class="fas fa-external-link-alt"></i> Pop Out';
+                        popOutBtnDynamic.style.cssText = 'background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-secondary); border-radius: 6px; font-size: 0.8rem; font-weight: 500; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background-color 0.2s, color 0.2s, border-color 0.2s;';
+                        
+                        popOutBtnDynamic.addEventListener('mouseover', () => {
+                            popOutBtnDynamic.style.backgroundColor = 'var(--accent-primary)';
+                            popOutBtnDynamic.style.color = 'white';
+                            popOutBtnDynamic.style.borderColor = 'var(--accent-primary)';
+                        });
+                        popOutBtnDynamic.addEventListener('mouseout', () => {
+                            popOutBtnDynamic.style.backgroundColor = 'var(--bg-tertiary)';
+                            popOutBtnDynamic.style.color = 'var(--text-primary)';
+                            popOutBtnDynamic.style.borderColor = 'var(--border-secondary)';
+                        });
+
+                        popOutBtnDynamic.addEventListener('click', async () => {
+                            if (mediaViewerFrame && activeFileUrl) {
+                                let currentPage = 1;
+                                let currentScale = 1.5;
+
+                                try {
+                                    if (mediaViewerFrame.contentWindow) {
+                                        if (mediaViewerFrame.contentWindow.currentPage) {
+                                            currentPage = mediaViewerFrame.contentWindow.currentPage;
+                                        }
+                                        if (mediaViewerFrame.contentWindow.currentScale) {
+                                            currentScale = mediaViewerFrame.contentWindow.currentScale;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.log("Could not read PDF.js state:", e);
+                                }
+
+                                const popOutUrl = `/pdf-viewer.html?file=${encodeURIComponent(activeFileUrl)}#page=${currentPage}&zoom=${currentScale}`;
+
+                                let windowFeatures = "";
+
+                                try {
+                                    if ('getScreenDetails' in window) {
+                                        const screenDetails = await window.getScreenDetails();
+                                        const secondary = screenDetails.screens.find(s => s !== screenDetails.currentScreen);
+                                        if (secondary) {
+                                            windowFeatures = `left=${secondary.availLeft},top=${secondary.availTop},width=${secondary.availWidth},height=${secondary.availHeight}`;
+                                        }
+                                    } else if (window.screen && (window.screen.isExtended || window.screen.width)) {
+                                        const targetLeft = (window.screen.availLeft !== undefined && window.screen.availLeft !== 0) 
+                                            ? 0 
+                                            : (window.screen.width || 1920);
+                                        windowFeatures = `left=${targetLeft},top=0,width=1280,height=900`;
+                                    }
+                                } catch (e) {
+                                    console.log("Multi-display detection fallback:", e);
+                                }
+
+                                if (windowFeatures) {
+                                    window.open(popOutUrl, '_blank', windowFeatures);
+                                } else {
+                                    window.open(popOutUrl, '_blank');
+                                }
+
+                                // Minimize right sidebar so video player takes full focus
+                                minimizeMediaViewer();
+                            }
+                        });
+                        
+                        deleteViewerFileBtn.parentNode.insertBefore(popOutBtnDynamic, deleteViewerFileBtn);
+                    }
+                    popOutBtnDynamic.style.display = 'inline-flex';
                 }
             } catch (error) {
                 console.error("Error showing file:", error);
@@ -3276,6 +3351,8 @@ window.initCourseFlix = async function() {
             mediaViewer.classList.add('hidden');
             mediaViewer.style.width = '0px';
             deleteViewerFileBtn.classList.remove('visible');
+            const popOutBtnDynamic = document.getElementById('pop-out-btn-dynamic');
+            if (popOutBtnDynamic) popOutBtnDynamic.style.display = 'none';
             if (activeFileUrl) {
                 try { URL.revokeObjectURL(activeFileUrl); } catch(e) {}
                 activeFileUrl = null;
@@ -3286,6 +3363,14 @@ window.initCourseFlix = async function() {
             }
             activeViewerFileType = null;
             activeViewerLectureId = null;
+            playerView.style.setProperty('--viewer-width', '0px');
+            updateMediaViewerToggleButton();
+        }
+
+        function minimizeMediaViewer() {
+            playerView.classList.remove('viewer-active');
+            mediaViewer.classList.add('hidden');
+            mediaViewer.style.width = '0px';
             playerView.style.setProperty('--viewer-width', '0px');
             updateMediaViewerToggleButton();
         }
@@ -4039,7 +4124,7 @@ window.initCourseFlix = async function() {
             }
         });
 
-        closeViewerBtn.addEventListener('click', hideMediaViewer);
+        closeViewerBtn.addEventListener('click', minimizeMediaViewer);
         
         mediaViewerToggleBtn.addEventListener('click', () => {
             const isHidden = mediaViewer.classList.contains('hidden');
@@ -5771,20 +5856,27 @@ window.initCourseFlix = async function() {
         mediaResizeHandle.addEventListener('mousedown', (e) => { 
             e.preventDefault(); 
             isResizing = true; 
+            document.body.classList.add('is-resizing');
             document.body.style.cursor = 'ew-resize'; 
             playerView.style.userSelect = 'none'; 
             mediaViewer.style.pointerEvents = 'none';
             document.getElementById('video-wrapper').style.pointerEvents = 'none';
         });
         let resizeTicking = false;
+        let lastClientX = 0;
         document.addEventListener('mousemove', (e) => {
             if (!isResizing) return; 
             e.preventDefault(); 
+            lastClientX = e.clientX;
             if (!resizeTicking) {
                 window.requestAnimationFrame(() => {
+                    if (!isResizing) {
+                        resizeTicking = false;
+                        return;
+                    }
                     const totalWidth = playerView.offsetWidth;
                     const menuWidth = lectureMenu.classList.contains('hidden') ? 0 : lectureMenu.offsetWidth;
-                    let newViewerWidth = totalWidth - e.clientX;
+                    let newViewerWidth = totalWidth - lastClientX;
                     newViewerWidth = Math.max(300, newViewerWidth);
                     newViewerWidth = Math.min(totalWidth - 300 - menuWidth, newViewerWidth);
                     playerView.style.setProperty('--viewer-width', `${newViewerWidth}px`);
@@ -5798,6 +5890,7 @@ window.initCourseFlix = async function() {
             if (isResizing) {
                 localStorage.setItem('viewerWidth', mediaViewer.style.width);
                 isResizing = false;
+                document.body.classList.remove('is-resizing');
                 document.body.style.cursor = '';
                 playerView.style.userSelect = '';
                 mediaViewer.style.pointerEvents = '';
