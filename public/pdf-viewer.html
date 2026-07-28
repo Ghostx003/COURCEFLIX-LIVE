@@ -91,6 +91,7 @@
     }
     /* Main PDF Scroll View Area */
     #pdf-scroll-view {
+      position: relative;
       flex-grow: 1;
       overflow-y: auto;
       overflow-x: hidden;
@@ -102,6 +103,11 @@
       background-color: #0f0f14;
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    }
+    .page-input:focus {
+      border-color: #10b981;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+      outline: none;
     }
     .pdf-page-card {
       position: relative;
@@ -141,7 +147,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
-  <div id="viewer-container">
+  <div id="viewer-container" style="overflow: hidden;">
     <div id="pdf-toolbar">
       <div class="toolbar-group">
         <button class="toolbar-btn" id="btn-prev" title="Previous Page"><i class="fas fa-chevron-up"></i></button>
@@ -194,6 +200,8 @@
 
     let pageCards = [];
     let isUserScrolling = true;
+    let currentRenderToken = 0;
+    let isBuildingPages = false;
 
     // Parse URL parameters & Hash (#page=47&zoom=1.5)
     function parseParams() {
@@ -241,16 +249,6 @@
 
         // Setup scroll observer for page tracking
         setupIntersectionObserver();
-
-        // Re-fit after initial slide-in transition finishes (player panel transition is 300ms)
-        [100, 350, 600].forEach(delay => {
-          setTimeout(() => {
-            if (window.currentScale === 'fit' && window.pdfDocument) {
-              window.setZoom('fit');
-            }
-          }, delay);
-        });
-
       } catch (err) {
         console.error("PDF.js Load Error:", err);
         loadingEl.innerHTML = `<p style="color: #ef4444;"><i class="fas fa-exclamation-circle"></i> Failed to load PDF document.</p>`;
@@ -260,76 +258,144 @@
     async function renderAllPages(pdf) {
       scrollView.innerHTML = '';
       pageCards = [];
+      isBuildingPages = true;
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const pageCard = document.createElement('div');
-        pageCard.className = 'pdf-page-card';
-        pageCard.dataset.pageNumber = i;
-        pageCard.id = `page-card-${i}`;
+      try {
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const pageCard = document.createElement('div');
+          pageCard.className = 'pdf-page-card';
+          pageCard.dataset.pageNumber = i;
+          pageCard.id = `page-card-${i}`;
 
-        const canvas = document.createElement('canvas');
-        pageCard.appendChild(canvas);
-        scrollView.appendChild(pageCard);
+          const canvas = document.createElement('canvas');
+          pageCard.appendChild(canvas);
+          scrollView.appendChild(pageCard);
 
-        pageCards.push({ card: pageCard, canvas: canvas, pageNum: i });
-        await renderSinglePage(pdf, i, canvas, pageCard);
+          pageCards.push({ card: pageCard, canvas: canvas, pageNum: i });
+          await renderSinglePage(pdf, i, canvas, pageCard);
+        }
+      } finally {
+        isBuildingPages = false;
       }
     }
 
     async function renderSinglePage(pdf, pageNum, canvas, pageCard) {
-      const page = await pdf.getPage(pageNum);
-      
-      let scale = window.currentScale;
-      if (scale === 'fit') {
-        const viewportRaw = page.getViewport({ scale: 1.0, rotation: window.currentRotation });
-        let containerWidth = scrollView.clientWidth;
-        if (!containerWidth || containerWidth <= 50) {
-          containerWidth = (scrollView.parentElement ? scrollView.parentElement.clientWidth : 0) || (window.innerWidth ? window.innerWidth * 0.45 : 500);
+      if (!canvas || !pdf) return;
+
+      if (canvas._activeRenderTask) {
+        try {
+          canvas._activeRenderTask.cancel();
+        } catch (e) {}
+        if (canvas._renderPromise) {
+          try {
+            await canvas._renderPromise;
+          } catch (e) {}
         }
-        containerWidth = Math.max(100, containerWidth - 24);
-        scale = containerWidth / viewportRaw.width;
-        if (isNaN(scale) || scale <= 0) scale = 1.0;
-      } else {
-        scale = parseFloat(scale) || 1.5;
+        canvas._activeRenderTask = null;
+        canvas._renderPromise = null;
       }
 
-      const outputScale = window.devicePixelRatio || 1;
-      const viewport = page.getViewport({ scale: scale * outputScale, rotation: window.currentRotation });
-      const cssViewport = page.getViewport({ scale: scale, rotation: window.currentRotation });
+      try {
+        const page = await pdf.getPage(pageNum);
+        
+        let scale = window.currentScale;
+        if (scale === 'fit') {
+          const viewportRaw = page.getViewport({ scale: 1.0, rotation: window.currentRotation });
+          let containerWidth = scrollView.clientWidth;
+          if (!containerWidth || containerWidth <= 50) {
+            containerWidth = (scrollView.parentElement ? scrollView.parentElement.clientWidth : 0) || (window.innerWidth ? window.innerWidth * 0.45 : 500);
+          }
+          containerWidth = Math.max(100, containerWidth - 24);
+          scale = containerWidth / viewportRaw.width;
+          if (isNaN(scale) || scale <= 0) scale = 1.0;
+        } else {
+          scale = parseFloat(scale) || 1.5;
+        }
 
-      const context = canvas.getContext('2d');
-      context.clearRect(0, 0, canvas.width, canvas.height);
+        const outputScale = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale: scale * outputScale, rotation: window.currentRotation });
+        const cssViewport = page.getViewport({ scale: scale, rotation: window.currentRotation });
 
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      canvas.style.width = Math.floor(cssViewport.width) + "px";
-      canvas.style.height = Math.floor(cssViewport.height) + "px";
+        const context = canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.width, canvas.height);
 
-      pageCard.style.width = Math.floor(cssViewport.width) + "px";
-      pageCard.style.height = Math.floor(cssViewport.height) + "px";
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        canvas.style.width = Math.floor(cssViewport.width) + "px";
+        canvas.style.height = Math.floor(cssViewport.height) + "px";
 
-      await page.render({
-        canvasContext: context,
-        viewport: viewport
-      }).promise;
+        pageCard.style.width = Math.floor(cssViewport.width) + "px";
+        pageCard.style.height = Math.floor(cssViewport.height) + "px";
+
+        const renderTask = page.render({
+          canvasContext: context,
+          viewport: viewport
+        });
+        canvas._activeRenderTask = renderTask;
+        canvas._renderPromise = renderTask.promise;
+
+        await renderTask.promise;
+      } catch (err) {
+        if (err && (err.name === 'RenderingCancelledException' || (err.message && err.message.includes('RenderingCancelled')))) {
+          // Silent catch for cancelled render task
+        } else {
+          console.warn(`PDF Page ${pageNum} render warning:`, err);
+        }
+      } finally {
+        if (canvas._activeRenderTask) {
+          canvas._activeRenderTask = null;
+          canvas._renderPromise = null;
+        }
+      }
+    }
+
+    let scrollAnimationFrame = null;
+
+    function detectActivePage() {
+      if (!isUserScrolling || !pageCards || pageCards.length === 0) return;
+
+      const containerRect = scrollView.getBoundingClientRect();
+      const refPoint = containerRect.top + 60;
+
+      let bestPage = window.currentPage;
+      let minDistance = Infinity;
+      let maxVisibleHeight = -1;
+
+      for (const item of pageCards) {
+        const rect = item.card.getBoundingClientRect();
+        const visibleTop = Math.max(rect.top, containerRect.top);
+        const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+
+        if (visibleHeight > 0) {
+          const dist = Math.abs(rect.top - refPoint);
+          if (visibleHeight > maxVisibleHeight || (Math.abs(visibleHeight - maxVisibleHeight) < 20 && dist < minDistance)) {
+            maxVisibleHeight = visibleHeight;
+            minDistance = dist;
+            bestPage = item.pageNum;
+          }
+        }
+      }
+
+      if (bestPage && window.currentPage !== bestPage) {
+        updatePageUI(bestPage);
+      }
     }
 
     function setupIntersectionObserver() {
-      const observer = new IntersectionObserver((entries) => {
+      const observer = new IntersectionObserver(() => {
         if (!isUserScrolling) return;
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const pageNum = parseInt(entry.target.dataset.pageNumber, 10);
-            if (pageNum && window.currentPage !== pageNum) {
-              window.currentPage = pageNum;
-              updatePageUI(pageNum);
-            }
-          }
-        });
-      }, { root: scrollView, threshold: 0.4 });
+        detectActivePage();
+      }, { root: scrollView, threshold: [0, 0.1, 0.5, 1.0] });
 
       pageCards.forEach(item => observer.observe(item.card));
     }
+
+    scrollView.addEventListener('scroll', () => {
+      if (!isUserScrolling) return;
+      if (scrollAnimationFrame) cancelAnimationFrame(scrollAnimationFrame);
+      scrollAnimationFrame = requestAnimationFrame(detectActivePage);
+    }, { passive: true });
 
     function updatePageUI(pageNum) {
       pageNumInput.value = pageNum;
@@ -344,7 +410,9 @@
       const targetCard = document.getElementById(`page-card-${pageNum}`);
       if (targetCard) {
         isUserScrolling = false;
-        targetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Use container scroll to prevent scrollIntoView from scrolling ancestor windows/frames
+        const targetTop = targetCard.offsetTop;
+        scrollView.scrollTo({ top: targetTop, behavior: 'smooth' });
         updatePageUI(pageNum);
         setTimeout(() => { isUserScrolling = true; }, 500);
       }
@@ -352,10 +420,11 @@
 
     window.setZoom = async function(newScale) {
       window.currentScale = newScale;
-      if (window.pdfDocument) {
-        for (const item of pageCards) {
-          await renderSinglePage(window.pdfDocument, item.pageNum, item.canvas, item.card);
-        }
+      if (!window.pdfDocument || isBuildingPages) return;
+      const renderToken = ++currentRenderToken;
+      for (const item of pageCards) {
+        if (renderToken !== currentRenderToken) break;
+        await renderSinglePage(window.pdfDocument, item.pageNum, item.canvas, item.card);
       }
       updatePageUI(window.currentPage);
     };
@@ -369,10 +438,28 @@
       window.goToPage(window.currentPage + 1);
     });
 
+    pageNumInput.addEventListener('focus', () => {
+      pageNumInput.select();
+    });
+
     pageNumInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const val = parseInt(pageNumInput.value, 10);
-        if (!isNaN(val)) window.goToPage(val);
+        if (!isNaN(val)) {
+          window.goToPage(val);
+        } else {
+          pageNumInput.value = window.currentPage;
+        }
+        pageNumInput.blur();
+      }
+    });
+
+    pageNumInput.addEventListener('blur', () => {
+      const val = parseInt(pageNumInput.value, 10);
+      if (!isNaN(val) && val >= 1 && val <= (window.pdfDocument ? window.pdfDocument.numPages : 1)) {
+        window.goToPage(val);
+      } else {
+        pageNumInput.value = window.currentPage;
       }
     });
 
@@ -405,11 +492,14 @@
     // Auto-fit on container, window, or transition resize
     let resizeDebounce = null;
     const triggerRefit = () => {
+      if (isBuildingPages) return;
       if (window.currentScale === 'fit' && window.pdfDocument) {
         clearTimeout(resizeDebounce);
         resizeDebounce = setTimeout(() => {
-          window.setZoom('fit');
-        }, 100);
+          if (!isBuildingPages) {
+            window.setZoom('fit');
+          }
+        }, 150);
       }
     };
 

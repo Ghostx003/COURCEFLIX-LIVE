@@ -83,6 +83,15 @@ window.initCourseFlix = async function() {
             return db.transaction(storeName, mode).objectStore(storeName);
         }
 
+        function parseCourseId(raw) {
+            if (raw === null || raw === undefined) return raw;
+            const str = String(raw).trim();
+            if (str && !isNaN(parseInt(str, 10)) && String(parseInt(str, 10)) === str) {
+                return parseInt(str, 10);
+            }
+            return raw;
+        }
+
         // --- DOM Elements ---
         const nav = document.querySelector('nav');
         
@@ -1059,13 +1068,25 @@ window.initCourseFlix = async function() {
                 if (viewId === 'dashboard-view') renderCourseGrid();
                 if (viewId === 'intell-view') { if (typeof renderIntellView === 'function') renderIntellView(); }
                 if (viewId === 'upload-view') {
-                     document.getElementById('upload-course-grid').classList.remove('hidden');
-                     document.getElementById('upload-subfolder-view').classList.add('hidden');
-                     document.getElementById('upload-detail-view').classList.add('hidden');
-                     renderUploadView();
+                     const detailView = document.getElementById('upload-detail-view');
+                     const subfolderView = document.getElementById('upload-subfolder-view');
+                     if ((!detailView || detailView.classList.contains('hidden')) && (!subfolderView || subfolderView.classList.contains('hidden'))) {
+                         document.getElementById('upload-course-grid').classList.remove('hidden');
+                         renderUploadView();
+                     }
                 }
-                if (viewId === 'dpp-view') renderDppCourseSelectionView();
-                if (viewId === 'notes-view') renderNotesCourseSelectionView();
+                if (viewId === 'dpp-view') {
+                    const detailContainer = document.getElementById('dpp-detail-container');
+                    if (!detailContainer || detailContainer.classList.contains('hidden')) {
+                        renderDppCourseSelectionView();
+                    }
+                }
+                if (viewId === 'notes-view') {
+                    const detailContainer = document.getElementById('notes-detail-container');
+                    if (!detailContainer || detailContainer.classList.contains('hidden')) {
+                        renderNotesCourseSelectionView();
+                    }
+                }
                 if (viewId === 'doubts-view') renderDoubtsCourseSelectionView();
                 if (viewId === 'continue-view') renderContinueView();
                 if (viewId === 'history-view') renderHistoryView();
@@ -3717,9 +3738,9 @@ window.initCourseFlix = async function() {
                 await renderDppUploadView(courseId);
             }
 
-            const dppCourseCard = e.target.closest('#dpp-course-grid .course-card .enter-course-btn');
-            if(dppCourseCard) {
-                const courseId = parseInt(dppCourseCard.closest('.course-card').dataset.courseId);
+            const dppCourseCard = e.target.closest('#dpp-course-grid .course-card');
+            if(dppCourseCard && !e.target.closest('.delete-all-dpps-btn')) {
+                const courseId = parseCourseId(dppCourseCard.dataset.courseId);
                 await renderDppDetailView(courseId);
             }
             if(e.target.closest('#back-to-dpp-grid')) {
@@ -3732,7 +3753,7 @@ window.initCourseFlix = async function() {
             const dppCourseDeleteBtn = e.target.closest('#dpp-course-grid .course-card .delete-all-dpps-btn');
             if (dppCourseDeleteBtn) {
                 e.stopPropagation();
-                const courseId = parseInt(dppCourseDeleteBtn.closest('.course-card').dataset.courseId);
+                const courseId = parseCourseId(dppCourseDeleteBtn.closest('.course-card').dataset.courseId);
                 const course = courses.find(c => String(c.id) === String(courseId));
                 const title = course ? course.title : 'this subject';
                 if (confirm(`Are you sure you want to delete all DPPs for ${title}? This will also clean up all orphan entries.`)) {
@@ -3765,12 +3786,12 @@ window.initCourseFlix = async function() {
             const notesCourseDeleteBtn = e.target.closest('#notes-course-grid .course-card .delete-all-notes-btn');
             if (notesCourseDeleteBtn) {
                 e.stopPropagation();
-                const courseId = parseInt(notesCourseDeleteBtn.closest('.course-card').dataset.courseId);
-                const course = courses.find(c => c.id === courseId);
-                if (confirm(`Are you sure you want to delete all notes for ${course.title}? This action cannot be undone.`)) {
+                const courseId = parseCourseId(notesCourseDeleteBtn.closest('.course-card').dataset.courseId);
+                const course = courses.find(c => String(c.id) === String(courseId));
+                if (confirm(`Are you sure you want to delete all notes for ${course ? course.title : 'this course'}? This action cannot be undone.`)) {
                     let updated = false;
                     for (const key in courseProgress) {
-                        if (courseProgress[key].courseId === courseId && courseProgress[key].pdfHandle) {
+                        if (String(courseProgress[key].courseId) === String(courseId) && courseProgress[key].pdfHandle) {
                             delete courseProgress[key].pdfHandle;
                             delete courseProgress[key].pdfName;
                             saveLectureProgress(courseProgress[key]);
@@ -3778,16 +3799,16 @@ window.initCourseFlix = async function() {
                         }
                     }
                     if (updated) {
-                        showToast(`All notes for ${course.title} deleted`);
+                        showToast(`All notes for ${course ? course.title : 'this course'} deleted`);
                         renderNotesCourseSelectionView();
                     }
                 }
                 return;
             }
 
-            const notesCourseCard = e.target.closest('#notes-course-grid .course-card .enter-course-btn');
-            if(notesCourseCard) {
-                const courseId = parseInt(notesCourseCard.closest('.course-card').dataset.courseId);
+            const notesCourseCard = e.target.closest('#notes-course-grid .course-card');
+            if(notesCourseCard && !e.target.closest('.delete-all-notes-btn')) {
+                const courseId = parseCourseId(notesCourseCard.dataset.courseId);
                 await renderNotesDetailView(courseId);
             }
              if(e.target.closest('#back-to-notes-grid')) {
@@ -4095,19 +4116,8 @@ window.initCourseFlix = async function() {
             const file = e.target.files[0];
             const lectureId = e.target.dataset.lectureId;
             if (file && lectureId) {
-                const progressData = getLectureProgress(currentCourse.id, lectureId);
-                await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId: currentCourse.id, lectureId: lectureId });
-                await renderPlayer(currentCourse.id, lectureId, lastView, null, currentSubfolder);
-                await showMediaViewer(file, 'PDF', file.name, getLectureProgress(currentCourse.id, lectureId));
-            }
-            e.target.value = null;
-        });
-
-        addAssignmentInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            const lectureId = e.target.dataset.lectureId;
-            if (file && lectureId) {
                 const folderDisplayName = currentSubfolder ? getSubfolderDisplayName(currentCourse, currentSubfolder) : (currentCourse ? currentCourse.title : 'DPP');
+                const facultyName = getSubfolderFacultyName(currentCourse, currentSubfolder);
                 let num = 1;
                 if (currentCourse && currentCourse.lectures) {
                     let lectures = currentCourse.lectures;
@@ -4117,7 +4127,29 @@ window.initCourseFlix = async function() {
                 }
                 const autoName = `${folderDisplayName} ${num}`;
                 const progressData = getLectureProgress(currentCourse.id, lectureId);
-                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId: currentCourse.id, lectureId: lectureId });
+                await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: autoName, faculty: facultyName, teacher: facultyName, folderName: currentSubfolder || '', chapter: currentSubfolder || '', courseId: currentCourse.id, lectureId: lectureId });
+                await renderPlayer(currentCourse.id, lectureId, lastView, null, currentSubfolder);
+                await showMediaViewer(file, 'PDF', autoName, getLectureProgress(currentCourse.id, lectureId));
+            }
+            e.target.value = null;
+        });
+
+        addAssignmentInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            const lectureId = e.target.dataset.lectureId;
+            if (file && lectureId) {
+                const folderDisplayName = currentSubfolder ? getSubfolderDisplayName(currentCourse, currentSubfolder) : (currentCourse ? currentCourse.title : 'DPP');
+                const facultyName = getSubfolderFacultyName(currentCourse, currentSubfolder);
+                let num = 1;
+                if (currentCourse && currentCourse.lectures) {
+                    let lectures = currentCourse.lectures;
+                    if (currentSubfolder) lectures = currentCourse.lectures.filter(l => l.chapter === currentSubfolder || l.chapter.startsWith(currentSubfolder + '/'));
+                    const idx = lectures.findIndex(l => String(l.id) === String(lectureId));
+                    if (idx !== -1) num = idx + 1;
+                }
+                const autoName = `${folderDisplayName} ${num}`;
+                const progressData = getLectureProgress(currentCourse.id, lectureId);
+                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, faculty: facultyName, teacher: facultyName, folderName: currentSubfolder || '', chapter: currentSubfolder || '', courseId: currentCourse.id, lectureId: lectureId });
                 await renderPlayer(currentCourse.id, lectureId, lastView, null, currentSubfolder);
                 await showMediaViewer(file, 'Assignment', autoName, getLectureProgress(currentCourse.id, lectureId));
             }
@@ -7188,12 +7220,27 @@ window.initCourseFlix = async function() {
             await scanAllCoursesForDppsAndNotes();
             await syncDppsFromProgress();
             if (nav) nav.classList.remove('hidden');
-            const course = courses.find(c => String(c.id) === String(courseId));
+            let course = courses.find(c => String(c.id) === String(courseId));
+            if (!course) {
+                course = findMatchingCourse(courseId);
+            }
             if (!course) {
                 showToast("Error: Course not found.", true);
                 switchView('dpp-view'); // Go back to course selection
                 return;
             };
+
+            switchView('dpp-view', false);
+
+            document.getElementById('dpp-course-grid').classList.add('hidden');
+            const detailContainer = document.getElementById('dpp-detail-container');
+            detailContainer.dataset.courseId = course.id;
+            detailContainer.classList.remove('hidden');
+            
+            document.getElementById('dpp-detail-course-title').textContent = course.title;
+            const dppListContainer = document.getElementById('dpp-list-container');
+            const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
+            const courseDpps = allDpps.filter(dpp => String(dpp.courseId) === String(course.id) || String(dpp.courseId) === String(courseId));
 
             if (pushState) {
                 const newHash = '#pratice%20batches/' + encodeURIComponent(course.title);
@@ -7201,18 +7248,6 @@ window.initCourseFlix = async function() {
                     window.history.pushState(null, '', newHash);
                 }
             }
-
-            switchView('dpp-view', false);
-
-            document.getElementById('dpp-course-grid').classList.add('hidden');
-            const detailContainer = document.getElementById('dpp-detail-container');
-            detailContainer.dataset.courseId = courseId;
-            detailContainer.classList.remove('hidden');
-            
-            document.getElementById('dpp-detail-course-title').textContent = course.title;
-            const dppListContainer = document.getElementById('dpp-list-container');
-            const allDpps = await new Promise(r => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            const courseDpps = allDpps.filter(dpp => String(dpp.courseId) === String(courseId));
 
             if (courseDpps.length === 0) {
                 dppListContainer.innerHTML = `<p id="no-content-message">No DPPs uploaded for this course yet.</p>`;
@@ -7578,7 +7613,7 @@ window.initCourseFlix = async function() {
             const detailView = document.getElementById('upload-detail-view');
             const subfolder = detailView.dataset.uploadSubfolder;
             if (subfolder) {
-                const courseId = parseInt(detailView.dataset.courseId);
+                const courseId = parseCourseId(detailView.dataset.courseId);
                 const parentPath = getParentPath(subfolder);
                 detailView.classList.add('hidden');
                 renderUploadSubfolderView(courseId, parentPath);
@@ -7594,7 +7629,7 @@ window.initCourseFlix = async function() {
                 switchView('upload-view');
             } else {
                 const parentPath = getParentPath(currentPath);
-                const courseId = parseInt(subfolderView.dataset.courseId);
+                const courseId = parseCourseId(subfolderView.dataset.courseId);
                 renderUploadSubfolderView(courseId, parentPath);
             }
         });
@@ -7621,7 +7656,7 @@ window.initCourseFlix = async function() {
         const dppFolderList = document.getElementById('dpp-folder-list');
 
         const handleAddDppFolder = async () => {
-            const courseId = parseInt(document.getElementById('dpp-upload-view').dataset.courseId);
+            const courseId = parseCourseId(document.getElementById('dpp-upload-view').dataset.courseId);
             const folderName = newDppFolderNameInput.value;
             if (folderName && courseId) {
                 await addDppFolder(courseId, folderName);
@@ -7712,7 +7747,7 @@ window.initCourseFlix = async function() {
                 if (confirm(`Are you sure you want to delete the DPP "${dpp.fileName || 'this item'}"?`)) {
                     await deleteDppEntryAndOrphans(dpp || dppId);
                     
-                    const courseId = parseInt(document.getElementById('dpp-detail-container').dataset.courseId);
+                    const courseId = parseCourseId(document.getElementById('dpp-detail-container').dataset.courseId);
                     await renderDppDetailView(courseId);
                     document.getElementById('dpp-viewer-frame').removeAttribute('src'); document.getElementById('dpp-viewer-frame').srcdoc = '';
                     document.getElementById('dpp-viewer-frame').style.display = 'block';
@@ -7754,7 +7789,7 @@ window.initCourseFlix = async function() {
                 let fileHandle = dpp ? (dpp.fileHandle || dpp.handle) : null;
                 if (!fileHandle && dpp && dpp.lectureId) {
                     const detailContainer = document.getElementById('dpp-detail-container');
-                    const courseId = detailContainer ? parseInt(detailContainer.dataset.courseId) : dpp.courseId;
+                    const courseId = detailContainer ? parseCourseId(detailContainer.dataset.courseId) : dpp.courseId;
                     const prog = getLectureProgress(courseId, dpp.lectureId);
                     if (prog && prog.assignmentHandle) fileHandle = prog.assignmentHandle;
                 }
@@ -7769,6 +7804,23 @@ window.initCourseFlix = async function() {
         async function handleLectureFileDrop(files, type) {
             if (!files || files.length === 0) return;
 
+            const detailView = document.getElementById('upload-detail-view');
+            if (!detailView) return;
+
+            const courseId = parseCourseId(detailView.dataset.courseId);
+            const uploadSubfolder = detailView.dataset.uploadSubfolder || '';
+            const course = courses.find(c => String(c.id) === String(courseId));
+            if (!course) return;
+
+            const folderDisplayName = uploadSubfolder ? getSubfolderDisplayName(course, uploadSubfolder) : (course ? course.title : 'DPP');
+            const facultyName = getSubfolderFacultyName(course, uploadSubfolder);
+
+            const lectureEls = Array.from(document.querySelectorAll('#upload-lecture-list .lecture-item'));
+            if (lectureEls.length === 0) {
+                showToast('No lectures available in this section to assign files to.', true);
+                return;
+            }
+
             if (isSmartAddActive) {
                 const fileList = Array.from(files);
                 if (type === 'pdf') {
@@ -7779,73 +7831,84 @@ window.initCourseFlix = async function() {
                     }
                 }
 
-                const lectureEls = Array.from(document.querySelectorAll('#upload-lecture-list .lecture-item'));
-                if (lectureEls.length === 0) {
-                    showToast('No lectures available in this section to assign files to.', true);
-                    return;
-                }
-
-                const courseId = parseInt(document.getElementById('upload-detail-view').dataset.courseId);
-
-                // Target remaining lectures without file of 'type' first, or fallback to all lectures
-                let unassignedLectures = lectureEls.filter(el => {
-                    const prog = getLectureProgress(courseId, el.dataset.lectureId);
-                    return type === 'pdf' ? !prog.pdfHandle : !prog.assignmentHandle;
-                });
-
-                // If all lectures already have files of 'type', target all lectures in order
-                let targetLectures = unassignedLectures.length > 0 ? unassignedLectures : lectureEls;
-
-                // Sort files naturally / by number
+                // Sort files chronologically / numerically by the number extracted from their name
                 fileList.sort((a, b) => {
                     const numA = extractNumberFromText(a.name);
                     const numB = extractNumberFromText(b.name);
                     if (numA !== null && numB !== null) {
                         return numA - numB;
                     }
+                    if (numA !== null) return -1;
+                    if (numB !== null) return 1;
                     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
                 });
 
-                const maxAssignable = targetLectures.length;
-                const assignedFiles = fileList.slice(0, maxAssignable);
-                const overflowFiles = fileList.slice(maxAssignable);
+                let assignedCount = 0;
+                let failedFiles = [];
 
-                const detailView = document.getElementById('upload-detail-view');
-                const uploadSubfolder = detailView ? detailView.dataset.uploadSubfolder : '';
-                const course = courses.find(c => c.id === courseId);
-                const folderDisplayName = uploadSubfolder ? getSubfolderDisplayName(course, uploadSubfolder) : (course ? course.title : 'DPP');
+                for (const file of fileList) {
+                    const num = extractNumberFromText(file.name);
 
-                for (let i = 0; i < assignedFiles.length; i++) {
-                    const file = assignedFiles[i];
-                    const targetEl = targetLectures[i];
-                    const lectureId = targetEl.dataset.lectureId;
-                    const progressData = getLectureProgress(courseId, lectureId);
+                    if (num !== null && num >= 1 && num <= lectureEls.length) {
+                        const targetEl = lectureEls[num - 1]; // 1-indexed position in current stack
+                        const lectureId = targetEl.dataset.lectureId;
+                        const progressData = getLectureProgress(courseId, lectureId);
 
-                    if (type === 'pdf') {
-                        await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId, lectureId });
-                    } else if (type === 'assignment') {
-                        const lectureIdx = lectureEls.indexOf(targetEl);
-                        const num = lectureIdx !== -1 ? (lectureIdx + 1) : (i + 1);
                         const autoName = `${folderDisplayName} ${num}`;
-                        await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId, lectureId });
-                    }
 
-                    const updatedProgress = getLectureProgress(courseId, lectureId);
-                    const displayName = targetEl.dataset.displayName || targetEl.querySelector('.lecture-item-title')?.textContent || 'Lecture';
-                    targetEl.innerHTML = buildLectureItemHTML(displayName, updatedProgress, lectureId);
+                        if (type === 'pdf') {
+                            await saveLectureProgress({
+                                ...progressData,
+                                pdfHandle: file,
+                                pdfName: autoName,
+                                faculty: facultyName,
+                                teacher: facultyName,
+                                folderName: uploadSubfolder,
+                                chapter: uploadSubfolder,
+                                courseId,
+                                lectureId
+                            });
+                        } else if (type === 'assignment') {
+                            await saveLectureProgress({
+                                ...progressData,
+                                assignmentHandle: file,
+                                assignmentName: autoName,
+                                assignmentType: file.type,
+                                faculty: facultyName,
+                                teacher: facultyName,
+                                folderName: uploadSubfolder,
+                                chapter: uploadSubfolder,
+                                courseId,
+                                lectureId
+                            });
+                        }
+
+                        const updatedProgress = getLectureProgress(courseId, lectureId);
+                        const displayName = targetEl.dataset.displayName || targetEl.querySelector('.lecture-item-title')?.textContent || 'Lecture';
+                        targetEl.innerHTML = buildLectureItemHTML(displayName, updatedProgress, lectureId);
+
+                        assignedCount++;
+                    } else {
+                        if (num === null) {
+                            failedFiles.push(`${file.name} (No lecture number found)`);
+                        } else {
+                            failedFiles.push(`${file.name} (Lecture ${num} does not exist)`);
+                        }
+                    }
                 }
 
-                if (overflowFiles.length > 0) {
-                    const overflowNames = overflowFiles.map(f => f.name).join(', ');
-                    showToast(`No more lectures left! Failed to add ${overflowFiles.length} file(s): ${overflowNames}`, true);
-                } else {
-                    showToast(`Smart Add: Assigned ${assignedFiles.length} ${type === 'pdf' ? 'notes PDF(s)' : 'assignment file(s)'}!`);
+                if (failedFiles.length > 0) {
+                    const errorMsg = `Failed to add ${failedFiles.length} file(s): ${failedFiles.join(', ')}`;
+                    showToast(errorMsg, true);
+                }
+
+                if (assignedCount > 0) {
+                    showToast(`Smart Add: Assigned ${assignedCount} ${type === 'pdf' ? 'notes PDF(s)' : 'assignment file(s)'}!`);
                 }
                 return;
             }
 
             // --- MANUAL MODE (single file drop) ---
-            const lectureEls = Array.from(document.querySelectorAll('#upload-lecture-list .lecture-item'));
             const selectedLectureEl = document.querySelector('#upload-lecture-list .lecture-item.selected');
             if (!selectedLectureEl) {
                 showToast('Please select a lecture from the list first!', true);
@@ -7857,26 +7920,41 @@ window.initCourseFlix = async function() {
             }
             
             const file = files[0];
-            const courseId = parseInt(document.getElementById('upload-detail-view').dataset.courseId);
             const lectureId = selectedLectureEl.dataset.lectureId;
+            const selectedIdx = lectureEls.indexOf(selectedLectureEl);
+            const num = selectedIdx !== -1 ? (selectedIdx + 1) : 1;
+            const autoName = `${folderDisplayName} ${num}`;
             const progressData = getLectureProgress(courseId, lectureId);
-
-            const detailView = document.getElementById('upload-detail-view');
-            const uploadSubfolder = detailView ? detailView.dataset.uploadSubfolder : '';
-            const course = courses.find(c => c.id === courseId);
-            const folderDisplayName = uploadSubfolder ? getSubfolderDisplayName(course, uploadSubfolder) : (course ? course.title : 'DPP');
 
             if (type === 'pdf') {
                 if (!file.name.toLowerCase().endsWith('.pdf')) {
                     showToast('Only PDF files are allowed for notes.', true);
                     return;
                 }
-                await saveLectureProgress({ ...progressData, pdfHandle: file, pdfName: file.name, courseId, lectureId });
+                await saveLectureProgress({
+                    ...progressData,
+                    pdfHandle: file,
+                    pdfName: autoName,
+                    faculty: facultyName,
+                    teacher: facultyName,
+                    folderName: uploadSubfolder,
+                    chapter: uploadSubfolder,
+                    courseId,
+                    lectureId
+                });
             } else if (type === 'assignment') {
-                const selectedIdx = lectureEls.indexOf(selectedLectureEl);
-                const num = selectedIdx !== -1 ? (selectedIdx + 1) : 1;
-                const autoName = `${folderDisplayName} ${num}`;
-                await saveLectureProgress({ ...progressData, assignmentHandle: file, assignmentName: autoName, assignmentType: file.type, courseId, lectureId });
+                await saveLectureProgress({
+                    ...progressData,
+                    assignmentHandle: file,
+                    assignmentName: autoName,
+                    assignmentType: file.type,
+                    faculty: facultyName,
+                    teacher: facultyName,
+                    folderName: uploadSubfolder,
+                    chapter: uploadSubfolder,
+                    courseId,
+                    lectureId
+                });
             }
 
             showToast(`${type === 'pdf' ? 'Notes' : 'Assignment'} for "${selectedLectureEl.dataset.displayName || selectedLectureEl.textContent.trim()}" added successfully!`);
@@ -7968,12 +8046,17 @@ window.initCourseFlix = async function() {
             await ensureDB();
             await scanAllCoursesForDppsAndNotes();
             if (nav) nav.classList.remove('hidden');
-            const course = courses.find(c => String(c.id) === String(courseId));
-             if (!course) {
+            let course = courses.find(c => String(c.id) === String(courseId));
+            if (!course) {
+                course = findMatchingCourse(courseId);
+            }
+            if (!course) {
                 showToast("Error: Course not found.", true);
                 switchView('notes-view');
                 return;
             };
+
+            switchView('notes-view', false);
 
             const gridHeader = document.getElementById('notes-grid-header');
             if (gridHeader) gridHeader.style.display = 'none';
@@ -8054,7 +8137,7 @@ window.initCourseFlix = async function() {
             if (deleteBtn) {
                 e.stopPropagation();
                 if (!confirm('Are you sure you want to delete this note?')) return;
-                const courseId = parseInt(document.getElementById('notes-detail-container').dataset.courseId);
+                const courseId = parseCourseId(document.getElementById('notes-detail-container').dataset.courseId);
                 const lectureId = deleteBtn.dataset.lectureId;
                 const progress = getLectureProgress(courseId, lectureId);
                 if (progress) {
@@ -8083,7 +8166,7 @@ window.initCourseFlix = async function() {
 
             const noteItem = e.target.closest('.notes-item');
             if(noteItem) {
-                const courseId = parseInt(document.getElementById('notes-detail-container').dataset.courseId);
+                const courseId = parseCourseId(document.getElementById('notes-detail-container').dataset.courseId);
                 const lectureId = noteItem.dataset.lectureId;
                 const progress = getLectureProgress(courseId, lectureId);
 
@@ -9732,7 +9815,15 @@ window.initCourseFlix = async function() {
                 const subjectAliases = {
                     'os dbms': ['operating systems', 'os', 'dbms', 'database management systems'],
                     'os': ['operating systems', 'operating system', 'opsys'],
-                    'dbms': ['database management systems', 'database', 'databases', 'db']
+                    'dbms': ['database management systems', 'database', 'databases', 'db'],
+                    'cn': ['computer networks', 'computer network', 'networking', 'networks'],
+                    'toc': ['theory of computation', 'automata'],
+                    'coa': ['computer organization', 'computer architecture', 'computer organization and architecture'],
+                    'cd': ['compiler design', 'compiler'],
+                    'dsa': ['data structures', 'algorithms', 'data structure', 'algorithm'],
+                    'algo': ['algorithms', 'algorithm'],
+                    'maths': ['discrete mathematics', 'engineering mathematics', 'mathematics', 'math'],
+                    'de': ['digital logic', 'digital electronics'],
                 };
                 for (const [key, aliases] of Object.entries(subjectAliases)) {
                     if (lowerQuery.includes(key) || aliases.some(a => lowerQuery.includes(a))) {
