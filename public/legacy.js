@@ -252,6 +252,8 @@ window.initCourseFlix = async function() {
                 data.completedAt = new Date().toISOString();
             } else if (data.completed === false) {
                 data.completedAt = null;
+            } else if (data.completed && existing.completed) {
+                data.completedAt = existing.completedAt || existing.lastStudiedAt || new Date().toISOString();
             }
             
             data.lastStudiedAt = new Date().toISOString();
@@ -11750,37 +11752,24 @@ window.initCourseFlix = async function() {
             const HOUR_HEIGHT = 80; // px per hour
             const totalMinutes = 24 * 60;
 
-            // Fetch history & completed progress entries for this date
+            // Fetch completed progress entries (tasks checked/completed) for this date
             await cleanupOrphanedHistoryEntries();
-            const allHistory = await getHistoryEntries();
             const dayTickedEvents = [];
             const seenKeysCal = new Set();
 
-            allHistory.forEach(h => {
-                if (!h.timestamp || !h.timestamp.startsWith(dateStr)) return;
-                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
-                if (!course || course.isIgnored) return;
-                if (h.subfolder) {
-                    if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, h.subfolder)) return;
-                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return;
-                }
-                const progKey = `${h.courseId}_${h.lectureId}`;
-                if (seenKeysCal.has(progKey)) return;
-                const prog = courseProgress[progKey];
-                if (prog && prog.completed) {
-                    seenKeysCal.add(progKey);
-                    dayTickedEvents.push(h);
-                }
-            });
-
             Object.values(courseProgress).forEach(prog => {
                 if (!prog.completed) return;
-                const ts = prog.completedAt || prog.lastStudiedAt;
+                const ts = prog.completedAt || (!prog.completedAt && prog.lastStudiedAt);
                 if (ts && ts.startsWith(dateStr)) {
+                    const course = (courses || []).find(c => String(c.id) === String(prog.courseId));
+                    if (!course || course.isIgnored) return;
+                    if (prog.subfolder) {
+                        if (typeof isSubfolderIgnored === 'function' && isSubfolderIgnored(course, prog.subfolder)) return;
+                        if (course.subCourseData && course.subCourseData[prog.subfolder] && course.subCourseData[prog.subfolder].hidden) return;
+                    }
                     const progKey = prog.id || `${prog.courseId}_${prog.lectureId}`;
                     if (!seenKeysCal.has(progKey)) {
                         seenKeysCal.add(progKey);
-                        const course = courses.find(c => String(c.id) === String(prog.courseId));
                         const lecture = course?.lectures?.find(l => String(l.id) === String(prog.lectureId));
                         dayTickedEvents.push({
                             id: progKey,

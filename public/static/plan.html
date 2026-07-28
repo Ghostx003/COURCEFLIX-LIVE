@@ -193,6 +193,41 @@
             transform: translateY(-2px);
         }
         .nav-item-active { color: var(--accent-primary) !important; font-weight: 700 !important; }
+
+        /* --- CALENDAR VIEW STYLES --- */
+        .cal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); flex-shrink: 0; gap: 16px; flex-wrap: wrap; }
+        .cal-header-left { display: flex; align-items: center; min-width: 160px; }
+        .cal-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 10px; }
+        .cal-title i { color: #6366f1; }
+        .cal-nav-center { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center; }
+        .cal-arrow-btn { background: var(--bg-tertiary); border: 1px solid var(--border-secondary); color: var(--text-primary); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 0.9rem; flex-shrink: 0; }
+        .cal-arrow-btn:hover { background: var(--accent-primary); color: white; border-color: var(--accent-primary); transform: scale(1.1); }
+        .cal-date-display-wrapper { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 240px; }
+        .cal-date-text { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); text-align: center; letter-spacing: -0.02em; }
+        .cal-unlocked-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 20px; padding: 2px 10px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cal-header-right { display: flex; align-items: center; justify-content: flex-end; min-width: 160px; }
+        .cal-playlist-btn { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 10px; padding: 8px 16px; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35); }
+        .cal-playlist-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5); }
+        .cal-body { flex: 1; min-height: 0; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        .cal-timeline { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative; scroll-behavior: smooth; padding-bottom: 40px; }
+        .cal-timeline::-webkit-scrollbar { width: 6px; }
+        .cal-timeline::-webkit-scrollbar-track { background: transparent; }
+        .cal-timeline::-webkit-scrollbar-thumb { background: var(--border-secondary); border-radius: 3px; }
+        .cal-hour-slot { position: relative; display: flex; align-items: flex-start; border-top: 1px solid var(--border-primary); transition: background 0.15s; }
+        .cal-hour-slot:hover { background: rgba(99, 102, 241, 0.04); }
+        .cal-hour-label { width: 58px; padding: 4px 8px 0; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; text-align: right; user-select: none; line-height: 1; margin-top: -0.5em; }
+        .cal-hour-line { flex: 1; height: 100%; }
+        .cal-strike-arrow { position: absolute; top: 50%; left: 8px; right: 32px; height: 2.5px; background: linear-gradient(90deg, rgba(255,255,255,0.9), #34d399 80%, rgba(52,211,153,0.3)); box-shadow: 0 0 10px rgba(52, 211, 153, 0.9); pointer-events: none; transform: translateY(-50%); border-radius: 2px; }
+        .cal-event { border-radius: 8px; overflow: visible; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+        .cal-event:hover { z-index: 10 !important; transform: scale(1.015); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+        .cal-event-history { background: linear-gradient(135deg, rgba(99, 102, 241, 0.85), rgba(139, 92, 246, 0.85)); border: 1px solid rgba(139, 92, 246, 0.6); box-shadow: 0 2px 12px rgba(99, 102, 241, 0.3); }
+        .cal-event-planned { background: linear-gradient(135deg, rgba(16, 185, 129, 0.85), rgba(5, 150, 105, 0.85)); border: 1px solid rgba(16, 185, 129, 0.6); box-shadow: 0 2px 12px rgba(16, 185, 129, 0.3); }
+        .cal-event-inner { padding: 6px 10px; height: 100%; display: flex; flex-direction: column; justify-content: center; position: relative; }
+        .cal-event-label { font-size: 0.82rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+        .cal-event-tooltip { font-size: 0.72rem; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; margin-top: 2px; pointer-events: none; }
+        .cal-event-delete { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.4); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s, background 0.2s; line-height: 1; padding: 0; z-index: 12; }
+        .cal-event:hover .cal-event-delete { opacity: 1; }
+        .cal-event-delete:hover { background: rgba(239, 68, 68, 0.9); }
     </style>
 <script>
 window.addEventListener('DOMContentLoaded', () => {
@@ -225,6 +260,7 @@ window.addEventListener('DOMContentLoaded', () => {
             <button data-action="showScheduleView" class="px-4 py-2 nav-item-custom-hover text-subtle font-medium hover:text-main"><i class="fas fa-calendar-day mr-2"></i> Schedule</button>
             <button data-action="showSummaryView" class="px-4 py-2 nav-item-custom-hover text-subtle font-medium hover:text-main"><i class="fas fa-list-alt mr-2"></i> Summary</button>
             <button data-action="showProgressView" class="px-4 py-2 nav-item-custom-hover text-subtle font-medium hover:text-main"><i class="fas fa-tasks mr-2"></i> Progress</button>
+            <button data-action="showCalendarView" class="px-4 py-2 nav-item-custom-hover text-subtle font-medium hover:text-main"><i class="fas fa-calendar-alt mr-2"></i> Calendar View</button>
             <a href="progress.html#dashboard" class="px-4 py-2 nav-item-custom-hover text-blue-400 font-medium hover:text-blue-300 flex items-center gap-2"><i class="fas fa-chart-line mr-2"></i> Performance</a>
         </div>
     </nav>
@@ -235,6 +271,7 @@ window.addEventListener('DOMContentLoaded', () => {
             <li><button data-action="showScheduleView" class="w-full text-left py-2 px-3 rounded-md hover:bg-tertiary font-semibold transition-colors text-main">Schedule</button></li>
             <li><button data-action="showSummaryView" class="w-full text-left py-2 px-3 rounded-md hover:bg-tertiary font-semibold transition-colors text-main">Summary</button></li>
             <li><button data-action="showProgressView" class="w-full text-left py-2 px-3 rounded-md hover:bg-tertiary font-semibold transition-colors text-main">Progress Checker</button></li>
+            <li><button data-action="showCalendarView" class="w-full text-left py-2 px-3 rounded-md hover:bg-tertiary font-semibold transition-colors text-main">Calendar View</button></li>
             <li><hr class="border-secondary my-2"></li>
             <li><button data-action="openModal" data-modal="manage-subjects-modal" class="w-full text-left py-2 px-3 rounded-md hover:bg-tertiary font-semibold transition-colors text-main">Manage Subjects</button></li>
              <li><button data-action="openModal" data-modal="manage-durations-modal" class="w-full text-left py-2 px-3 rounded-md hover:bg-tertiary font-semibold transition-colors text-main">Manage Durations</button></li>
@@ -343,6 +380,35 @@ window.addEventListener('DOMContentLoaded', () => {
               </header>
               <div id="progress-container" class="space-y-6"></div>
         </div>
+
+        <!-- CALENDAR VIEW TAB CONTAINER -->
+        <div id="calendar-container-view" class="w-full max-w-6xl bg-main rounded-2xl shadow-lg p-3 sm:p-6 border border-secondary hidden">
+            <div id="planner-calendar-view" style="background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-secondary); min-height: 550px; height: 75vh; display: flex; flex-direction: column; overflow: hidden;">
+                <div class="cal-header">
+                    <div class="cal-header-left">
+                        <h3 class="cal-title" style="margin: 0px;"><i class="fas fa-calendar-day"></i> Timeline Planner</h3>
+                    </div>
+                    <div class="cal-nav-center">
+                        <button id="planner-cal-prev-btn" class="cal-arrow-btn" title="Previous day"><i class="fas fa-chevron-left"></i></button>
+                        <div class="cal-date-display-wrapper">
+                            <div id="planner-cal-date-display" class="cal-date-text">Loading...</div>
+                            <span id="planner-cal-date-badge" class="cal-unlocked-badge" style="color: rgb(59, 130, 246); background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); cursor: pointer;" title="Click to jump to Present Date"><i class="fas fa-calendar-day"></i> Present</span>
+                        </div>
+                        <button id="planner-cal-next-btn" class="cal-arrow-btn" title="Next day"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                    <div class="cal-header-right" style="display: flex; align-items: center; gap: 10px;">
+                        <button data-action="toggleMode" class="p-2 rounded-full hover:bg-tertiary transition-colors text-subtle hover:text-main" title="Switch to Basic Mode"><i class="fas fa-th-large text-lg"></i></button>
+                        <div id="planner-cal-hours-display" class="info-display progress-green" title="Hours Planned for this day" style="display: inline-flex; align-items: center; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: rgb(52, 211, 153); font-size: 0.82rem; padding: 4px 10px; border-radius: 12px; font-weight: 700; cursor: default;">
+                            <i class="fas fa-clock" style="color: #34d399; margin-right: 6px;"></i><span id="planner-cal-hours-text">0.0h Planned</span>
+                        </div>
+                        <button id="planner-cal-add-event-btn" class="cal-playlist-btn" title="Add Custom Task to Calendar"><i class="fas fa-plus-circle"></i> Add Task</button>
+                    </div>
+                </div>
+                <div class="cal-body" style="position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
+                    <div id="planner-cal-timeline" class="cal-timeline"></div>
+                </div>
+            </div>
+        </div>
     </main>
     
     <div id="qr-code-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50 p-4"><div class="bg-main rounded-2xl shadow-xl p-6 w-full max-w-xs text-center"><h4 class="text-xl font-bold mb-4 text-main">Scan to Sync</h4><p class="text-sm text-subtle mb-4">Scan this code with your other device to establish a real-time sync connection.</p><div id="qrcode-container" class="flex justify-center bg-white p-4 rounded-lg"></div><div class="flex justify-end mt-6"><button data-action="closeModal" class="btn btn-secondary">Close</button></div></div></div>
@@ -364,6 +430,82 @@ window.addEventListener('DOMContentLoaded', () => {
                 <button data-action="confirmTweakSubjects" class="btn btn-primary">Done</button>
             </div>
         </div>
+    </div>
+
+    <!-- PLANNER ADD EVENT MODAL -->
+    <div id="planner-add-event-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-main rounded-2xl shadow-xl p-6 w-full max-w-md border border-secondary">
+            <div class="flex items-center justify-between mb-4 pb-2 border-b border-secondary">
+                <h4 class="text-xl font-bold text-main flex items-center gap-2"><i class="fas fa-calendar-plus text-indigo-500"></i> Add Task to Calendar</h4>
+                <button data-action="closeModal" class="text-subtle hover:text-main text-2xl leading-none">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-subtle uppercase mb-1">Task / Subject Title</label>
+                    <input type="text" id="planner-event-title-input" class="w-full p-2.5 input-main text-sm" placeholder="e.g. Computer Networks - Ch 3 or Gym Session">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-subtle uppercase mb-1">Start Time</label>
+                        <input type="time" id="planner-event-time-input" class="w-full p-2.5 input-main text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-subtle uppercase mb-1">Duration (Mins)</label>
+                        <input type="number" id="planner-event-duration-input" min="5" step="5" value="60" class="w-full p-2.5 input-main text-sm">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-subtle uppercase mb-1">Link to Subject</label>
+                        <select id="planner-event-subject-select" class="w-full p-2.5 input-main text-sm">
+                            <option value="">Daily Life / Standalone Task</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-subtle uppercase mb-1">Task Type / Status</label>
+                        <select id="planner-event-status-input" class="w-full p-2.5 input-main text-sm">
+                            <option value="Subject">Subject (Main Item)</option>
+                            <option value="Lecture">Lecture</option>
+                            <option value="Revision">Revision</option>
+                            <option value="Practice">Practice</option>
+                            <option value="Test">Test</option>
+                            <option value="Custom">Daily Life / Custom Task</option>
+                            <option value="Break">Break</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-secondary">
+                <button data-action="closeModal" class="btn btn-secondary">Cancel</button>
+                <button id="planner-event-submit-btn" class="btn btn-primary">Add Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PLANNER TASK DETAILS MODAL -->
+    <div id="planner-task-details-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-main rounded-2xl shadow-xl p-6 w-full max-w-md border border-secondary">
+            <div class="flex items-center justify-between mb-4 pb-3 border-b border-secondary">
+                <div>
+                    <span id="planner-detail-theme-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider mb-1 inline-block">Subject</span>
+                    <h4 id="planner-detail-title" class="text-xl font-bold text-main">Task Details</h4>
+                    <p id="planner-detail-time" class="text-xs text-subtle font-medium mt-0.5"></p>
+                </div>
+                <button data-action="closeModal" class="text-subtle hover:text-main text-2xl leading-none">&times;</button>
+            </div>
+            <div id="planner-detail-subtasks-container" class="space-y-2.5 max-h-72 overflow-y-auto pr-1"></div>
+            <div class="flex justify-between items-center mt-6 pt-4 border-t border-secondary">
+                <button id="planner-detail-delete-btn" class="btn btn-secondary !text-red-400 hover:!bg-red-500/10 text-sm"><i class="fas fa-trash-alt mr-1.5"></i> Delete</button>
+                <button data-action="closeModal" class="btn btn-primary">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PLANNER CALENDAR RIGHT CLICK CONTEXT MENU -->
+    <div id="planner-cal-context-menu" class="fixed hidden z-50 bg-secondary border border-secondary shadow-2xl rounded-xl p-1.5 min-w-[160px] backdrop-blur-md">
+        <button id="planner-ctx-delete" class="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg flex items-center gap-2 font-semibold transition-colors"><i class="fas fa-trash-alt"></i> Delete Task</button>
+        <button id="planner-ctx-toggle" class="w-full text-left px-3 py-2 text-sm text-main hover:bg-tertiary rounded-lg flex items-center gap-2 font-semibold transition-colors"><i class="fas fa-check-circle"></i> Toggle Done</button>
+        <button id="planner-ctx-edit-hours" class="w-full text-left px-3 py-2 text-sm text-main hover:bg-tertiary rounded-lg flex items-center gap-2 font-semibold transition-colors"><i class="fas fa-clock"></i> Edit Duration</button>
     </div>
     <div id="edit-progress-columns-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50 p-4">
         <div class="bg-main rounded-2xl shadow-xl p-6 w-full max-w-lg">
@@ -528,6 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduleView: document.getElementById('schedule-view'),
         summaryView: document.getElementById('summary-view'),
         progressView: document.getElementById('progress-view'),
+        calendarContainerView: document.getElementById('calendar-container-view'),
         progressContainer: document.getElementById('progress-container'),
         summaryFilter: document.getElementById('summary-filter'),
         summaryChartContainer: document.getElementById('summary-chart-container'),
@@ -687,7 +830,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const calculateEndTime = (startTime, durationHours) => new Date(startTime.getTime() + durationHours * 60 * 60 * 1000);
     const formatTime = (date) => { if (!date || !(date instanceof Date)) return 'N/A'; return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
     const formatTimeTo24hr = (date) => { if (!date || !(date instanceof Date)) return ''; const hours = String(date.getHours()).padStart(2, '0'); const minutes = String(date.getMinutes()).padStart(2, '0'); return `${hours}:${minutes}`; };
-    const recalculateStartTimes = (startIndex = 0) => { const key = formatDateKey(new Date()); const schedule = state.studyData[key] || []; if (schedule.length === 0) return; for (let i = startIndex; i < schedule.length; i++) { if (i > 0) { const prevItem = schedule[i - 1]; if(prevItem.startTime) { schedule[i].startTime = calculateEndTime(new Date(prevItem.startTime), prevItem.durationHours); } } } };
+    const recalculateStartTimes = (dateKeyOrIndex = 0, startIndex = 0) => {
+        let dateKey, idx;
+        if (typeof dateKeyOrIndex === 'string') {
+            dateKey = dateKeyOrIndex;
+            idx = startIndex;
+        } else {
+            dateKey = state.ui?.calendarDate || formatDateKey(new Date());
+            idx = dateKeyOrIndex;
+        }
+        const schedule = state.studyData[dateKey] || [];
+        if (!schedule || schedule.length === 0) return;
+        for (let i = idx; i < schedule.length; i++) {
+            if (i > 0 && !schedule[i].startTime) {
+                const prevItem = schedule[i - 1];
+                if (prevItem && prevItem.startTime) {
+                    schedule[i].startTime = calculateEndTime(new Date(prevItem.startTime), prevItem.durationHours);
+                }
+            }
+        }
+    };
     const formatHoursAndMinutes = (totalHours) => { if (totalHours === 0 || !totalHours) return '0 min'; const hours = Math.floor(totalHours); const minutes = Math.round((totalHours - hours) * 60); const hourString = hours > 0 ? `${hours} hr` : ''; const minuteString = minutes > 0 ? `${minutes} min` : ''; return [hourString, minuteString].filter(Boolean).join(' '); };
     const formatHoursAndMinutesCompact = (totalHours) => { if (totalHours === 0 || !totalHours) return '0m'; const hours = Math.floor(totalHours); const minutes = Math.round((totalHours - hours) * 60); if (hours > 0 && minutes > 0) return `${hours}h${minutes}m`; if (hours > 0) return `${hours}h`; return `${minutes}m`; };
     const createSmallProgressCircle = (progress) => { const size = 36; const sw = 4; const r = (size / 2) - (sw / 2); const circ = 2 * Math.PI * r; const o = circ - (progress / 100) * circ; return `<svg class="w-9 h-9 flex-shrink-0" viewBox="0 0 ${size} ${size}"><circle class="progress-circle-bg" cx="${size/2}" cy="${size/2}" r="${r}" stroke-width="${sw}" fill="none"></circle><circle class="progress-circle-fg" cx="${size/2}" cy="${size/2}" r="${r}" stroke-width="${sw}" fill="none" stroke-dasharray="${circ}" stroke-dashoffset="${o}"></circle></svg>`; };
@@ -821,15 +983,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'progress-red';
     };
 
+    const updateModeButtons = () => {
+        const isBasic = state.settings.mode === 'basic';
+        document.querySelectorAll('[data-action="toggleMode"]').forEach(btn => {
+            btn.innerHTML = isBasic ? '<i class="fas fa-list text-lg"></i>' : '<i class="fas fa-th-large text-lg"></i>';
+            btn.title = isBasic ? 'Switch to Advanced Mode' : 'Switch to Basic Mode';
+        });
+    };
+
     // --- Render Functions ---
     const render = () => { 
         document.documentElement.setAttribute('data-theme', state.settings.theme); 
         document.documentElement.setAttribute('data-accent', state.settings.accent); 
+        updateModeButtons();
         DOM.scheduleView.classList.add('hidden');
         DOM.summaryView.classList.add('hidden');
         DOM.progressView.classList.add('hidden');
+        if (DOM.calendarContainerView) DOM.calendarContainerView.classList.add('hidden');
 
-        document.querySelectorAll('[data-action="showSummaryView"], [data-action="showProgressView"], [data-action="showScheduleView"]').forEach(b => b.classList.remove('nav-item-active'));
+        document.querySelectorAll('[data-action="showSummaryView"], [data-action="showProgressView"], [data-action="showScheduleView"], [data-action="showCalendarView"]').forEach(b => b.classList.remove('nav-item-active'));
 
         if (state.ui.currentView === 'summary') {
             document.querySelectorAll('[data-action="showSummaryView"]').forEach(b => b.classList.add('nav-item-active'));
@@ -839,6 +1011,10 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('[data-action="showProgressView"]').forEach(b => b.classList.add('nav-item-active'));
             DOM.progressView.classList.remove('hidden');
             renderProgressView();
+        } else if (state.ui.currentView === 'calendar') {
+            document.querySelectorAll('[data-action="showCalendarView"]').forEach(b => b.classList.add('nav-item-active'));
+            if (DOM.calendarContainerView) DOM.calendarContainerView.classList.remove('hidden');
+            renderPlannerCalendar();
         } else {
             document.querySelectorAll('[data-action="showScheduleView"]').forEach(b => b.classList.add('nav-item-active'));
             DOM.scheduleView.classList.remove('hidden');
@@ -1013,10 +1189,29 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
-    const renderSubjects = () => { const modeBtn = document.getElementById('mode-toggle-btn'); if (modeBtn) { modeBtn.innerHTML = state.settings.mode === 'basic' ? '<i class="fas fa-list text-lg"></i>' : '<i class="fas fa-th-large text-lg"></i>'; modeBtn.title = state.settings.mode === 'basic' ? 'Switch to Adv Mode' : 'Switch to Basic Mode'; } const key = formatDateKey(new Date()); const items = state.studyData[key] || []; DOM.subjectsList.innerHTML = ''; DOM.subjectsDoneList.innerHTML = ''; const active = items.filter(s => !s.completed); const done = items.filter(s => s.completed); if (items.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">No schedule for today. Click 'Generate'.</p>`; else if (active.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">All tasks complete! Great work! 🎉</p>`; active.forEach(item => DOM.subjectsList.innerHTML += createItemHTML(item)); done.forEach(item => DOM.subjectsDoneList.innerHTML += createItemHTML(item)); DOM.completedSubjectsContainer.classList.toggle('hidden', done.length === 0); };
+    const renderSubjects = () => { 
+        const modeBtn = document.getElementById('mode-toggle-btn'); 
+        if (modeBtn) { 
+            modeBtn.innerHTML = state.settings.mode === 'basic' ? '<i class="fas fa-list text-lg"></i>' : '<i class="fas fa-th-large text-lg"></i>'; 
+            modeBtn.title = state.settings.mode === 'basic' ? 'Switch to Adv Mode' : 'Switch to Basic Mode'; 
+        } 
+        const key = formatDateKey(new Date()); 
+        const items = state.studyData[key] || []; 
+        items.sort((a, b) => (a.startTime ? new Date(a.startTime).getTime() : 0) - (b.startTime ? new Date(b.startTime).getTime() : 0));
+        DOM.subjectsList.innerHTML = ''; 
+        DOM.subjectsDoneList.innerHTML = ''; 
+        const active = items.filter(s => !s.completed); 
+        const done = items.filter(s => s.completed); 
+        if (items.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">No schedule for today. Click 'Generate'.</p>`; 
+        else if (active.length === 0) DOM.subjectsList.innerHTML = `<p class="text-subtle text-center py-4">All tasks complete! Great work! 🎉</p>`; 
+        active.forEach(item => DOM.subjectsList.innerHTML += createItemHTML(item)); 
+        done.forEach(item => DOM.subjectsDoneList.innerHTML += createItemHTML(item)); 
+        DOM.completedSubjectsContainer.classList.toggle('hidden', done.length === 0); 
+    };
     const createItemHTML = (item) => { if (item.type === 'break') return createBreakHTML(item); return createSubjectHTML(item); };
     const createBreakHTML = (item) => { const endTime = calculateEndTime(new Date(item.startTime), item.durationHours); const timeRangeString = `${formatTime(new Date(item.startTime))} - ${formatTime(endTime)}`; return ` <div class="break-item rounded-xl p-3 sm:p-4 flex items-center gap-3 border border-secondary shadow-sm ${item.completed ? 'completed opacity-60' : ''}" data-item-id="${item.id}" draggable="true"> <span class="drag-handle text-subtle" title="Drag to reorder">${createDragIcon()}</span> <div data-action="toggleMainCompletion" data-item-id="${item.id}" class="custom-checkbox w-7 h-7 rounded-md cursor-pointer flex-shrink-0 ${item.completed ? 'completed' : ''}"></div> <div class="flex items-center gap-2 flex-grow min-w-0"> <i class="fas fa-coffee text-xl text-subtle"></i> <div class="flex flex-col items-start"> <span class="font-bold text-main cursor-pointer hover:opacity-75 truncate" data-action="editBreakText" data-item-id="${item.id}" title="Click to edit reason">${item.text || 'Break'}</span> <span class="text-sm text-subtle" title="Click to edit duration" data-action="openModal" data-modal="edit-hours-modal" data-item-id="${item.id}">${timeRangeString} (${formatHoursAndMinutes(item.durationHours)})</span> </div> </div> <button data-action="deleteItem" data-item-id="${item.id}" class="text-subtle font-bold text-lg px-2 rounded-full hover:bg-red-500/20 hover:text-red-500">&times;</button> </div>`; };
     const createSubjectHTML = (subject) => {
+        const displayName = (subject.name && subject.name !== 'Daily Life') ? subject.name : (subject.text || 'Custom Task');
         const isPanelOpen = state.ui.openSubTaskPanels.has(subject.id);
         const subTaskProgress = subject.subTasks.length > 0 ? (subject.subTasks.filter(t => t.completed).length / subject.subTasks.length) * 100 : 0;
         const progress = subject.completed ? 100 : subTaskProgress;
@@ -1030,7 +1225,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             timeDisplayHTML = `<span data-action="editStartTime" data-item-id="${subject.id}" title="Edit start time" class="time-display whitespace-nowrap font-semibold text-sm cursor-pointer" style="color: var(--accent-primary);">${timeRangeString}</span>`;
         }
-        return `<div class="bg-tertiary rounded-xl overflow-hidden border border-secondary shadow-sm" draggable="true" data-item-id="${subject.id}" data-action-dbl="openFocusTopicModal"><div class="flex items-center p-3 sm:p-4 gap-2 sm:gap-3"><span class="drag-handle text-subtle" title="Drag to reorder">${createDragIcon()}</span><div data-action="toggleMainCompletion" data-item-id="${subject.id}" class="custom-checkbox w-7 h-7 rounded-md cursor-pointer flex-shrink-0 ${subject.completed ? 'completed' : ''}"></div><div class="flex-grow min-w-0"><div class="flex items-center gap-3"><label class="subject-label font-bold text-main text-xl ${subject.completed ? 'completed' : ''} truncate">${subject.name}</label></div>${timeDisplayHTML}</div><div data-action="openModal" data-modal="edit-hours-modal" data-item-id="${subject.id}" class="relative cursor-pointer w-12 h-12 sm:w-14 sm:h-14" title="Edit time for ${subject.name}">${createProgressCircle(progress, formatHoursAndMinutesCompact(displayDuration))}</div><button data-action="toggleSubTaskPanel" data-item-id="${subject.id}" class="p-1 rounded-full hover:bg-border-primary transition-colors"><svg class="w-5 h-5 sm:w-6 sm:h-6 text-subtle transition-transform duration-200 ${isPanelOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button></div><div class="subtask-container px-4 pb-4 border-t border-secondary ${isPanelOpen ? '' : 'hidden'}">${isPanelOpen ? createSubTasksHTML(subject) : ''}</div></div>`;
+        return `<div class="bg-tertiary rounded-xl overflow-hidden border border-secondary shadow-sm" draggable="true" data-item-id="${subject.id}" data-action-dbl="openFocusTopicModal"><div class="flex items-center p-3 sm:p-4 gap-2 sm:gap-3"><span class="drag-handle text-subtle" title="Drag to reorder">${createDragIcon()}</span><div data-action="toggleMainCompletion" data-item-id="${subject.id}" class="custom-checkbox w-7 h-7 rounded-md cursor-pointer flex-shrink-0 ${subject.completed ? 'completed' : ''}"></div><div class="flex-grow min-w-0"><div class="flex items-center gap-3"><label class="subject-label font-bold text-main text-xl ${subject.completed ? 'completed' : ''} truncate">${displayName}</label></div>${timeDisplayHTML}</div><div data-action="openModal" data-modal="edit-hours-modal" data-item-id="${subject.id}" class="relative cursor-pointer w-12 h-12 sm:w-14 sm:h-14" title="Edit time for ${displayName}">${createProgressCircle(progress, formatHoursAndMinutesCompact(displayDuration))}</div><button data-action="toggleSubTaskPanel" data-item-id="${subject.id}" class="p-1 rounded-full hover:bg-border-primary transition-colors"><svg class="w-5 h-5 sm:w-6 sm:h-6 text-subtle transition-transform duration-200 ${isPanelOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button></div><div class="subtask-container px-4 pb-4 border-t border-secondary ${isPanelOpen ? '' : 'hidden'}">${isPanelOpen ? createSubTasksHTML(subject) : ''}</div></div>`;
     };
     
     const createSubTasksHTML = (subject) => {
@@ -1460,6 +1655,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const actions = {
         toggleMode: (el) => {
             state.settings.mode = state.settings.mode === 'basic' ? 'advanced' : 'basic';
+            if (state.settings.mode === 'basic') {
+                const key = formatDateKey(new Date());
+                const items = state.studyData[key] || [];
+                items.forEach(item => {
+                    if (item.id) state.ui.openSubTaskPanels.add(item.id);
+                });
+            }
             enhancedSaveState();
             render();
         },
@@ -1511,6 +1713,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showScheduleView: () => { state.ui.currentView = 'schedule'; render(); },
         showSummaryView: () => { state.ui.currentView = 'summary'; render(); },
         showProgressView: () => { state.ui.currentView = 'progress'; render(); },
+        showCalendarView: () => { state.ui.currentView = 'calendar'; render(); },
         generateSyncCode: () => { if (state.p2p.peer) state.p2p.peer.destroy(); const peer = new Peer(); state.p2p.peer = peer; setupPeerListeners(peer); peer.on('open', (id) => { DOM.qrCodeContainer.innerHTML = ''; const qr = qrcode(0, 'L'); qr.addData(id); qr.make(); DOM.qrCodeContainer.innerHTML = qr.createImgTag(5); openModal('qr-code-modal'); updateP2PStatus('connecting'); }); },
         startScanToSync: () => { if (state.p2p.peer) state.p2p.peer.destroy(); const peer = new Peer(); state.p2p.peer = peer; setupPeerListeners(peer); const onScanSuccess = (decodedText, decodedResult) => { actions.stopScanToSync(); const conn = state.p2p.peer.connect(decodedText); if (state.p2p.connection) { state.p2p.connection.close(); } state.p2p.connection = conn; setupConnectionListeners(conn); updateP2PStatus('connecting'); }; const html5QrcodeScanner = new Html5Qrcode("qr-reader"); state.p2p.scanner = html5QrcodeScanner; html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, (errorMessage) => {}); openModal('qr-scanner-modal'); },
         stopScanToSync: () => { if (state.p2p.scanner && state.p2p.scanner.isScanning) { state.p2p.scanner.stop().then(() => {}).catch(err => {}); } closeModal(); },
@@ -2614,7 +2817,522 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return tasks;
     }
-    
+
+    // --- PLANNER CALENDAR ENGINE ---
+    const renderPlannerCalendar = () => {
+        if (!state.ui.calendarDate) {
+            state.ui.calendarDate = formatDateKey(new Date());
+        }
+        const dateStr = state.ui.calendarDate;
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        const todayStr = formatDateKey(new Date());
+        const isTodayDate = dateStr === todayStr;
+
+        // Date Display
+        const dateDisplay = document.getElementById('planner-cal-date-display');
+        if (dateDisplay) {
+            dateDisplay.textContent = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        }
+
+        // Date Badge
+        const dateBadge = document.getElementById('planner-cal-date-badge');
+        if (dateBadge) {
+            if (isTodayDate) {
+                dateBadge.innerHTML = `<i class="fas fa-calendar-day"></i> Present`;
+                dateBadge.style.color = '#3b82f6';
+                dateBadge.style.background = 'rgba(59, 130, 246, 0.15)';
+                dateBadge.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+            } else {
+                dateBadge.innerHTML = `<i class="fas fa-calendar-alt"></i> ${dateStr}`;
+                dateBadge.style.color = '#10b981';
+                dateBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                dateBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            }
+        }
+
+        // Fetch tasks for this date
+        const dayTasks = state.studyData[dateStr] || [];
+
+        // Build 24-hour timeline slots
+        const timeline = document.getElementById('planner-cal-timeline');
+        if (!timeline) return;
+        timeline.innerHTML = '';
+
+        const HOUR_HEIGHT = 80; // 80px per hour
+
+        for (let hour = 0; hour < 24; hour++) {
+            const hourSlot = document.createElement('div');
+            hourSlot.className = 'cal-hour-slot';
+            hourSlot.dataset.hour = hour;
+            hourSlot.style.height = HOUR_HEIGHT + 'px';
+            hourSlot.style.cursor = 'pointer';
+
+            const label = hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`;
+            hourSlot.innerHTML = `<div class="cal-hour-label">${label}</div><div class="cal-hour-line"></div>`;
+            hourSlot.title = `Click to add task at ${label}`;
+
+            hourSlot.addEventListener('click', (e) => {
+                if (e.target.closest('.cal-event')) return;
+                openPlannerAddEventModal(dateStr, hour);
+            });
+
+            timeline.appendChild(hourSlot);
+        }
+
+        // Calculate event times for timeline
+        const calendarEvents = [];
+        let totalHoursPlanned = 0;
+
+        let runningTime = new Date(dateObj);
+        runningTime.setHours(9, 0, 0, 0); // 9:00 AM default
+
+        dayTasks.forEach((item) => {
+            const duration = item.durationHours || 1;
+            totalHoursPlanned += duration;
+
+            let itemStartTime;
+            if (item.startTime) {
+                itemStartTime = new Date(item.startTime);
+            } else {
+                itemStartTime = new Date(runningTime);
+            }
+
+            const startMinute = itemStartTime.getHours() * 60 + itemStartTime.getMinutes();
+            const durationMins = Math.max(15, Math.round(duration * 60));
+            const endMinute = startMinute + durationMins;
+
+            runningTime = calculateEndTime(itemStartTime, duration);
+
+            let label = item.name || item.text || 'Task';
+            let tooltip = `${formatTime(itemStartTime)} - ${formatTime(calculateEndTime(itemStartTime, duration))} (${formatHoursAndMinutes(duration)})`;
+            if (item.subTasks && item.subTasks.length > 0) {
+                tooltip += ` • ${item.subTasks.map(t => t.text).join(', ')}`;
+            } else if (item.customTasks && item.customTasks.length > 0) {
+                tooltip += ` • ${item.customTasks.map(t => t.text).join(', ')}`;
+            }
+
+            calendarEvents.push({
+                id: item.id,
+                itemRef: item,
+                startMinute,
+                endMinute,
+                durationMins,
+                label,
+                tooltip,
+                type: item.type === 'break' ? 'break' : (item.completed ? 'history' : 'planned'),
+                isCompleted: !!item.completed
+            });
+        });
+
+        // Hours Planned Display
+        const hoursText = document.getElementById('planner-cal-hours-text');
+        if (hoursText) {
+            hoursText.textContent = `${Math.round(totalHoursPlanned * 10) / 10}h Planned`;
+        }
+
+        // Layout overlapping events
+        layoutPlannerEvents(calendarEvents);
+
+        // Place calendar blocks
+        calendarEvents.forEach(ev => {
+            placePlannerBlock(timeline, ev, HOUR_HEIGHT, dateStr);
+        });
+    };
+
+    const layoutPlannerEvents = (events) => {
+        if (!events || events.length === 0) return;
+        events.sort((a, b) => a.startMinute - b.startMinute || b.endMinute - a.endMinute);
+
+        const overlapGroups = [];
+        let currentGroup = [];
+        let groupEnd = -1;
+
+        events.forEach(ev => {
+            if (currentGroup.length === 0) {
+                currentGroup.push(ev);
+                groupEnd = ev.endMinute;
+            } else if (ev.startMinute < groupEnd) {
+                currentGroup.push(ev);
+                if (ev.endMinute > groupEnd) groupEnd = ev.endMinute;
+            } else {
+                overlapGroups.push(currentGroup);
+                currentGroup = [ev];
+                groupEnd = ev.endMinute;
+            }
+        });
+        if (currentGroup.length > 0) overlapGroups.push(currentGroup);
+
+        overlapGroups.forEach(group => {
+            const points = [];
+            group.forEach(ev => {
+                points.push({ time: ev.startMinute, type: 1 });
+                points.push({ time: ev.endMinute, type: -1 });
+            });
+            points.sort((a, b) => a.time - b.time || a.type - b.type);
+
+            let currentOverlap = 0;
+            let maxOverlap = 0;
+            points.forEach(p => {
+                currentOverlap += p.type;
+                if (currentOverlap > maxOverlap) maxOverlap = currentOverlap;
+            });
+
+            const totalCols = Math.max(1, maxOverlap);
+            const columns = [];
+
+            group.forEach(ev => {
+                let placed = false;
+                for (let c = 0; c < columns.length; c++) {
+                    if (columns[c] <= ev.startMinute) {
+                        columns[c] = ev.endMinute;
+                        ev.colIndex = c;
+                        placed = true;
+                        break;
+                    }
+                }
+                if (!placed) {
+                    ev.colIndex = columns.length;
+                    columns.push(ev.endMinute);
+                }
+                ev.totalCols = totalCols;
+            });
+        });
+    };
+
+    const getSubjectColor = (subjectName) => {
+        const colors = [
+            { bg: 'linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(6, 182, 212, 0.25))', border: 'rgba(59, 130, 246, 0.7)', borderLeft: '#3b82f6', text: '#dbeafe' },
+            { bg: 'linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(20, 184, 166, 0.25))', border: 'rgba(52, 211, 153, 0.7)', borderLeft: '#10b981', text: '#d1fae5' },
+            { bg: 'linear-gradient(135deg, rgba(147, 51, 234, 0.45), rgba(99, 102, 241, 0.25))', border: 'rgba(168, 85, 247, 0.7)', borderLeft: '#a855f7', text: '#f3e8ff' },
+            { bg: 'linear-gradient(135deg, rgba(217, 119, 6, 0.45), rgba(249, 115, 22, 0.25))', border: 'rgba(251, 146, 60, 0.7)', borderLeft: '#f59e0b', text: '#fef3c7' },
+            { bg: 'linear-gradient(135deg, rgba(225, 29, 72, 0.45), rgba(236, 72, 153, 0.25))', border: 'rgba(251, 113, 133, 0.7)', borderLeft: '#f43f5e', text: '#ffe4e6' },
+            { bg: 'linear-gradient(135deg, rgba(124, 58, 237, 0.45), rgba(217, 70, 239, 0.25))', border: 'rgba(192, 132, 252, 0.7)', borderLeft: '#8b5cf6', text: '#ede9fe' },
+            { bg: 'linear-gradient(135deg, rgba(14, 165, 233, 0.45), rgba(45, 212, 191, 0.25))', border: 'rgba(56, 189, 248, 0.7)', borderLeft: '#06b6d4', text: '#e0f2fe' }
+        ];
+        if (!subjectName || subjectName === 'Break') {
+            return { bg: 'linear-gradient(135deg, rgba(217, 119, 6, 0.5), rgba(180, 83, 9, 0.3))', border: 'rgba(245, 158, 11, 0.7)', borderLeft: '#f59e0b', text: '#fef3c7' };
+        }
+        if (subjectName === 'Custom Task' || subjectName === 'Daily Life') {
+            return { bg: 'linear-gradient(135deg, rgba(236, 72, 153, 0.45), rgba(168, 85, 247, 0.25))', border: 'rgba(244, 114, 182, 0.7)', borderLeft: '#ec4899', text: '#fbcfe8' };
+        }
+        let hash = 0;
+        for (let i = 0; i < subjectName.length; i++) {
+            hash = subjectName.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const index = Math.abs(hash) % colors.length;
+        return colors[index];
+    };
+
+    const placePlannerBlock = (timeline, eventData, HOUR_HEIGHT, dateStr) => {
+        const { itemRef, startMinute, durationMins, label, tooltip, type, isCompleted } = eventData;
+
+        const theme = getSubjectColor(itemRef.name || itemRef.text || label);
+
+        const block = document.createElement('div');
+        block.className = `cal-event cal-event-${type}`;
+        block.tabIndex = 0;
+
+        const absoluteTop = (startMinute / 60) * HOUR_HEIGHT;
+        const blockHeight = Math.max(28, (durationMins / 60) * HOUR_HEIGHT);
+
+        const leftCss = eventData.totalCols === 1
+            ? '64px'
+            : `calc(64px + (${eventData.colIndex} * ((100% - 72px) / ${eventData.totalCols})))`;
+        const widthCss = eventData.totalCols === 1
+            ? 'calc(100% - 72px)'
+            : `calc(((100% - 72px) / ${eventData.totalCols}) - 6px)`;
+
+        block.style.position = 'absolute';
+        block.style.top = absoluteTop + 'px';
+        block.style.left = leftCss;
+        block.style.width = widthCss;
+        block.style.height = blockHeight + 'px';
+        block.style.zIndex = '5';
+        block.style.userSelect = 'none';
+        block.style.background = theme.bg;
+        block.style.borderColor = theme.border;
+        block.style.borderLeft = `5px solid ${theme.borderLeft}`;
+        block.style.color = theme.text;
+
+        block.innerHTML = `
+            <div class="cal-event-inner ${isCompleted ? 'cal-event-done' : ''}">
+                <div class="cal-event-label" style="${isCompleted ? 'text-decoration: line-through; opacity: 0.9;' : ''}">
+                    ${isCompleted ? '<i class="fas fa-check-circle" style="color: #34d399; margin-right: 6px;"></i>' : ''}
+                    ${label}
+                </div>
+                <div class="cal-event-tooltip">${tooltip}</div>
+                ${isCompleted ? '<div class="cal-strike-arrow"></div>' : ''}
+                <button class="cal-event-delete" title="Remove event">&times;</button>
+            </div>
+        `;
+
+        // Delete button handler
+        const deleteBtn = block.querySelector('.cal-event-delete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deletePlannerItem(dateStr, itemRef.id);
+            });
+        }
+
+        // Right click context menu handler
+        block.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showPlannerContextMenu(e.clientX, e.clientY, dateStr, itemRef);
+        });
+
+        // 60 FPS Smooth Drag and Drop engine
+        let isDragging = false;
+        let hasMoved = false;
+        let startY = 0;
+        let initialTop = absoluteTop;
+        let animFrameId = null;
+
+        const onPointerDown = (e) => {
+            if (e.target.closest('.cal-event-delete')) return;
+            if (e.button !== undefined && e.button !== 0) return;
+
+            isDragging = true;
+            hasMoved = false;
+            startY = e.clientY || (e.touches && e.touches[0].clientY);
+            initialTop = parseFloat(block.style.top) || absoluteTop;
+            block.style.zIndex = '50';
+            block.style.opacity = '0.9';
+            block.style.cursor = 'grabbing';
+            block.style.transition = 'none';
+
+            window.addEventListener('mousemove', onPointerMove, { passive: false });
+            window.addEventListener('mouseup', onPointerUp);
+            window.addEventListener('touchmove', onPointerMove, { passive: false });
+            window.addEventListener('touchend', onPointerUp);
+        };
+
+        const onPointerMove = (e) => {
+            if (!isDragging) return;
+            const currentY = e.clientY || (e.touches && e.touches[0].clientY);
+            const deltaY = currentY - startY;
+
+            if (Math.abs(deltaY) > 4) {
+                hasMoved = true;
+            }
+
+            if (hasMoved) {
+                e.preventDefault();
+                if (animFrameId) cancelAnimationFrame(animFrameId);
+                animFrameId = requestAnimationFrame(() => {
+                    const newTop = Math.max(0, initialTop + deltaY);
+                    block.style.top = newTop + 'px';
+                });
+            }
+        };
+
+        const onPointerUp = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('touchend', onPointerUp);
+
+            block.style.cursor = 'pointer';
+            block.style.opacity = '1';
+            block.style.transition = 'all 0.2s';
+
+            if (hasMoved) {
+                const finalTop = parseFloat(block.style.top) || 0;
+                const rawMinutes = (finalTop / HOUR_HEIGHT) * 60;
+                const snappedMinutes = Math.min(23 * 60 + 45, Math.max(0, Math.round(rawMinutes / 15) * 15));
+
+                const [y, m, d] = dateStr.split('-').map(Number);
+                const newStart = new Date(y, m - 1, d);
+                newStart.setHours(Math.floor(snappedMinutes / 60), snappedMinutes % 60, 0, 0);
+
+                itemRef.startTime = newStart;
+
+                const schedule = state.studyData[dateStr] || [];
+                const itemIndex = schedule.findIndex(i => i.id == itemRef.id);
+                if (itemIndex !== -1) {
+                    recalculateStartTimes(itemIndex + 1);
+                }
+                enhancedSaveState();
+                render();
+            } else {
+                openPlannerTaskDetailsModal(dateStr, itemRef);
+            }
+        };
+
+        block.addEventListener('mousedown', onPointerDown);
+        block.addEventListener('touchstart', onPointerDown, { passive: true });
+
+        timeline.appendChild(block);
+    };
+
+    const openPlannerTaskDetailsModal = (dateStr, itemRef) => {
+        const modal = document.getElementById('planner-task-details-modal');
+        if (!modal) return;
+
+        const titleEl = document.getElementById('planner-detail-title');
+        const timeEl = document.getElementById('planner-detail-time');
+        const badgeEl = document.getElementById('planner-detail-theme-badge');
+        const container = document.getElementById('planner-detail-subtasks-container');
+        const deleteBtn = document.getElementById('planner-detail-delete-btn');
+
+        const displayName = itemRef.name || itemRef.text || 'Task';
+        if (titleEl) titleEl.textContent = displayName;
+
+        const startTimeObj = itemRef.startTime ? new Date(itemRef.startTime) : new Date();
+        const duration = itemRef.durationHours || 1;
+        const endTimeObj = calculateEndTime(startTimeObj, duration);
+        if (timeEl) {
+            timeEl.textContent = `${formatTime(startTimeObj)} - ${formatTime(endTimeObj)} (${formatHoursAndMinutes(duration)})`;
+        }
+
+        const theme = getSubjectColor(displayName);
+        if (badgeEl) {
+            badgeEl.textContent = itemRef.type === 'break' ? 'Break' : (itemRef.type === 'custom' ? 'Daily Life' : 'Subject');
+            badgeEl.style.background = theme.bg;
+            badgeEl.style.color = theme.text;
+            badgeEl.style.border = `1px solid ${theme.border}`;
+        }
+
+        const subTasksList = itemRef.subTasks || [];
+        const customTasksList = itemRef.customTasks || [];
+        const allTasks = [...subTasksList];
+        customTasksList.forEach(c => {
+            if (!allTasks.some(s => s.text === c.text)) allTasks.push(c);
+        });
+
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (allTasks.length === 0) {
+            container.innerHTML = `<div class="p-4 text-center text-subtle text-sm bg-tertiary rounded-xl border border-secondary">
+                <i class="fas fa-info-circle mb-1 text-base block"></i> No sub-tasks for this item.
+            </div>`;
+        } else {
+            allTasks.forEach((task, idx) => {
+                const isDone = !!task.completed;
+                const statusTag = task.status && task.status !== 'None' ? task.status : '';
+                const taskItemHTML = `
+                    <div class="flex items-center justify-between p-3 bg-tertiary rounded-xl border border-secondary transition-all hover:border-main">
+                        <label class="flex items-center gap-3 cursor-pointer flex-grow min-w-0 mr-2">
+                            <input type="checkbox" class="w-5 h-5 rounded-md cursor-pointer accent-indigo-500" ${isDone ? 'checked' : ''} data-task-idx="${idx}">
+                            <span class="text-sm font-semibold text-main ${isDone ? 'line-through opacity-60' : ''} truncate">${task.text}</span>
+                        </label>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            ${statusTag ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">${statusTag}</span>` : ''}
+                            ${task.hours ? `<span class="text-xs text-subtle font-medium">${formatHoursAndMinutesCompact(task.hours)}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += taskItemHTML;
+            });
+
+            container.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+                checkbox.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.dataset.taskIdx, 10);
+                    if (allTasks[index]) {
+                        const newStatus = e.target.checked;
+                        allTasks[index].completed = newStatus;
+                        if (subTasksList[index]) subTasksList[index].completed = newStatus;
+                        if (customTasksList[index]) customTasksList[index].completed = newStatus;
+
+                        const allCompleted = allTasks.every(t => t.completed);
+                        itemRef.completed = allCompleted;
+
+                        enhancedSaveState();
+                        render();
+                        openPlannerTaskDetailsModal(dateStr, itemRef);
+                    }
+                });
+            });
+        }
+
+        if (deleteBtn) {
+            deleteBtn.onclick = () => {
+                deletePlannerItem(dateStr, itemRef.id);
+                closeModal();
+            };
+        }
+
+        openModal('planner-task-details-modal');
+    };
+
+    const deletePlannerItem = (dateStr, itemId) => {
+        const schedule = state.studyData[dateStr] || [];
+        const index = schedule.findIndex(i => i.id == itemId);
+        if (index !== -1) {
+            schedule.splice(index, 1);
+            recalculateStartTimes(index);
+            enhancedSaveState();
+            render();
+        }
+    };
+
+    const showPlannerContextMenu = (x, y, dateStr, itemRef) => {
+        let menu = document.getElementById('planner-cal-context-menu');
+        if (!menu) return;
+
+        menu.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
+        menu.style.top = `${Math.min(y, window.innerHeight - 140)}px`;
+        menu.classList.remove('hidden');
+
+        const btnDelete = document.getElementById('planner-ctx-delete');
+        const btnToggle = document.getElementById('planner-ctx-toggle');
+        const btnEditHours = document.getElementById('planner-ctx-edit-hours');
+
+        const cleanup = () => {
+            menu.classList.add('hidden');
+            window.removeEventListener('click', cleanup);
+        };
+
+        if (btnDelete) {
+            btnDelete.onclick = () => {
+                deletePlannerItem(dateStr, itemRef.id);
+                cleanup();
+            };
+        }
+
+        if (btnToggle) {
+            btnToggle.onclick = () => {
+                itemRef.completed = !itemRef.completed;
+                enhancedSaveState();
+                render();
+                cleanup();
+            };
+        }
+
+        if (btnEditHours) {
+            btnEditHours.onclick = () => {
+                setupEditHoursModal(itemRef.id);
+                openModal('edit-hours-modal');
+                cleanup();
+            };
+        }
+
+        setTimeout(() => {
+            window.addEventListener('click', cleanup, { once: true });
+        }, 50);
+    };
+
+    const openPlannerAddEventModal = (dateStr, hour = 9) => {
+        state.ui.calendarDate = dateStr;
+        const timeInput = document.getElementById('planner-event-time-input');
+        if (timeInput) {
+            timeInput.value = `${hour.toString().padStart(2, '0')}:00`;
+        }
+        const subjSelect = document.getElementById('planner-event-subject-select');
+        if (subjSelect) {
+            subjSelect.innerHTML = '<option value="">Daily Life / Standalone Task</option>' +
+                (state.masterSubjects || []).map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+        openModal('planner-add-event-modal');
+    };
+
     // --- EVENT LISTENERS ---
 
     document.body.addEventListener('auxclick', (e) => {
@@ -2626,6 +3344,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (action === 'showSummaryView') hash = '#summary';
                 else if (action === 'showProgressView') hash = '#progress';
                 else if (action === 'showScheduleView') hash = '#schedule';
+                else if (action === 'showCalendarView') hash = '#calendar';
                 if (hash) {
                     e.preventDefault();
                     window.open(window.location.href.split('#')[0] + hash, '_blank');
@@ -2868,8 +3587,85 @@ document.addEventListener('DOMContentLoaded', () => {
         const hash = window.location.hash;
         if (hash === '#summary') state.ui.currentView = 'summary';
         else if (hash === '#progress') state.ui.currentView = 'progress';
+        else if (hash === '#calendar') state.ui.currentView = 'calendar';
         render();
         setupNotificationTimer();
+
+        // Calendar Controls & Modal Listeners
+        document.getElementById('planner-cal-prev-btn')?.addEventListener('click', () => {
+            const dateStr = state.ui.calendarDate || formatDateKey(new Date());
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const dt = new Date(y, m - 1, d);
+            dt.setDate(dt.getDate() - 1);
+            state.ui.calendarDate = formatDateKey(dt);
+            render();
+        });
+
+        document.getElementById('planner-cal-next-btn')?.addEventListener('click', () => {
+            const dateStr = state.ui.calendarDate || formatDateKey(new Date());
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const dt = new Date(y, m - 1, d);
+            dt.setDate(dt.getDate() + 1);
+            state.ui.calendarDate = formatDateKey(dt);
+            render();
+        });
+
+        document.getElementById('planner-cal-date-badge')?.addEventListener('click', () => {
+            state.ui.calendarDate = formatDateKey(new Date());
+            render();
+        });
+
+        document.getElementById('planner-cal-add-event-btn')?.addEventListener('click', () => {
+            openPlannerAddEventModal(state.ui.calendarDate || formatDateKey(new Date()));
+        });
+
+        document.getElementById('planner-event-submit-btn')?.addEventListener('click', () => {
+            const dateKey = state.ui.calendarDate || formatDateKey(new Date());
+            if (!state.studyData[dateKey]) state.studyData[dateKey] = [];
+
+            const titleInput = document.getElementById('planner-event-title-input');
+            const timeInput = document.getElementById('planner-event-time-input');
+            const durationInput = document.getElementById('planner-event-duration-input');
+            const statusInput = document.getElementById('planner-event-status-input');
+            const subjectSelect = document.getElementById('planner-event-subject-select');
+
+            const title = titleInput?.value.trim() || 'Custom Task';
+            const timeVal = timeInput?.value || '09:00';
+            const durMins = parseFloat(durationInput?.value) || 60;
+            const statusVal = statusInput?.value || 'Subject';
+            const chosenSubject = subjectSelect?.value || '';
+
+            const [y, m, d] = dateKey.split('-').map(Number);
+            const [hh, mm] = timeVal.split(':').map(Number);
+            const startDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+
+            const durationHours = durMins / 60;
+            const isBreak = statusVal === 'Break';
+            const statusLabel = statusVal === 'Subject' ? 'None' : statusVal;
+
+            const newItem = {
+                id: Date.now() + Math.random(),
+                type: isBreak ? 'break' : (chosenSubject ? 'subject' : 'custom'),
+                name: chosenSubject || (isBreak ? 'Break' : title),
+                text: title,
+                durationHours: durationHours,
+                originalDuration: durationHours,
+                completed: false,
+                startTime: startDate,
+                subTasks: isBreak ? [] : [{ text: title, hours: durationHours, completed: false, status: statusLabel }],
+                customTasks: isBreak ? [] : [{ text: title, completed: false, status: statusLabel, hours: durationHours }]
+            };
+
+            state.studyData[dateKey].push(newItem);
+
+            const itemIndex = state.studyData[dateKey].length - 1;
+            recalculateStartTimes(dateKey, itemIndex);
+            enhancedSaveState();
+            render();
+
+            if (titleInput) titleInput.value = '';
+            closeModal();
+        });
     };
     
     window.addEventListener('scroll', () => {
