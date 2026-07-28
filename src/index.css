@@ -4139,3 +4139,102 @@ select option, select optgroup {
 
 .brand-text-course { color: #ffffff !important; font-weight: 800; font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.4px; }
 .brand-text-flix { background: linear-gradient(135deg, #FF7B00 0%, #FF3D00 55%, #E60000 100%) !important; -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; background-clip: text !important; font-weight: 800; font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.4px; display: inline-block; }
+
+/* Dashboard Drag & Drop Import Overlay */
+@keyframes dashboardOverlayFadeIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes dashboardPulseGlow {
+    0%, 100% {
+        box-shadow: inset 0 0 35px rgba(99, 102, 241, 0.3), 0 0 50px rgba(99, 102, 241, 0.4);
+        border-color: #6366f1;
+    }
+    50% {
+        box-shadow: inset 0 0 60px rgba(168, 85, 247, 0.5), 0 0 70px rgba(168, 85, 247, 0.6);
+        border-color: #a855f7;
+    }
+}
+
+@keyframes dashboardBounceIcon {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        transform: translateY(-12px) scale(1.1);
+    }
+}
+
+#dashboard-view-el {
+    position: relative;
+}
+
+.dashboard-drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 4px dashed #6366f1;
+    border-radius: 24px;
+    margin: 20px;
+    pointer-events: none;
+    animation: dashboardOverlayFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1), dashboardPulseGlow 2.2s infinite ease-in-out;
+}
+
+.dashboard-drop-overlay.hidden {
+    display: none !important;
+}
+
+.dashboard-drop-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+    color: #f8fafc;
+    padding: 36px 50px;
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 24px;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.dashboard-drop-icon {
+    font-size: 4rem;
+    color: #818cf8;
+    filter: drop-shadow(0 0 25px rgba(99, 102, 241, 0.8));
+    animation: dashboardBounceIcon 1.8s infinite ease-in-out;
+}
+
+.dashboard-drop-title {
+    font-size: 1.65rem;
+    font-weight: 800;
+    margin: 0;
+    color: #ffffff;
+    letter-spacing: -0.3px;
+}
+
+.dashboard-drop-subtitle {
+    font-size: 0.96rem;
+    color: #cbd5e1;
+    margin: 0;
+}
+
+

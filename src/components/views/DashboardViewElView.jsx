@@ -91,6 +91,13 @@ export default function DashboardViewElView() {
             </button>
         </div>
         <main id="course-grid" className="grid-container"></main>
+        <div id="dashboard-drop-overlay" className="dashboard-drop-overlay hidden">
+            <div className="dashboard-drop-content">
+                <i className="fas fa-folder-plus dashboard-drop-icon"></i>
+                <h3 className="dashboard-drop-title">Drop Course Folder Here</h3>
+                <p className="dashboard-drop-subtitle">Drop one or more course folders to import them into Courseflix</p>
+            </div>
+        </div>
     </div>
   );
 }

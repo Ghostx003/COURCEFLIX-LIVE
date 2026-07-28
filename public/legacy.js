@@ -4486,24 +4486,150 @@ window.initCourseFlix = async function() {
             });
         }
 
+        async function processAndAddCourseFolder(dirHandle) {
+            const courseData = await scanDirectoryHandle(dirHandle);
+            if (courseData.videoCount === 0) {
+                showToast(`No videos found in "${dirHandle.name || 'selected folder'}" or its subfolders.`, true);
+                return false;
+            }
+            const newCourse = {
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                title: dirHandle.name || 'Imported Course',
+                handle: dirHandle,
+                videoCount: courseData.videoCount,
+                lectures: courseData.lectures,
+                totalDuration: courseData.totalDuration,
+                chapters: courseData.chapters
+            };
+            await new Promise((resolve, reject) => {
+                const req = getStore(STORE_NAME, 'readwrite').add(newCourse);
+                req.onsuccess = resolve;
+                req.onerror = reject;
+            });
+            await loadCoursesFromDB();
+            return true;
+        }
+
+        function createHandleFromEntry(entry) {
+            if (!entry) return null;
+            if (entry.isFile) {
+                return {
+                    kind: 'file',
+                    name: entry.name,
+                    getFile: () => new Promise((resolve, reject) => entry.file(resolve, reject))
+                };
+            } else if (entry.isDirectory) {
+                return {
+                    kind: 'directory',
+                    name: entry.name,
+                    values: async function* () {
+                        const dirReader = entry.createReader();
+                        const readBatch = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
+                        let entries;
+                        do {
+                            entries = await readBatch();
+                            for (const childEntry of entries) {
+                                const childHandle = createHandleFromEntry(childEntry);
+                                if (childHandle) yield childHandle;
+                            }
+                        } while (entries && entries.length > 0);
+                    }
+                };
+            }
+            return null;
+        }
+
         document.getElementById('add-folder-btn').addEventListener('click', async () => { 
             try {
                 const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
-                const courseData = await scanDirectoryHandle(dirHandle);
-                if (courseData.videoCount === 0) {
-                    return showToast('No videos found in this folder or its subfolders.', true);
-                }
-                const newCourse = {
-                    id: Date.now(), title: dirHandle.name, handle: dirHandle,
-                    videoCount: courseData.videoCount, lectures: courseData.lectures,
-                    totalDuration: courseData.totalDuration, chapters: courseData.chapters
-                };
-                getStore(STORE_NAME, 'readwrite').add(newCourse);
-                await loadCoursesFromDB();
+                await processAndAddCourseFolder(dirHandle);
             } catch (e) {
                 if (e.name !== 'AbortError') console.error(e);
             } finally {
                 document.getElementById('modal-overlay').classList.add('hidden');
+            }
+        });
+
+        // --- Drag & Drop Course Import (Dashboard Only) ---
+        let dashDragCounter = 0;
+
+        function isDashboardActive() {
+            const activeView = document.querySelector('.view.active');
+            return !activeView || activeView.id === 'dashboard-view-el';
+        }
+
+        window.addEventListener('dragenter', (e) => {
+            if (!isDashboardActive()) return;
+            e.preventDefault();
+            dashDragCounter++;
+            const overlay = document.getElementById('dashboard-drop-overlay');
+            if (overlay) overlay.classList.remove('hidden');
+        });
+
+        window.addEventListener('dragover', (e) => {
+            if (!isDashboardActive()) return;
+            e.preventDefault();
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'copy';
+            }
+            const overlay = document.getElementById('dashboard-drop-overlay');
+            if (overlay && overlay.classList.contains('hidden')) {
+                overlay.classList.remove('hidden');
+            }
+        });
+
+        window.addEventListener('dragleave', (e) => {
+            if (!isDashboardActive()) return;
+            e.preventDefault();
+            dashDragCounter--;
+            if (dashDragCounter <= 0) {
+                dashDragCounter = 0;
+                const overlay = document.getElementById('dashboard-drop-overlay');
+                if (overlay) overlay.classList.add('hidden');
+            }
+        });
+
+        window.addEventListener('drop', async (e) => {
+            if (!isDashboardActive()) return;
+            e.preventDefault();
+            dashDragCounter = 0;
+            const overlay = document.getElementById('dashboard-drop-overlay');
+            if (overlay) overlay.classList.add('hidden');
+
+            const folderHandles = [];
+            if (e.dataTransfer && e.dataTransfer.items) {
+                const items = Array.from(e.dataTransfer.items);
+                for (const item of items) {
+                    if (item.kind === 'file') {
+                        let handle = null;
+                        if (typeof item.getAsFileSystemHandle === 'function') {
+                            try {
+                                handle = await item.getAsFileSystemHandle();
+                            } catch (err) {}
+                        }
+                        if (!handle && typeof item.webkitGetAsEntry === 'function') {
+                            try {
+                                const entry = item.webkitGetAsEntry();
+                                if (entry) handle = createHandleFromEntry(entry);
+                            } catch (err) {}
+                        }
+                        if (handle && handle.kind === 'directory') {
+                            folderHandles.push(handle);
+                        }
+                    }
+                }
+            }
+
+            if (folderHandles.length === 0) {
+                showToast('No course folders found in dropped items. Please drop a course folder.', true);
+                return;
+            }
+
+            for (let i = 0; i < folderHandles.length; i++) {
+                await processAndAddCourseFolder(folderHandles[i]);
+                if (i < folderHandles.length - 1) {
+                    await new Promise(r => setTimeout(r, 50));
+                }
             }
         });
 
