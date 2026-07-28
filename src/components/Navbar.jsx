@@ -123,8 +123,8 @@ export default function Navbar() {
             <span className="brand-text-course" style={{ fontSize: '1.35rem' }}>Course<span className="brand-text-flix">Flix</span></span>
         </h1>
         <div className="nav-links">
-            <a href="#" className="nav-link" data-view="dashboard-view"><i className="fas fa-th-large" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Dashboard</a>
-            <a href="#" className="nav-link" data-view="upload-view"><i className="fas fa-cloud-upload-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Upload</a>
+            <a href="#dashboard-view" className="nav-link" data-view="dashboard-view" onClick={(e) => { e.preventDefault(); handleToggleMode('dashboard-view'); }}><i className="fas fa-th-large" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Dashboard</a>
+            <a href="#upload-view" className="nav-link" data-view="upload-view" onClick={(e) => { e.preventDefault(); handleToggleMode('upload-view'); }}><i className="fas fa-cloud-upload-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Upload</a>
             <div 
                 ref={toggleRef}
                 className="nav-mode-toggle-switch"
@@ -216,9 +216,9 @@ export default function Navbar() {
                     Practice
                 </button>
             </div>
-            <a href="#" className="nav-link" data-view="dpp-view"><i className="fas fa-file-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>DPP</a>
-            <a href="#" className="nav-link" data-view="notes-view"><i className="fas fa-sticky-note" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Notes</a>
-            <a href="#" className="nav-link" data-view="doubts-view">
+            <a href="#dpp-view" className="nav-link" data-view="dpp-view" onClick={(e) => { e.preventDefault(); handleToggleMode('dpp-view'); }}><i className="fas fa-file-alt" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>DPP</a>
+            <a href="#notes-view" className="nav-link" data-view="notes-view" onClick={(e) => { e.preventDefault(); handleToggleMode('notes-view'); }}><i className="fas fa-sticky-note" style={{"marginRight":"4px","fontSize":"0.78rem"}}></i>Notes</a>
+            <a href="#doubts-view" className="nav-link" data-view="doubts-view" onClick={(e) => { e.preventDefault(); handleToggleMode('doubts-view'); }}>
                 {doubtsCount > 0 ? (
                     <span style={{
                         display: 'inline-flex',
@@ -240,10 +240,10 @@ export default function Navbar() {
                 )}
                  Doubts
             </a>
-            <a href="#" className="nav-link" data-view="continue-view"><i className="fas fa-play-circle" style={{"marginRight":"4px","color":"#06b6d4"}}></i> Continue</a>
-            <a href="#" className="nav-link" data-view="history-view"><i className="fas fa-history" style={{"marginRight":"4px"}}></i> History</a>
-            <a href="#" className="nav-link" data-view="faculty-view"><i className="fas fa-chalkboard-teacher" style={{"marginRight":"4px"}}></i> Faculty</a>
-            <a href="#" className="nav-link" data-view="goals-view"><i className="fas fa-bullseye" style={{"marginRight":"4px"}}></i> Goals</a>
+            <a href="#continue-view" className="nav-link" data-view="continue-view" onClick={(e) => { e.preventDefault(); handleToggleMode('continue-view'); }}><i className="fas fa-play-circle" style={{"marginRight":"4px","color":"#06b6d4"}}></i> Continue</a>
+            <a href="#history-view" className="nav-link" data-view="history-view" onClick={(e) => { e.preventDefault(); handleToggleMode('history-view'); }}><i className="fas fa-history" style={{"marginRight":"4px"}}></i> History</a>
+            <a href="#faculty-view" className="nav-link" data-view="faculty-view" onClick={(e) => { e.preventDefault(); handleToggleMode('faculty-view'); }}><i className="fas fa-chalkboard-teacher" style={{"marginRight":"4px"}}></i> Faculty</a>
+            <a href="#goals-view" className="nav-link" data-view="goals-view" onClick={(e) => { e.preventDefault(); handleToggleMode('goals-view'); }}><i className="fas fa-bullseye" style={{"marginRight":"4px"}}></i> Goals</a>
             <button 
                 id="completion-feature-btn" 
                 className="nav-link completion-btn"
@@ -254,8 +254,8 @@ export default function Navbar() {
                 <i className="fas fa-chart-pie" style={{"marginRight":"4px"}}></i> Completion
             </button>
             <a href="https://testflix-pro.vercel.app/app/test-dashboard" target="_blank" rel="noopener noreferrer" className="nav-link" style={{"background":"linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(225, 29, 72, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-flask" style={{"marginRight":"4px"}}></i> Testflix</a>
-            <a href="#" className="nav-link" data-view="plan-view" style={{"background":"linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(109, 40, 217, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-calendar-alt" style={{"marginRight":"4px"}}></i> Planner</a>
-            <a href="#" className="nav-link" data-view="progress-view" style={{"background":"linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(29, 78, 216, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-chart-line" style={{"marginRight":"4px"}}></i> Performance</a>
+            <a href="#plan-view" className="nav-link" data-view="plan-view" onClick={(e) => { e.preventDefault(); handleToggleMode('plan-view'); }} style={{"background":"linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(109, 40, 217, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-calendar-alt" style={{"marginRight":"4px"}}></i> Planner</a>
+            <a href="#progress-view" className="nav-link" data-view="progress-view" onClick={(e) => { e.preventDefault(); handleToggleMode('progress-view'); }} style={{"background":"linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(29, 78, 216, 0.3)","border":"1px solid rgba(255,255,255,0.2)"}}><i className="fas fa-chart-line" style={{"marginRight":"4px"}}></i> Performance</a>
             <button id="theme-toggle-btn" className="nav-link" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-secondary)","cursor":"pointer","display":"flex","alignItems":"center","justifyContent":"center","width":"30px","height":"30px","borderRadius":"50%","padding":"0","marginLeft":"3px"}} title="Toggle Pure Black Theme"><i className="fas fa-moon"></i></button>
             <button
                 id="hide-ignored-btn"

@@ -3723,6 +3723,9 @@ window.initCourseFlix = async function() {
                 await renderDppDetailView(courseId);
             }
             if(e.target.closest('#back-to-dpp-grid')) {
+                if (window.location.hash !== '#pratice%20batches') {
+                    window.history.pushState(null, '', '#pratice%20batches');
+                }
                 renderDppCourseSelectionView();
             }
 
@@ -7180,7 +7183,7 @@ window.initCourseFlix = async function() {
             return `${lastFolder} ${num}`;
         }
 
-        async function renderDppDetailView(courseId) {
+        async function renderDppDetailView(courseId, pushState = true) {
             await ensureDB();
             await scanAllCoursesForDppsAndNotes();
             await syncDppsFromProgress();
@@ -7191,6 +7194,15 @@ window.initCourseFlix = async function() {
                 switchView('dpp-view'); // Go back to course selection
                 return;
             };
+
+            if (pushState) {
+                const newHash = '#pratice%20batches/' + encodeURIComponent(course.title);
+                if (window.location.hash !== newHash) {
+                    window.history.pushState(null, '', newHash);
+                }
+            }
+
+            switchView('dpp-view', false);
 
             document.getElementById('dpp-course-grid').classList.add('hidden');
             const detailContainer = document.getElementById('dpp-detail-container');
@@ -9692,11 +9704,63 @@ window.initCourseFlix = async function() {
                 });
             }
             
+            function findMatchingCourse(query) {
+                if (!query || typeof courses === 'undefined' || !courses || courses.length === 0) return null;
+                const lowerQuery = String(query).toLowerCase().trim();
+                const cleanQuery = lowerQuery.replace(/[^a-z0-9]/g, '');
+
+                let match = courses.find(c => 
+                    String(c.id) === lowerQuery || 
+                    (c.title && String(c.title).toLowerCase().trim() === lowerQuery)
+                );
+                if (match) return match;
+
+                match = courses.find(c => {
+                    if (!c.title) return false;
+                    const cleanTitle = String(c.title).toLowerCase().replace(/[^a-z0-9]/g, '');
+                    return cleanTitle === cleanQuery;
+                });
+                if (match) return match;
+
+                match = courses.find(c => {
+                    if (!c.title) return false;
+                    const lowerTitle = String(c.title).toLowerCase();
+                    return lowerTitle.includes(lowerQuery) || lowerQuery.includes(lowerTitle);
+                });
+                if (match) return match;
+
+                const subjectAliases = {
+                    'os dbms': ['operating systems', 'os', 'dbms', 'database management systems'],
+                    'os': ['operating systems', 'operating system', 'opsys'],
+                    'dbms': ['database management systems', 'database', 'databases', 'db']
+                };
+                for (const [key, aliases] of Object.entries(subjectAliases)) {
+                    if (lowerQuery.includes(key) || aliases.some(a => lowerQuery.includes(a))) {
+                        match = courses.find(c => {
+                            if (!c.title) return false;
+                            const lowerTitle = String(c.title).toLowerCase();
+                            return lowerTitle.includes(key) || aliases.some(a => lowerTitle.includes(a));
+                        });
+                        if (match) return match;
+                    }
+                }
+                return null;
+            }
+
             async function handleRoute() {
                 let hash = window.location.hash ? window.location.hash.substring(1) : '';
                 if (!hash) {
                     switchView('home-view', false);
                     return;
+                }
+
+                if (typeof ensureDB === 'function') await ensureDB();
+                if ((typeof courses === 'undefined' || !courses || courses.length === 0) && typeof loadCoursesFromDB === 'function') {
+                    try {
+                        await loadCoursesFromDB();
+                    } catch (e) {
+                        console.warn('handleRoute loadCourses error:', e);
+                    }
                 }
 
                 const decodedHash = decodeURIComponent(hash);
@@ -9720,19 +9784,20 @@ window.initCourseFlix = async function() {
                     const rawId = parts[0];
                     const path = parts.slice(1).join('/');
                     
-                    const courseId = (!isNaN(parseInt(rawId)) && String(parseInt(rawId)) === String(rawId)) ? parseInt(rawId) : rawId;
                     const lowerId = String(rawId).toLowerCase().trim();
 
                     if (lowerId.includes('practice') || lowerId.includes('pratice') || lowerId.includes('dpp') || lowerId === 'pb') {
                         if (typeof switchView === 'function') switchView('dpp-view', false);
-                        if (typeof renderDppCourseSelectionView === 'function') renderDppCourseSelectionView();
+                        const matchedDppCourse = findMatchingCourse(path);
+                        if (matchedDppCourse && typeof renderDppDetailView === 'function') {
+                            await renderDppDetailView(matchedDppCourse.id, false);
+                        } else if (typeof renderDppCourseSelectionView === 'function') {
+                            await renderDppCourseSelectionView();
+                        }
                         return;
                     }
 
-                    const matchedCourse = (courses || []).find(c => 
-                        String(c.id) === String(courseId) || 
-                        (c.title && String(c.title).toLowerCase() === lowerId)
-                    );
+                    const matchedCourse = findMatchingCourse(rawId);
 
                     if (matchedCourse) {
                         await renderSubcourseView(matchedCourse.id, path, false);
@@ -9746,11 +9811,7 @@ window.initCourseFlix = async function() {
                         return;
                     }
 
-                    const courseId = (!isNaN(parseInt(targetCourseStr)) && String(parseInt(targetCourseStr)) === String(targetCourseStr)) ? parseInt(targetCourseStr) : targetCourseStr;
-                    const matchedCourse = (courses || []).find(c => 
-                        String(c.id) === String(courseId) || 
-                        (c.title && String(c.title).toLowerCase() === lowerHash)
-                    );
+                    const matchedCourse = findMatchingCourse(targetCourseStr);
 
                     if (matchedCourse) {
                         await renderSubcourseView(matchedCourse.id, '', false);

@@ -468,7 +468,6 @@ window.addEventListener('DOMContentLoaded', () => {
             const totalAllocated = Object.values(allocatedLectures).reduce((a, b) => a + b, 0);
             if (totalAllocated === 0 && selectedSubjects.length > 0) {
                 smartSplit();
-                return;
             }
 
             selectedSubjects.forEach(sub => {
