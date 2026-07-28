@@ -3064,6 +3064,24 @@ window.initCourseFlix = async function() {
 
             updateMediaViewerToggleButton();
 
+            // Auto-sync media viewer sidebar when switching lectures while sidebar is open
+            const isSidebarOpen = (typeof playerView !== 'undefined' && playerView.classList.contains('viewer-active')) || (typeof mediaViewer !== 'undefined' && mediaViewer && !mediaViewer.classList.contains('hidden'));
+            if (isSidebarOpen && currentCourse && lecture) {
+                const progress = getLectureProgress(currentCourse.id, lecture.id);
+                const hasPdf = progress && progress.pdfHandle;
+                const hasAssignment = progress && (progress.assignmentHandle || progress.dppHandle);
+
+                if (hasPdf) {
+                    showMediaViewer(progress.pdfHandle, 'pdf', progress.pdfName || 'Notes.pdf', progress);
+                } else if (hasAssignment) {
+                    const handle = progress.assignmentHandle || progress.dppHandle;
+                    const name = progress.assignmentName || progress.dppName || 'DPP.pdf';
+                    showMediaViewer(handle, 'assignment', name, progress);
+                } else {
+                    hideMediaViewer();
+                }
+            }
+
             try {
                 const file = await lecture.handle.getFile();
                 if(videoPlayer.src) URL.revokeObjectURL(videoPlayer.src);
@@ -3253,7 +3271,7 @@ window.initCourseFlix = async function() {
                     }
                     if (mediaViewerFrame) {
                         mediaViewerFrame.style.display = 'block';
-                        mediaViewerFrame.src = `/pdf-viewer.html?file=${encodeURIComponent(activeFileUrl)}`;
+                        mediaViewerFrame.src = `/pdf-viewer.html?file=${encodeURIComponent(activeFileUrl)}#page=1&zoom=fit`;
                     }
                     viewerTitle.textContent = fileName || file.name || (fileType.toLowerCase() === 'pdf' ? 'Notes.pdf' : 'DPP.pdf');
                     activeViewerFileType = fileType.toLowerCase();
@@ -3352,33 +3370,98 @@ window.initCourseFlix = async function() {
 
         function updateFileSwitcher(lectureProgress, currentType) {
             const container = document.getElementById('file-switcher-container');
-            container.innerHTML = '';
+            if (!container) return;
 
-            const hasPdf = !!lectureProgress.pdfHandle;
-            const hasAssignment = !!lectureProgress.assignmentHandle;
-
-            if (hasPdf && hasAssignment) {
-                const otherType = currentType === 'pdf' ? 'assignment' : 'pdf';
-                const otherHandle = otherType === 'pdf' ? lectureProgress.pdfHandle : lectureProgress.assignmentHandle;
-                const otherName = otherType === 'pdf' ? lectureProgress.pdfName : lectureProgress.assignmentName;
-
-                container.innerHTML = `
-                    <button id="file-switcher-btn">${currentType.toUpperCase()} <i class="fas fa-chevron-down fa-xs"></i></button>
-                    <div id="file-switcher-dropdown" class="hidden">
-                        <button data-type="${otherType}">${otherType === 'pdf' ? 'View Notes' : 'View Assignment'}</button>
-                    </div>`;
-
-                const btn = container.querySelector('#file-switcher-btn');
-                const dropdown = container.querySelector('#file-switcher-dropdown');
-                btn.onclick = () => dropdown.classList.toggle('hidden');
-                
-                dropdown.querySelector('button').onclick = () => {
-                    showMediaViewer(otherHandle, otherType, otherName, lectureProgress);
-                };
-                document.addEventListener('click', (e) => {
-                     if (!container.contains(e.target)) dropdown.classList.add('hidden');
-                }, { once: true });
+            if (!lectureProgress && typeof currentCourse !== 'undefined' && currentCourse && activeViewerLectureId) {
+                lectureProgress = getLectureProgress(currentCourse.id, activeViewerLectureId);
             }
+
+            let dppHandle = null;
+            let dppName = null;
+            let pdfHandle = null;
+            let pdfName = null;
+
+            if (lectureProgress) {
+                dppHandle = lectureProgress.assignmentHandle || lectureProgress.dppHandle;
+                dppName = lectureProgress.assignmentName || lectureProgress.dppName || 'DPP.pdf';
+                pdfHandle = lectureProgress.pdfHandle;
+                pdfName = lectureProgress.pdfName || 'Notes.pdf';
+            }
+
+            const hasDpp = !!dppHandle;
+            const hasPdf = !!pdfHandle;
+
+            const type = (currentType || 'pdf').toLowerCase();
+            const isPdf = type === 'pdf' || type === 'note' || type === 'notes';
+            const labelText = isPdf ? 'Notes (PDF)' : 'DPP / Assignment';
+
+            let optionsHTML = '';
+            if (hasPdf || isPdf) {
+                optionsHTML += `
+                    <button data-type="pdf" style="display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; padding: 8px 12px; background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 0.82rem; border-radius: 4px;">
+                        <span style="display: flex; align-items: center; gap: 8px;"><i class="fas fa-file-pdf" style="color: #ef4444;"></i> Notes (PDF)</span>
+                        ${isPdf ? '<i class="fas fa-check" style="font-size: 0.75rem; color: var(--accent-primary);"></i>' : ''}
+                    </button>`;
+            }
+
+            // Only add DPP / Assignment to dropdown if a DPP file is actually attached
+            if (hasDpp) {
+                optionsHTML += `
+                    <button data-type="assignment" style="display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; padding: 8px 12px; background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 0.82rem; border-radius: 4px;">
+                        <span style="display: flex; align-items: center; gap: 8px;"><i class="fas fa-file-alt" style="color: #3b82f6;"></i> DPP / Assignment</span>
+                        ${!isPdf ? '<i class="fas fa-check" style="font-size: 0.75rem; color: var(--accent-primary);"></i>' : ''}
+                    </button>`;
+            }
+
+            const hasMultipleOptions = hasPdf && hasDpp;
+            const chevronHTML = hasMultipleOptions ? '<i class="fas fa-chevron-down fa-xs" style="margin-left: 2px; opacity: 0.7;"></i>' : '';
+
+            container.innerHTML = `
+                <button id="file-switcher-btn" style="background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-secondary); padding: 6px 12px; border-radius: 6px; cursor: ${hasMultipleOptions ? 'pointer' : 'default'}; font-size: 0.8rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="${isPdf ? 'fas fa-file-pdf' : 'fas fa-file-alt'}" style="color: var(--accent-primary);"></i>
+                    <span>${labelText}</span>
+                    ${chevronHTML}
+                </button>
+                ${hasMultipleOptions ? `
+                <div id="file-switcher-dropdown" class="hidden" style="position: absolute; top: 110%; right: 0; background-color: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 100; min-width: 170px; overflow: hidden; padding: 4px;">
+                    ${optionsHTML}
+                </div>` : ''}`;
+
+            const btn = container.querySelector('#file-switcher-btn');
+            const dropdown = container.querySelector('#file-switcher-dropdown');
+
+            if (!btn || !dropdown) return;
+
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                dropdown.classList.toggle('hidden');
+            };
+
+            dropdown.querySelectorAll('button').forEach(optionBtn => {
+                optionBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    dropdown.classList.add('hidden');
+                    const targetType = optionBtn.dataset.type;
+
+                    if (targetType === 'pdf') {
+                        if (pdfHandle) {
+                            showMediaViewer(pdfHandle, 'pdf', pdfName, lectureProgress);
+                        }
+                    } else {
+                        if (dppHandle) {
+                            showMediaViewer(dppHandle, 'assignment', dppName, lectureProgress);
+                        }
+                    }
+                };
+            });
+
+            const closeDropdownOnOutsideClick = (e) => {
+                if (!container.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                    document.removeEventListener('click', closeDropdownOnOutsideClick);
+                }
+            };
+            document.addEventListener('click', closeDropdownOnOutsideClick);
         }
         
         function hideMediaViewer() {
