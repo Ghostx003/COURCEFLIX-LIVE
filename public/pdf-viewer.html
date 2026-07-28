@@ -237,15 +237,8 @@
         loadingEl.style.display = 'none';
         scrollView.style.display = 'flex';
 
-        // Render all pages
+        // Render all pages with instant target page prioritization
         await renderAllPages(pdf);
-
-        // Scroll to target initial page
-        if (window.currentPage > 1 && window.currentPage <= pdf.numPages) {
-          window.goToPage(window.currentPage);
-        } else {
-          updatePageUI(1);
-        }
 
         // Setup scroll observer for page tracking
         setupIntersectionObserver();
@@ -261,18 +254,59 @@
       isBuildingPages = true;
 
       try {
+        // Pre-calculate page dimensions using sample page so all page cards are built immediately in DOM
+        const samplePage = await pdf.getPage(1);
+        let scale = window.currentScale;
+        if (scale === 'fit') {
+          const viewportRaw = samplePage.getViewport({ scale: 1.0, rotation: window.currentRotation });
+          let containerWidth = scrollView.clientWidth;
+          if (!containerWidth || containerWidth <= 50) {
+            containerWidth = (scrollView.parentElement ? scrollView.parentElement.clientWidth : 0) || (window.innerWidth ? window.innerWidth * 0.45 : 500);
+          }
+          containerWidth = Math.max(100, containerWidth - 24);
+          scale = containerWidth / viewportRaw.width;
+          if (isNaN(scale) || scale <= 0) scale = 1.0;
+        } else {
+          scale = parseFloat(scale) || 1.5;
+        }
+        const estViewport = samplePage.getViewport({ scale: scale, rotation: window.currentRotation });
+
+        // Build placeholder page cards in DOM instantly
         for (let i = 1; i <= pdf.numPages; i++) {
           const pageCard = document.createElement('div');
           pageCard.className = 'pdf-page-card';
           pageCard.dataset.pageNumber = i;
           pageCard.id = `page-card-${i}`;
+          pageCard.style.width = Math.floor(estViewport.width) + "px";
+          pageCard.style.height = Math.floor(estViewport.height) + "px";
 
           const canvas = document.createElement('canvas');
           pageCard.appendChild(canvas);
           scrollView.appendChild(pageCard);
 
           pageCards.push({ card: pageCard, canvas: canvas, pageNum: i });
-          await renderSinglePage(pdf, i, canvas, pageCard);
+        }
+
+        // Instant jump to target initial page before canvas rendering
+        const targetPageNum = Math.max(1, Math.min(window.currentPage || 1, pdf.numPages));
+        if (targetPageNum > 1) {
+          window.goToPage(targetPageNum, 'instant');
+        } else {
+          updatePageUI(1);
+        }
+
+        // Prioritize rendering target page FIRST so user sees page content immediately
+        const targetCardObj = pageCards.find(p => p.pageNum === targetPageNum) || pageCards[0];
+        if (targetCardObj) {
+          await renderSinglePage(pdf, targetCardObj.pageNum, targetCardObj.canvas, targetCardObj.card);
+        }
+
+        // Render remaining pages in order of proximity to target page
+        const otherPages = pageCards.filter(p => p.pageNum !== targetPageNum);
+        otherPages.sort((a, b) => Math.abs(a.pageNum - targetPageNum) - Math.abs(b.pageNum - targetPageNum));
+
+        for (const item of otherPages) {
+          await renderSinglePage(pdf, item.pageNum, item.canvas, item.card);
         }
       } finally {
         isBuildingPages = false;
@@ -405,14 +439,14 @@
       history.replaceState(null, '', newHash);
     }
 
-    window.goToPage = function(pageNum) {
+    window.goToPage = function(pageNum, behavior = 'smooth') {
       pageNum = Math.max(1, Math.min(pageNum, window.pdfDocument ? window.pdfDocument.numPages : 1));
       const targetCard = document.getElementById(`page-card-${pageNum}`);
       if (targetCard) {
         isUserScrolling = false;
         // Use container scroll to prevent scrollIntoView from scrolling ancestor windows/frames
         const targetTop = targetCard.offsetTop;
-        scrollView.scrollTo({ top: targetTop, behavior: 'smooth' });
+        scrollView.scrollTo({ top: targetTop, behavior: behavior === 'instant' ? 'auto' : behavior });
         updatePageUI(pageNum);
         setTimeout(() => { isUserScrolling = true; }, 500);
       }
