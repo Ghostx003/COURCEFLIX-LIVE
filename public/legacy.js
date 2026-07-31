@@ -6302,6 +6302,23 @@ window.initCourseFlix = async function() {
                 brownNoiseAudio.play();
             });
         }
+        let controlsTimeout = null;
+        function resetControlsTimeout() {
+            if (!videoWrapper) return;
+            videoWrapper.classList.remove('hide-controls');
+            if (controlsTimeout) clearTimeout(controlsTimeout);
+            controlsTimeout = setTimeout(() => {
+                videoWrapper.classList.add('hide-controls');
+            }, 4000);
+        }
+        if (videoWrapper) {
+            videoWrapper.addEventListener('mousemove', resetControlsTimeout);
+            videoWrapper.addEventListener('mouseenter', resetControlsTimeout);
+            videoWrapper.addEventListener('mouseleave', () => {
+                if (controlsTimeout) clearTimeout(controlsTimeout);
+                videoWrapper.classList.remove('hide-controls');
+            });
+        }
         videoWrapper.addEventListener('click', (e) => { if (e.target.closest('.video-controls-container') || e.target.closest('#unmute-btn') || e.target.closest('.bookmark-dot')) return; if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; } clickTimer = setTimeout(() => { if (!e.target.closest('#media-viewer')) playPauseBtn.click(); }, 250); });
         videoWrapper.addEventListener('auxclick', (e) => {
             if (e.button === 1 && !e.target.closest('.video-controls-container') && !e.target.closest('#media-viewer')) {
