@@ -574,7 +574,7 @@ window.initCourseFlix = async function() {
                         toDeleteIds.push(h.id);
                         continue;
                     }
-                    const course = (courses || []).find(c => parseInt(c.id) === parseInt(h.courseId));
+                    const course = (courses || []).find(c => String(c.id) === String(h.courseId));
                     if (!course) {
                         toDeleteIds.push(h.id);
                         continue;
@@ -613,10 +613,10 @@ window.initCourseFlix = async function() {
 
                 activeCourses.forEach(c => {
                     if (c) {
-                        const cId = parseInt(c.id);
-                        activeCoursesMap.set(cId, c);
+                        const cIdStr = String(c.id);
+                        activeCoursesMap.set(cIdStr, c);
                         if (Array.isArray(c.lectures)) {
-                            activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
+                            activeLectureMap[cIdStr] = new Set(c.lectures.map(l => String(l.id)));
                         }
                         if (c.subCourseData) {
                             const hiddenSet = new Set();
@@ -625,18 +625,18 @@ window.initCourseFlix = async function() {
                                     hiddenSet.add(String(key).toLowerCase().trim());
                                 }
                             }
-                            if (hiddenSet.size > 0) hiddenSubfoldersMap.set(cId, hiddenSet);
+                            if (hiddenSet.size > 0) hiddenSubfoldersMap.set(cIdStr, hiddenSet);
                         }
                     }
                 });
 
                 const isRecordValid = (courseId, subfolderPath, lectureId, itemId) => {
                     if (!courseId) return false;
-                    const cId = parseInt(courseId);
-                    const course = activeCoursesMap.get(cId);
+                    const cIdStr = String(courseId);
+                    const course = activeCoursesMap.get(cIdStr);
                     if (!course) return false;
                     if (subfolderPath) {
-                        const hiddenSet = hiddenSubfoldersMap.get(cId);
+                        const hiddenSet = hiddenSubfoldersMap.get(cIdStr);
                         if (hiddenSet && hiddenSet.size > 0) {
                             const normSub = String(subfolderPath).toLowerCase().trim();
                             for (const normKey of hiddenSet) {
@@ -649,11 +649,11 @@ window.initCourseFlix = async function() {
                     
                     // Check missing/deleted lecture if lecture information is available
                     let lecId = lectureId ? String(lectureId) : null;
-                    if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cId + '_')) {
-                        lecId = itemId.replace(cId + '_', '');
+                    if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cIdStr + '_')) {
+                        lecId = itemId.replace(cIdStr + '_', '');
                     }
-                    if (lecId && activeLectureMap[cId] && activeLectureMap[cId].size > 0) {
-                        if (!activeLectureMap[cId].has(lecId)) {
+                    if (lecId && activeLectureMap[cIdStr] && activeLectureMap[cIdStr].size > 0) {
+                        if (!activeLectureMap[cIdStr].has(lecId)) {
                             return false;
                         }
                     }
@@ -1234,14 +1234,7 @@ window.initCourseFlix = async function() {
             if (typeof syncCourseflixSubjects === 'function') {
                 syncCourseflixSubjects();
             }
-            const runPurge = () => {
-                purgeAllDataForDeletedCoursesAndSubfolders().catch(err => console.warn('Background purge error:', err));
-            };
-            if (window.requestIdleCallback) {
-                window.requestIdleCallback(runPurge, { timeout: 6000 });
-            } else {
-                setTimeout(runPurge, 3500);
-            }
+            // Auto-purge on startup is disabled to prevent accidental flushing of imported data on refresh
         }
         
         async function scanDirectoryHandle(dirHandle, basePath = '', cachedLectures = [], fastPass = false) {
@@ -5029,7 +5022,7 @@ window.initCourseFlix = async function() {
             const getRecordStatus = (courseId, subfolderPath, lectureId, itemId) => {
                 if (!courseId) return { valid: false, reason: 'Deleted Subject' };
                 const cId = parseInt(courseId);
-                const course = activeCourses.find(c => parseInt(c.id) === cId);
+                const course = activeCourses.find(c => String(c.id) === String(cId));
                 if (!course) return { valid: false, reason: 'Deleted Subject', courseTitle: `Subject (ID ${cId})` };
                 if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) {
                     return { valid: false, reason: 'Deleted Subfolder', courseTitle: course.title, subfolder: subfolderPath };

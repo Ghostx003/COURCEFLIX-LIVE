@@ -4,52 +4,52 @@
 import { ensureDB, getStore, STORE_NAME, PROGRESS_STORE, DPP_STORE, DOUBTS_STORE, HISTORY_STORE } from './db.js';
 import { showToast, switchView } from './utils.js';
 
-        async function analyzeOrphanData() {
-            await ensureDB();
-            const activeCourses = await new Promise((resolve) => {
-                const req = getStore(STORE_NAME, 'readonly').getAll();
-                req.onsuccess = e => resolve(e.target.result || []);
-                req.onerror = () => resolve([]);
-            });
+async function analyzeOrphanData() {
+    await ensureDB();
+    const activeCourses = await new Promise((resolve) => {
+        const req = getStore(STORE_NAME, 'readonly').getAll();
+        req.onsuccess = e => resolve(e.target.result || []);
+        req.onerror = () => resolve([]);
+    });
 
-            const activeLectureMap = {};
-            activeCourses.forEach(c => {
-                if (c && !c.isIgnored && Array.isArray(c.lectures)) {
-                    activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
-                }
-            });
+    const activeLectureMap = {};
+    activeCourses.forEach(c => {
+        if (c && !c.isIgnored && Array.isArray(c.lectures)) {
+            activeLectureMap[String(c.id)] = new Set(c.lectures.map(l => String(l.id)));
+        }
+    });
 
-            const getRecordStatus = (courseId, subfolderPath, lectureId, itemId) => {
-                if (!courseId) return { valid: false, reason: 'Deleted Subject' };
-                const cId = parseInt(courseId);
-                const course = activeCourses.find(c => parseInt(c.id) === cId);
-                if (!course) return { valid: false, reason: 'Deleted Subject', courseTitle: `Subject (ID ${cId})` };
-                if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) {
-                    return { valid: false, reason: 'Deleted Subfolder', courseTitle: course.title, subfolder: subfolderPath };
-                }
-                
-                let lecId = lectureId ? String(lectureId) : null;
-                if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cId + '_')) {
-                    lecId = itemId.replace(cId + '_', '');
-                }
-                if (lecId && activeLectureMap[cId] && activeLectureMap[cId].size > 0) {
-                    if (!activeLectureMap[cId].has(lecId)) {
-                        return { valid: false, reason: 'Deleted Lecture File', courseTitle: course.title, lectureId: lecId };
-                    }
-                }
-                return { valid: true, courseTitle: course.title };
-            };
+    const getRecordStatus = (courseId, subfolderPath, lectureId, itemId) => {
+        if (!courseId) return { valid: false, reason: 'Deleted Subject' };
+        const cIdStr = String(courseId);
+        const course = activeCourses.find(c => String(c.id) === cIdStr);
+        if (!course) return { valid: false, reason: 'Deleted Subject', courseTitle: `Subject (ID ${cIdStr})` };
+        if (subfolderPath && typeof isSubfolderPathHidden === 'function' && isSubfolderPathHidden(course, subfolderPath)) {
+            return { valid: false, reason: 'Deleted Subfolder', courseTitle: course.title, subfolder: subfolderPath };
+        }
+        
+        let lecId = lectureId ? String(lectureId) : null;
+        if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cIdStr + '_')) {
+            lecId = itemId.replace(cIdStr + '_', '');
+        }
+        if (lecId && activeLectureMap[cIdStr] && activeLectureMap[cIdStr].size > 0) {
+            if (!activeLectureMap[cIdStr].has(lecId)) {
+                return { valid: false, reason: 'Deleted Lecture File', courseTitle: course.title, lectureId: lecId };
+            }
+        }
+        return { valid: true, courseTitle: course.title };
+    };
 
-            const orphanList = [];
+    const orphanList = [];
 
-            // 1. PROGRESS_STORE
-            const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
-            for (const prog of allProgress) {
-                const sub = prog.subfolder || prog.chapter || '';
-                const st = getRecordStatus(prog.courseId, sub, prog.lectureId, prog.id);
-                if (!st.valid) {
-                    let extras = [];
-                    if (prog.pdfHandle || prog.pdfName) extras.push('PDF Note');
+    // 1. PROGRESS_STORE
+    const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+    for (const prog of allProgress) {
+        const sub = prog.subfolder || prog.chapter || '';
+        const st = getRecordStatus(prog.courseId, sub, prog.lectureId, prog.id);
+        if (!st.valid) {
+            let extras = [];
+            if (prog.pdfHandle || prog.pdfName) extras.push('PDF Note');
                     if (prog.notes) extras.push('Intel Note');
                     if (prog.assignmentHandle || prog.assignmentName) extras.push('Assignment');
                     const extraStr = extras.length > 0 ? ` (${extras.join(', ')})` : '';
