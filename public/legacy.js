@@ -3848,7 +3848,7 @@ window.initCourseFlix = async function() {
             videoPlayer.muted = false;
             unmuteBtn.classList.add('hidden');
 
-            if (e.target.closest('.enter-course-btn') && !e.target.closest('#dpp-course-grid') && !e.target.closest('#notes-course-grid')) { 
+            if (e.target.closest('.enter-course-btn') && !e.target.closest('#dpp-course-grid') && !e.target.closest('#notes-course-grid') && !e.target.closest('#search-results-notes-grid') && !e.target.closest('#search-results-dpps-grid')) { 
                 const btn = e.target.closest('.enter-course-btn');
                 const courseId = parseInt(btn.dataset.id);
                 const subfolder = btn.dataset.subfolder;
@@ -11037,6 +11037,9 @@ window.initCourseFlix = async function() {
                                     matchedLectures.push({ course, lecture: l });
                                 }
                             });
+                        }
+                    });
+                    
                     // Search Notes & Assignments grouped by course
                     const notesByCourse = new Map();
                     const dppsByCourse = new Map();
@@ -11360,7 +11363,7 @@ window.initCourseFlix = async function() {
 
                             let thumbnailHTML = '<i class="fas fa-book-open" style="font-size: 3rem;"></i>';
                             if (course.thumbnail) {
-                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-book-open\\' style=\\'font-size: 3rem;\\'></i>'">`;
+                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;">`;
                             }
 
                             const card = document.createElement('div');
@@ -11382,11 +11385,13 @@ window.initCourseFlix = async function() {
                                         <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
                                     </div>
                                     <p class="course-meta" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">${item.count} Class Note${item.count > 1 ? 's' : ''}</p>
-                                    <button class="enter-course-btn" style="margin-top: auto; background: #3b82f6; border-color: #3b82f6;">View Notes Folder</button>
+                                    <button class="view-notes-folder-btn" style="margin-top: auto; background: #3b82f6; border-color: #3b82f6; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%;">View Notes Folder</button>
                                 </div>
                             `;
 
-                            card.addEventListener('click', async () => {
+                            card.addEventListener('click', async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 switchView('notes-view');
                                 if (typeof renderNotesDetailView === 'function') {
                                     await renderNotesDetailView(course.id);
@@ -11414,7 +11419,7 @@ window.initCourseFlix = async function() {
 
                             let thumbnailHTML = '<i class="fas fa-file-invoice" style="font-size: 3rem;"></i>';
                             if (course.thumbnail) {
-                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-file-invoice\\' style=\\'font-size: 3rem;\\'></i>'">`;
+                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;">`;
                             }
 
                             const card = document.createElement('div');
@@ -11436,11 +11441,13 @@ window.initCourseFlix = async function() {
                                         <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
                                     </div>
                                     <p class="course-meta" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">${item.count} DPP / Assignment${item.count > 1 ? 's' : ''}</p>
-                                    <button class="enter-course-btn" style="margin-top: auto; background: #10b981; border-color: #10b981;">Solve DPP</button>
+                                    <button class="solve-dpp-folder-btn" style="margin-top: auto; background: #10b981; border-color: #10b981; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%;">Solve DPP</button>
                                 </div>
                             `;
 
-                            card.addEventListener('click', async () => {
+                            card.addEventListener('click', async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 switchView('dpp-view');
                                 if (typeof renderDppDetailView === 'function') {
                                     await renderDppDetailView(course.id);
@@ -11671,7 +11678,6 @@ window.initCourseFlix = async function() {
                     }
                 }, true);
             }
-        }
 
         // --- NEW FEATURES INITIALIZATION ---
         
@@ -13381,4 +13387,5 @@ window.initCourseFlix = async function() {
 
     
     
-};
+};
+}
