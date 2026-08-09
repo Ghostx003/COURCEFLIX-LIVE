@@ -111,11 +111,99 @@ export function performGlobalSearch(query) {
         }
     });
     
+    const matchedNotes = [];
+    const matchedDpps = [];
+    const seenNotes = new Set();
+    const seenDpps = new Set();
+
+    // Search Notes & Assignments in progressData
+    const progressObj = window.courseProgress || {};
+    Object.values(progressObj).forEach(prog => {
+        if (!prog) return;
+        const course = courses.find(c => String(c.id) === String(prog.courseId));
+        const courseTitle = course ? course.title : (prog.courseName || '');
+        const chapterName = prog.chapter || prog.folderName || 'Main Content';
+        const facultyName = prog.faculty || prog.teacher || (course ? course.facultyName : '');
+
+        // 1. Notes (PDF attachments)
+        if (prog.pdfHandle || prog.pdfName) {
+            const noteName = prog.pdfName || prog.lectureName || 'Lecture Note';
+            if (checkMatch(noteName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
+                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${noteName}`;
+                if (!seenNotes.has(key)) {
+                    seenNotes.add(key);
+                    matchedNotes.push({
+                        type: 'note',
+                        course,
+                        progress: prog,
+                        name: noteName,
+                        chapter: chapterName,
+                        courseTitle: courseTitle,
+                        facultyName: facultyName
+                    });
+                }
+            }
+        }
+
+        // 2. DPP / Assignments attached to lectures
+        if (prog.assignmentHandle || prog.assignmentName) {
+            const dppName = prog.assignmentName || prog.lectureName || 'Assignment';
+            if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
+                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${dppName}`;
+                if (!seenDpps.has(key)) {
+                    seenDpps.add(key);
+                    matchedDpps.push({
+                        type: 'dpp',
+                        course,
+                        progress: prog,
+                        name: dppName,
+                        chapter: chapterName,
+                        courseTitle: courseTitle,
+                        facultyName: facultyName,
+                        handle: prog.assignmentHandle
+                    });
+                }
+            }
+        }
+    });
+
+    // 3. DPP / Assignments from local storage / DPP store
+    try {
+        const rawLocalDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
+        if (Array.isArray(rawLocalDpps)) {
+            rawLocalDpps.forEach(dpp => {
+                if (!dpp) return;
+                const course = courses.find(c => String(c.id) === String(dpp.courseId));
+                const dppName = dpp.fileName || dpp.name || dpp.title || `DPP ${dpp.id || ''}`;
+                const chapterName = dpp.folderName || dpp.chapter || 'Assignments';
+                const courseTitle = course ? course.title : '';
+                const facultyName = course ? course.facultyName : '';
+
+                if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
+                    const key = `${dpp.courseId}_${dpp.id || dppName}`;
+                    if (!seenDpps.has(key)) {
+                        seenDpps.add(key);
+                        matchedDpps.push({
+                            type: 'dpp',
+                            course,
+                            dppData: dpp,
+                            name: dppName,
+                            chapter: chapterName,
+                            courseTitle: courseTitle,
+                            facultyName: facultyName,
+                            handle: dpp.fileHandle || dpp.handle
+                        });
+                    }
+                }
+            });
+        }
+    } catch (e) {}
+
     if (matchedSubjects.length === 0 && matchedChapters.length === 1) {
         matchedSubjects.push(matchedChapters.pop());
     }
     
-    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, facultyCourses, facultyNameMatch };
+    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, notes: matchedNotes, dpps: matchedDpps, facultyCourses, facultyNameMatch };
 }
 
 // Bind to window for backwards compatibility

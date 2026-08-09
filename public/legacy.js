@@ -11037,15 +11037,100 @@ window.initCourseFlix = async function() {
                                     matchedLectures.push({ course, lecture: l });
                                 }
                             });
+                    const matchedNotes = [];
+                    const matchedDpps = [];
+                    const seenNotes = new Set();
+                    const seenDpps = new Set();
+
+                    // Search Notes & Assignments in progressData / courseProgress
+                    const progressObj = (typeof courseProgress !== 'undefined' && courseProgress) ? courseProgress : (window.courseProgress || {});
+                    Object.values(progressObj).forEach(prog => {
+                        if (!prog) return;
+                        const course = courses.find(c => String(c.id) === String(prog.courseId));
+                        const courseTitle = course ? course.title : (prog.courseName || '');
+                        const chapterName = prog.chapter || prog.folderName || 'Main Content';
+                        const facultyName = prog.faculty || prog.teacher || (course ? course.facultyName : '');
+
+                        // 1. Notes (PDF attachments)
+                        if (prog.pdfHandle || prog.pdfName) {
+                            const noteName = prog.pdfName || prog.lectureName || 'Lecture Note';
+                            if (checkMatch(noteName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
+                                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${noteName}`;
+                                if (!seenNotes.has(key)) {
+                                    seenNotes.add(key);
+                                    matchedNotes.push({
+                                        type: 'note',
+                                        course,
+                                        progress: prog,
+                                        name: noteName,
+                                        chapter: chapterName,
+                                        courseTitle: courseTitle,
+                                        facultyName: facultyName
+                                    });
+                                }
+                            }
+                        }
+
+                        // 2. DPP / Assignments attached to lectures
+                        if (prog.assignmentHandle || prog.assignmentName) {
+                            const dppName = prog.assignmentName || prog.lectureName || 'Assignment';
+                            if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
+                                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${dppName}`;
+                                if (!seenDpps.has(key)) {
+                                    seenDpps.add(key);
+                                    matchedDpps.push({
+                                        type: 'dpp',
+                                        course,
+                                        progress: prog,
+                                        name: dppName,
+                                        chapter: chapterName,
+                                        courseTitle: courseTitle,
+                                        facultyName: facultyName,
+                                        handle: prog.assignmentHandle
+                                    });
+                                }
+                            }
                         }
                     });
-                    
+
+                    // 3. DPP / Assignments from local storage / DPP store
+                    try {
+                        const rawLocalDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
+                        if (Array.isArray(rawLocalDpps)) {
+                            rawLocalDpps.forEach(dpp => {
+                                if (!dpp) return;
+                                const course = courses.find(c => String(c.id) === String(dpp.courseId));
+                                const dppName = dpp.fileName || dpp.name || dpp.title || `DPP ${dpp.id || ''}`;
+                                const chapterName = dpp.folderName || dpp.chapter || 'Assignments';
+                                const courseTitle = course ? course.title : '';
+                                const facultyName = course ? course.facultyName : '';
+
+                                if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
+                                    const key = `${dpp.courseId}_${dpp.id || dppName}`;
+                                    if (!seenDpps.has(key)) {
+                                        seenDpps.add(key);
+                                        matchedDpps.push({
+                                            type: 'dpp',
+                                            course,
+                                            dppData: dpp,
+                                            name: dppName,
+                                            chapter: chapterName,
+                                            courseTitle: courseTitle,
+                                            facultyName: facultyName,
+                                            handle: dpp.fileHandle || dpp.handle
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {}
+
                     // "IF THERE IS ONLY 1 CHAPATER OR SUBJECT THEN SHOW THEM BY DEFAULT ON ROW 1"
                     if (matchedSubjects.length === 0 && matchedChapters.length === 1) {
                         matchedSubjects.push(matchedChapters.pop());
                     }
                     
-                    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, facultyCourses, facultyNameMatch };
+                    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, notes: matchedNotes, dpps: matchedDpps, facultyCourses, facultyNameMatch };
                 }
                 
                 function renderSearchResults(query) {
@@ -11057,13 +11142,22 @@ window.initCourseFlix = async function() {
                     const chapGrid = document.getElementById('search-results-chapters-grid');
                     const lecSec = document.getElementById('search-results-lectures-section');
                     const lecList = document.getElementById('search-results-lectures-list');
+                    const notesSec = document.getElementById('search-results-notes-section');
+                    const notesList = document.getElementById('search-results-notes-list');
+                    const dppsSec = document.getElementById('search-results-dpps-section');
+                    const dppsList = document.getElementById('search-results-dpps-list');
                     const facSec = document.getElementById('search-results-faculty-section');
                     const facGrid = document.getElementById('search-results-faculty-grid');
                     const facTitle = document.getElementById('faculty-section-title');
                     const noRes = document.getElementById('search-no-results');
                     const subjTitle = document.getElementById('subject-section-title');
                     
-                    subjGrid.innerHTML = ''; chapGrid.innerHTML = ''; lecList.innerHTML = ''; facGrid.innerHTML = '';
+                    if (subjGrid) subjGrid.innerHTML = ''; 
+                    if (chapGrid) chapGrid.innerHTML = ''; 
+                    if (lecList) lecList.innerHTML = ''; 
+                    if (notesList) notesList.innerHTML = '';
+                    if (dppsList) dppsList.innerHTML = '';
+                    if (facGrid) facGrid.innerHTML = '';
                     
                     let hasResults = false;
                     let animDelay = 0;
@@ -11266,6 +11360,98 @@ window.initCourseFlix = async function() {
                         lecSec.style.display = 'none';
                     }
                     
+                    // Render Notes
+                    if (results.notes && results.notes.length > 0) {
+                        hasResults = true;
+                        if (notesSec) notesSec.style.display = 'block';
+                        const notesTitle = notesSec ? notesSec.querySelector('h2') : null;
+                        if (notesTitle) notesTitle.innerHTML = `${results.notes.length} PDF Note${results.notes.length > 1 ? 's' : ''} Found`;
+
+                        results.notes.forEach(note => {
+                            const itemEl = document.createElement('div');
+                            itemEl.className = 'search-note-item search-anim-item';
+                            itemEl.style.animationDelay = `${animDelay}s`;
+                            animDelay += 0.03;
+                            itemEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-secondary); border: 1px solid var(--border-secondary); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s;';
+
+                            itemEl.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 14px; overflow: hidden; width: 100%;">
+                                    <div style="font-size: 1.4rem; color: #3b82f6; flex-shrink: 0;"><i class="fas fa-file-pdf"></i></div>
+                                    <div style="display: flex; flex-direction: column; overflow: hidden; flex-grow: 1;">
+                                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                            <span style="color: var(--text-primary); font-weight: 600; font-size: 0.98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${note.name}</span>
+                                            <span style="font-size: 0.72rem; font-weight: bold; color: white; background: #3b82f6; padding: 2px 8px; border-radius: 12px; flex-shrink: 0;">PDF Note</span>
+                                        </div>
+                                        <span style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 2px;">${note.courseTitle || 'Course'} • ${note.chapter} ${note.facultyName ? '• ' + note.facultyName : ''}</span>
+                                    </div>
+                                </div>
+                                <button class="icon-btn" style="background: var(--bg-tertiary); color: #3b82f6; border-radius: 8px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid rgba(59, 130, 246, 0.3);">
+                                    <i class="fas fa-book-open"></i> Open Note
+                                </button>
+                            `;
+
+                            itemEl.addEventListener('click', () => {
+                                if (note.progress && note.progress.pdfHandle) {
+                                    if (typeof showMediaViewer === 'function') {
+                                        showMediaViewer(note.progress.pdfHandle, 'PDF', note.name, note.progress);
+                                    }
+                                } else if (note.course && note.progress) {
+                                    playLectureFromAnywhere(note.course.id, note.progress.lectureId || note.progress.id, 'search-results-view', note.chapter);
+                                }
+                            });
+
+                            if (notesList) notesList.appendChild(itemEl);
+                        });
+                    } else {
+                        if (notesSec) notesSec.style.display = 'none';
+                    }
+
+                    // Render DPPs & Assignments
+                    if (results.dpps && results.dpps.length > 0) {
+                        hasResults = true;
+                        if (dppsSec) dppsSec.style.display = 'block';
+                        const dppsTitle = dppsSec ? dppsSec.querySelector('h2') : null;
+                        if (dppsTitle) dppsTitle.innerHTML = `${results.dpps.length} DPP / Assignment${results.dpps.length > 1 ? 's' : ''} Found`;
+
+                        results.dpps.forEach(dpp => {
+                            const itemEl = document.createElement('div');
+                            itemEl.className = 'search-dpp-item search-anim-item';
+                            itemEl.style.animationDelay = `${animDelay}s`;
+                            animDelay += 0.03;
+                            itemEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-secondary); border: 1px solid var(--border-secondary); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s;';
+
+                            itemEl.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 14px; overflow: hidden; width: 100%;">
+                                    <div style="font-size: 1.4rem; color: #10b981; flex-shrink: 0;"><i class="fas fa-tasks"></i></div>
+                                    <div style="display: flex; flex-direction: column; overflow: hidden; flex-grow: 1;">
+                                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                            <span style="color: var(--text-primary); font-weight: 600; font-size: 0.98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dpp.name}</span>
+                                            <span style="font-size: 0.72rem; font-weight: bold; color: white; background: #10b981; padding: 2px 8px; border-radius: 12px; flex-shrink: 0;">DPP / Assignment</span>
+                                        </div>
+                                        <span style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 2px;">${dpp.courseTitle || 'Course'} • ${dpp.chapter} ${dpp.facultyName ? '• ' + dpp.facultyName : ''}</span>
+                                    </div>
+                                </div>
+                                <button class="icon-btn" style="background: var(--bg-tertiary); color: #10b981; border-radius: 8px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid rgba(16, 185, 129, 0.3);">
+                                    <i class="fas fa-eye"></i> View Assignment
+                                </button>
+                            `;
+
+                            itemEl.addEventListener('click', () => {
+                                if (dpp.handle && typeof showMediaViewer === 'function') {
+                                    showMediaViewer(dpp.handle, 'Assignment', dpp.name, dpp.progress || null);
+                                } else if (dpp.progress && dpp.progress.assignmentHandle && typeof showMediaViewer === 'function') {
+                                    showMediaViewer(dpp.progress.assignmentHandle, 'Assignment', dpp.name, dpp.progress);
+                                } else if (dpp.course) {
+                                    playLectureFromAnywhere(dpp.course.id, dpp.progress ? (dpp.progress.lectureId || dpp.progress.id) : null, 'search-results-view', dpp.chapter);
+                                }
+                            });
+
+                            if (dppsList) dppsList.appendChild(itemEl);
+                        });
+                    } else {
+                        if (dppsSec) dppsSec.style.display = 'none';
+                    }
+                    
                     if (hasResults) {
                         noRes.style.display = 'none';
                         
@@ -11274,6 +11460,8 @@ window.initCourseFlix = async function() {
                             const searchView = document.getElementById('search-results-view');
                             const jumpBar = document.getElementById('search-jump-bar');
                             const btnLectures = document.getElementById('jump-to-lectures');
+                            const btnNotes = document.getElementById('jump-to-notes');
+                            const btnDpps = document.getElementById('jump-to-dpps');
                             const btnChapters = document.getElementById('jump-to-chapters');
                             const btnSubjects = document.getElementById('jump-to-subjects');
 
@@ -11281,24 +11469,25 @@ window.initCourseFlix = async function() {
 
                             // Show buttons if their respective sections have results
                             const hasLec = results.lectures && results.lectures.length > 0;
+                            const hasNotes = results.notes && results.notes.length > 0;
+                            const hasDpps = results.dpps && results.dpps.length > 0;
                             const hasChap = results.chapters && results.chapters.length > 0;
                             const hasSubj = results.subjects && results.subjects.length > 0;
                             
-                            btnLectures.style.display = hasLec ? 'block' : 'none';
-                            btnChapters.style.display = hasChap ? 'block' : 'none';
-                            btnSubjects.style.display = hasSubj ? 'block' : 'none';
+                            if (btnLectures) btnLectures.style.display = hasLec ? 'block' : 'none';
+                            if (btnNotes) btnNotes.style.display = hasNotes ? 'block' : 'none';
+                            if (btnDpps) btnDpps.style.display = hasDpps ? 'block' : 'none';
+                            if (btnChapters) btnChapters.style.display = hasChap ? 'block' : 'none';
+                            if (btnSubjects) btnSubjects.style.display = hasSubj ? 'block' : 'none';
 
-                            // Check if scroll is needed
-                            // We compare scrollHeight to clientHeight to see if content overflows
-                            // We also ensure there's more than one section, otherwise jumping is pointless
-                            let sectionsCount = (hasLec ? 1 : 0) + (hasChap ? 1 : 0) + (hasSubj ? 1 : 0);
+                            let sectionsCount = (hasLec ? 1 : 0) + (hasNotes ? 1 : 0) + (hasDpps ? 1 : 0) + (hasChap ? 1 : 0) + (hasSubj ? 1 : 0);
                             
                             if (searchView.scrollHeight > searchView.clientHeight && sectionsCount > 1) {
                                 jumpBar.style.display = 'flex';
                             } else {
                                 jumpBar.style.display = 'none';
                             }
-                        }, 50); // Small delay to let the DOM paint and calculate heights accurately
+                        }, 50);
                     } else {
                         noRes.style.display = 'block';
                         const jumpBar = document.getElementById('search-jump-bar');
@@ -11352,6 +11541,8 @@ window.initCourseFlix = async function() {
                 
                 // Jump Bar Event Listeners
                 const btnJumpLec = document.getElementById('jump-to-lectures');
+                const btnJumpNotes = document.getElementById('jump-to-notes');
+                const btnJumpDpps = document.getElementById('jump-to-dpps');
                 const btnJumpChap = document.getElementById('jump-to-chapters');
                 const btnJumpSubj = document.getElementById('jump-to-subjects');
                 
@@ -11378,19 +11569,19 @@ window.initCourseFlix = async function() {
                     if (sec && container) {
                         setActiveJumpBtn(btnId);
                         
-                        // The sticky header height is roughly 140px. 
-                        // Using offsetTop directly avoids the `scrollIntoView` bug that scrolls the entire page body.
                         const stickyHeader = container.firstElementChild;
                         const headerOffset = stickyHeader ? stickyHeader.offsetHeight : 140;
                         
                         container.scrollTo({
-                            top: sec.offsetTop - headerOffset - 20, // 20px extra padding
+                            top: sec.offsetTop - headerOffset - 20,
                             behavior: 'smooth'
                         });
                     }
                 }
 
                 if (btnJumpLec) btnJumpLec.addEventListener('click', () => customScrollToSection('search-results-lectures-section', 'jump-to-lectures'));
+                if (btnJumpNotes) btnJumpNotes.addEventListener('click', () => customScrollToSection('search-results-notes-section', 'jump-to-notes'));
+                if (btnJumpDpps) btnJumpDpps.addEventListener('click', () => customScrollToSection('search-results-dpps-section', 'jump-to-dpps'));
                 if (btnJumpChap) btnJumpChap.addEventListener('click', () => customScrollToSection('search-results-chapters-section', 'jump-to-chapters'));
                 if (btnJumpSubj) btnJumpSubj.addEventListener('click', () => customScrollToSection('search-results-subjects-section', 'jump-to-subjects'));
 
