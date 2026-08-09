@@ -302,7 +302,7 @@ export async function cleanupOrphanedHistoryEntries() {
                 toDeleteIds.push(h.id);
                 continue;
             }
-            const course = (courses || []).find(c => String(c.id) === String(h.courseId));
+            const course = (courses || []).find(c => parseInt(c.id) === parseInt(h.courseId));
             if (!course) {
                 toDeleteIds.push(h.id);
                 continue;

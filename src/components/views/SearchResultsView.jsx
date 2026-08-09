@@ -19,8 +19,6 @@ export default function SearchResultsView() {
             <div id="search-jump-bar" style={{"display":"none","alignItems":"center","justifyContent":"center","flexWrap":"wrap","gap":"12px","background":"transparent","padding":"0 20px"}}>
                 <span style={{"color":"var(--text-secondary)","fontWeight":"500","fontSize":"0.95rem","marginRight":"8px"}}><i className="fas fa-level-down-alt" style={{"marginRight":"6px"}}></i>Jump to:</span>
                 <button id="jump-to-lectures" className="text-btn jump-btn" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-primary)","padding":"6px 14px","borderRadius":"20px","color":"var(--text-primary)","fontSize":"0.9rem","transition":"all 0.2s","display":"none","cursor":"pointer"}}>Lectures</button>
-                <button id="jump-to-notes" className="text-btn jump-btn" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-primary)","padding":"6px 14px","borderRadius":"20px","color":"var(--text-primary)","fontSize":"0.9rem","transition":"all 0.2s","display":"none","cursor":"pointer"}}>Notes</button>
-                <button id="jump-to-dpps" className="text-btn jump-btn" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-primary)","padding":"6px 14px","borderRadius":"20px","color":"var(--text-primary)","fontSize":"0.9rem","transition":"all 0.2s","display":"none","cursor":"pointer"}}>DPPs / Assignments</button>
                 <button id="jump-to-chapters" className="text-btn jump-btn" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-primary)","padding":"6px 14px","borderRadius":"20px","color":"var(--text-primary)","fontSize":"0.9rem","transition":"all 0.2s","display":"none","cursor":"pointer"}}>Chapters</button>
                 <button id="jump-to-subjects" className="text-btn jump-btn" style={{"background":"var(--bg-tertiary)","border":"1px solid var(--border-primary)","padding":"6px 14px","borderRadius":"20px","color":"var(--text-primary)","fontSize":"0.9rem","transition":"all 0.2s","display":"none","cursor":"pointer"}}>Subjects</button>
             </div>
@@ -31,16 +29,6 @@ export default function SearchResultsView() {
             <div id="search-results-lectures-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>
                 <h2 style={{"fontSize":"1.25rem","marginBottom":"16px","color":"var(--text-secondary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"8px","fontWeight":"500"}}>Matching Lectures</h2>
                 <div id="search-results-lectures-list" style={{"display":"flex","flexDirection":"column","gap":"12px"}}></div>
-            </div>
-
-            <div id="search-results-notes-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>
-                <h2 id="notes-section-title" style={{"fontSize":"1.25rem","marginBottom":"16px","color":"var(--text-secondary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"8px","fontWeight":"500"}}>Matching Notes</h2>
-                <div id="search-results-notes-grid" className="course-grid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px"}}></div>
-            </div>
-
-            <div id="search-results-dpps-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>
-                <h2 id="dpps-section-title" style={{"fontSize":"1.25rem","marginBottom":"16px","color":"var(--text-secondary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"8px","fontWeight":"500"}}>Matching DPPs & Assignments</h2>
-                <div id="search-results-dpps-grid" className="course-grid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px"}}></div>
             </div>
 
             <div id="search-results-chapters-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>

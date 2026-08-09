@@ -111,84 +111,11 @@ export function performGlobalSearch(query) {
         }
     });
     
-    // Search Notes & Assignments grouped by course
-    const notesByCourse = new Map();
-    const dppsByCourse = new Map();
-    const progressObj = window.courseProgress || {};
-
-    Object.values(progressObj).forEach(prog => {
-        if (!prog) return;
-        const course = courses.find(c => String(c.id) === String(prog.courseId));
-        if (!course) return;
-        const courseTitle = course.title || '';
-        const chapterName = prog.chapter || prog.folderName || 'Main Content';
-        const facultyName = prog.faculty || prog.teacher || course.facultyName || '';
-
-        // 1. Notes
-        if (prog.pdfHandle || prog.pdfName) {
-            const noteName = prog.pdfName || prog.lectureName || 'Lecture Note';
-            if (checkMatch(noteName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                if (!notesByCourse.has(course.id)) {
-                    notesByCourse.set(course.id, { course, count: 0, sampleNote: noteName });
-                }
-                notesByCourse.get(course.id).count++;
-            }
-        }
-
-        // 2. DPP / Assignments attached to lectures
-        if (prog.assignmentHandle || prog.assignmentName) {
-            const dppName = prog.assignmentName || prog.lectureName || 'Assignment';
-            if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                if (!dppsByCourse.has(course.id)) {
-                    dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
-                }
-                dppsByCourse.get(course.id).count++;
-            }
-        }
-    });
-
-    // 3. DPP / Assignments from local storage / DPP store
-    try {
-        const rawLocalDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
-        if (Array.isArray(rawLocalDpps)) {
-            rawLocalDpps.forEach(dpp => {
-                if (!dpp) return;
-                const course = courses.find(c => String(c.id) === String(dpp.courseId));
-                if (!course) return;
-                const dppName = dpp.fileName || dpp.name || dpp.title || `DPP ${dpp.id || ''}`;
-                const chapterName = dpp.folderName || dpp.chapter || 'Assignments';
-                const courseTitle = course.title || '';
-                const facultyName = course.facultyName || '';
-
-                if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                    if (!dppsByCourse.has(course.id)) {
-                        dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
-                    }
-                    dppsByCourse.get(course.id).count++;
-                }
-            });
-        }
-    } catch (e) {}
-
-    const matchedNotes = Array.from(notesByCourse.values()).map(item => ({
-        type: 'notes_folder',
-        course: item.course,
-        count: item.count,
-        sampleNote: item.sampleNote
-    }));
-
-    const matchedDpps = Array.from(dppsByCourse.values()).map(item => ({
-        type: 'dpp_folder',
-        course: item.course,
-        count: item.count,
-        sampleDpp: item.sampleDpp
-    }));
-
     if (matchedSubjects.length === 0 && matchedChapters.length === 1) {
         matchedSubjects.push(matchedChapters.pop());
     }
     
-    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, notes: matchedNotes, dpps: matchedDpps, facultyCourses, facultyNameMatch };
+    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, facultyCourses, facultyNameMatch };
 }
 
 // Bind to window for backwards compatibility

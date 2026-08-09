@@ -574,7 +574,7 @@ window.initCourseFlix = async function() {
                         toDeleteIds.push(h.id);
                         continue;
                     }
-                    const course = (courses || []).find(c => String(c.id) === String(h.courseId));
+                    const course = (courses || []).find(c => parseInt(c.id) === parseInt(h.courseId));
                     if (!course) {
                         toDeleteIds.push(h.id);
                         continue;
@@ -613,10 +613,10 @@ window.initCourseFlix = async function() {
 
                 activeCourses.forEach(c => {
                     if (c) {
-                        const cIdStr = String(c.id);
-                        activeCoursesMap.set(cIdStr, c);
+                        const cId = parseInt(c.id);
+                        activeCoursesMap.set(cId, c);
                         if (Array.isArray(c.lectures)) {
-                            activeLectureMap[cIdStr] = new Set(c.lectures.map(l => String(l.id)));
+                            activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
                         }
                         if (c.subCourseData) {
                             const hiddenSet = new Set();
@@ -625,18 +625,18 @@ window.initCourseFlix = async function() {
                                     hiddenSet.add(String(key).toLowerCase().trim());
                                 }
                             }
-                            if (hiddenSet.size > 0) hiddenSubfoldersMap.set(cIdStr, hiddenSet);
+                            if (hiddenSet.size > 0) hiddenSubfoldersMap.set(cId, hiddenSet);
                         }
                     }
                 });
 
                 const isRecordValid = (courseId, subfolderPath, lectureId, itemId) => {
                     if (!courseId) return false;
-                    const cIdStr = String(courseId);
-                    const course = activeCoursesMap.get(cIdStr);
+                    const cId = parseInt(courseId);
+                    const course = activeCoursesMap.get(cId);
                     if (!course) return false;
                     if (subfolderPath) {
-                        const hiddenSet = hiddenSubfoldersMap.get(cIdStr);
+                        const hiddenSet = hiddenSubfoldersMap.get(cId);
                         if (hiddenSet && hiddenSet.size > 0) {
                             const normSub = String(subfolderPath).toLowerCase().trim();
                             for (const normKey of hiddenSet) {
@@ -649,11 +649,11 @@ window.initCourseFlix = async function() {
                     
                     // Check missing/deleted lecture if lecture information is available
                     let lecId = lectureId ? String(lectureId) : null;
-                    if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cIdStr + '_')) {
-                        lecId = itemId.replace(cIdStr + '_', '');
+                    if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cId + '_')) {
+                        lecId = itemId.replace(cId + '_', '');
                     }
-                    if (lecId && activeLectureMap[cIdStr] && activeLectureMap[cIdStr].size > 0) {
-                        if (!activeLectureMap[cIdStr].has(lecId)) {
+                    if (lecId && activeLectureMap[cId] && activeLectureMap[cId].size > 0) {
+                        if (!activeLectureMap[cId].has(lecId)) {
                             return false;
                         }
                     }
@@ -1234,7 +1234,14 @@ window.initCourseFlix = async function() {
             if (typeof syncCourseflixSubjects === 'function') {
                 syncCourseflixSubjects();
             }
-            // Auto-purge on startup is disabled to prevent accidental flushing of imported data on refresh
+            const runPurge = () => {
+                purgeAllDataForDeletedCoursesAndSubfolders().catch(err => console.warn('Background purge error:', err));
+            };
+            if (window.requestIdleCallback) {
+                window.requestIdleCallback(runPurge, { timeout: 6000 });
+            } else {
+                setTimeout(runPurge, 3500);
+            }
         }
         
         async function scanDirectoryHandle(dirHandle, basePath = '', cachedLectures = [], fastPass = false) {
@@ -3841,7 +3848,7 @@ window.initCourseFlix = async function() {
             videoPlayer.muted = false;
             unmuteBtn.classList.add('hidden');
 
-            if (e.target.closest('.enter-course-btn') && !e.target.closest('#dpp-course-grid') && !e.target.closest('#notes-course-grid') && !e.target.closest('#search-results-notes-grid') && !e.target.closest('#search-results-dpps-grid')) { 
+            if (e.target.closest('.enter-course-btn') && !e.target.closest('#dpp-course-grid') && !e.target.closest('#notes-course-grid')) { 
                 const btn = e.target.closest('.enter-course-btn');
                 const courseId = parseInt(btn.dataset.id);
                 const subfolder = btn.dataset.subfolder;
@@ -5022,7 +5029,7 @@ window.initCourseFlix = async function() {
             const getRecordStatus = (courseId, subfolderPath, lectureId, itemId) => {
                 if (!courseId) return { valid: false, reason: 'Deleted Subject' };
                 const cId = parseInt(courseId);
-                const course = activeCourses.find(c => String(c.id) === String(cId));
+                const course = activeCourses.find(c => parseInt(c.id) === cId);
                 if (!course) return { valid: false, reason: 'Deleted Subject', courseTitle: `Subject (ID ${cId})` };
                 if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) {
                     return { valid: false, reason: 'Deleted Subfolder', courseTitle: course.title, subfolder: subfolderPath };
@@ -11033,85 +11040,12 @@ window.initCourseFlix = async function() {
                         }
                     });
                     
-                    // Search Notes & Assignments grouped by course
-                    const notesByCourse = new Map();
-                    const dppsByCourse = new Map();
-                    const progressObj = (typeof courseProgress !== 'undefined' && courseProgress) ? courseProgress : (window.courseProgress || {});
-
-                    Object.values(progressObj).forEach(prog => {
-                        if (!prog) return;
-                        const course = courses.find(c => String(c.id) === String(prog.courseId));
-                        if (!course) return;
-                        const courseTitle = course.title || '';
-                        const chapterName = prog.chapter || prog.folderName || 'Main Content';
-                        const facultyName = prog.faculty || prog.teacher || course.facultyName || '';
-
-                        // 1. Notes
-                        if (prog.pdfHandle || prog.pdfName) {
-                            const noteName = prog.pdfName || prog.lectureName || 'Lecture Note';
-                            if (checkMatch(noteName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                                if (!notesByCourse.has(course.id)) {
-                                    notesByCourse.set(course.id, { course, count: 0, sampleNote: noteName });
-                                }
-                                notesByCourse.get(course.id).count++;
-                            }
-                        }
-
-                        // 2. DPP / Assignments attached to lectures
-                        if (prog.assignmentHandle || prog.assignmentName) {
-                            const dppName = prog.assignmentName || prog.lectureName || 'Assignment';
-                            if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                                if (!dppsByCourse.has(course.id)) {
-                                    dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
-                                }
-                                dppsByCourse.get(course.id).count++;
-                            }
-                        }
-                    });
-
-                    // 3. DPP / Assignments from local storage / DPP store
-                    try {
-                        const rawLocalDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
-                        if (Array.isArray(rawLocalDpps)) {
-                            rawLocalDpps.forEach(dpp => {
-                                if (!dpp) return;
-                                const course = courses.find(c => String(c.id) === String(dpp.courseId));
-                                if (!course) return;
-                                const dppName = dpp.fileName || dpp.name || dpp.title || `DPP ${dpp.id || ''}`;
-                                const chapterName = dpp.folderName || dpp.chapter || 'Assignments';
-                                const courseTitle = course.title || '';
-                                const facultyName = course.facultyName || '';
-
-                                if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                                    if (!dppsByCourse.has(course.id)) {
-                                        dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
-                                    }
-                                    dppsByCourse.get(course.id).count++;
-                                }
-                            });
-                        }
-                    } catch (e) {}
-
-                    const matchedNotes = Array.from(notesByCourse.values()).map(item => ({
-                        type: 'notes_folder',
-                        course: item.course,
-                        count: item.count,
-                        sampleNote: item.sampleNote
-                    }));
-
-                    const matchedDpps = Array.from(dppsByCourse.values()).map(item => ({
-                        type: 'dpp_folder',
-                        course: item.course,
-                        count: item.count,
-                        sampleDpp: item.sampleDpp
-                    }));
-
                     // "IF THERE IS ONLY 1 CHAPATER OR SUBJECT THEN SHOW THEM BY DEFAULT ON ROW 1"
                     if (matchedSubjects.length === 0 && matchedChapters.length === 1) {
                         matchedSubjects.push(matchedChapters.pop());
                     }
                     
-                    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, notes: matchedNotes, dpps: matchedDpps, facultyCourses, facultyNameMatch };
+                    return { subjects: matchedSubjects, chapters: matchedChapters, lectures: matchedLectures, facultyCourses, facultyNameMatch };
                 }
                 
                 function renderSearchResults(query) {
@@ -11123,22 +11057,13 @@ window.initCourseFlix = async function() {
                     const chapGrid = document.getElementById('search-results-chapters-grid');
                     const lecSec = document.getElementById('search-results-lectures-section');
                     const lecList = document.getElementById('search-results-lectures-list');
-                    const notesSec = document.getElementById('search-results-notes-section');
-                    const notesGrid = document.getElementById('search-results-notes-grid');
-                    const dppsSec = document.getElementById('search-results-dpps-section');
-                    const dppsGrid = document.getElementById('search-results-dpps-grid');
                     const facSec = document.getElementById('search-results-faculty-section');
                     const facGrid = document.getElementById('search-results-faculty-grid');
                     const facTitle = document.getElementById('faculty-section-title');
                     const noRes = document.getElementById('search-no-results');
                     const subjTitle = document.getElementById('subject-section-title');
                     
-                    if (subjGrid) subjGrid.innerHTML = ''; 
-                    if (chapGrid) chapGrid.innerHTML = ''; 
-                    if (lecList) lecList.innerHTML = ''; 
-                    if (notesGrid) notesGrid.innerHTML = '';
-                    if (dppsGrid) dppsGrid.innerHTML = '';
-                    if (facGrid) facGrid.innerHTML = '';
+                    subjGrid.innerHTML = ''; chapGrid.innerHTML = ''; lecList.innerHTML = ''; facGrid.innerHTML = '';
                     
                     let hasResults = false;
                     let animDelay = 0;
@@ -11341,118 +11266,6 @@ window.initCourseFlix = async function() {
                         lecSec.style.display = 'none';
                     }
                     
-                    // Render Notes Cards (Square Boxes)
-                    if (results.notes && results.notes.length > 0) {
-                        hasResults = true;
-                        if (notesSec) notesSec.style.display = 'block';
-                        const notesTitle = notesSec ? notesSec.querySelector('h2') : null;
-                        if (notesTitle) notesTitle.innerHTML = `Matching Notes Folders (${results.notes.length})`;
-
-                        results.notes.forEach(item => {
-                            const course = item.course;
-                            const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
-                                `<i class="fa${i < (course.rating || 0) ? 's' : 'r'} fa-star" style="color: ${i < (course.rating || 0) ? '#eab308' : 'var(--text-secondary)'};"></i>`
-                            ).join('');
-
-                            let thumbnailHTML = '<i class="fas fa-book-open" style="font-size: 3rem;"></i>';
-                            if (course.thumbnail) {
-                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;">`;
-                            }
-
-                            const card = document.createElement('div');
-                            card.className = 'course-card search-anim-item';
-                            card.style.animationDelay = `${animDelay}s`;
-                            animDelay += 0.03;
-                            card.dataset.courseId = course.id;
-
-                            const titleHTML = `${course.title} <span style="font-size: 0.75rem; font-weight: bold; color: white; background: #3b82f6; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">Notes</span>`;
-
-                            card.innerHTML = `
-                                <div class="thumbnail-placeholder" data-id="${course.id}">
-                                    ${thumbnailHTML}
-                                </div>
-                                <div class="course-info">
-                                    <h3 title="${course.title}" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">${titleHTML}</h3>
-                                    <div class="course-extra-info">
-                                        <div class="course-faculty">${course.facultyName || 'N/A Faculty'}</div>
-                                        <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
-                                    </div>
-                                    <p class="course-meta" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">${item.count} Class Note${item.count > 1 ? 's' : ''}</p>
-                                    <button class="view-notes-folder-btn" style="margin-top: auto; background: #3b82f6; border-color: #3b82f6; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%;">View Notes Folder</button>
-                                </div>
-                            `;
-
-                            card.addEventListener('click', async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                switchView('notes-view');
-                                if (typeof renderNotesDetailView === 'function') {
-                                    await renderNotesDetailView(course.id);
-                                }
-                            });
-
-                            if (notesGrid) notesGrid.appendChild(card);
-                        });
-                    } else {
-                        if (notesSec) notesSec.style.display = 'none';
-                    }
-
-                    // Render DPP Cards (Square Boxes)
-                    if (results.dpps && results.dpps.length > 0) {
-                        hasResults = true;
-                        if (dppsSec) dppsSec.style.display = 'block';
-                        const dppsTitle = dppsSec ? dppsSec.querySelector('h2') : null;
-                        if (dppsTitle) dppsTitle.innerHTML = `Matching DPP Folders (${results.dpps.length})`;
-
-                        results.dpps.forEach(item => {
-                            const course = item.course;
-                            const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
-                                `<i class="fa${i < (course.rating || 0) ? 's' : 'r'} fa-star" style="color: ${i < (course.rating || 0) ? '#eab308' : 'var(--text-secondary)'};"></i>`
-                            ).join('');
-
-                            let thumbnailHTML = '<i class="fas fa-file-invoice" style="font-size: 3rem;"></i>';
-                            if (course.thumbnail) {
-                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;">`;
-                            }
-
-                            const card = document.createElement('div');
-                            card.className = 'course-card search-anim-item';
-                            card.style.animationDelay = `${animDelay}s`;
-                            animDelay += 0.03;
-                            card.dataset.courseId = course.id;
-
-                            const titleHTML = `${course.title} <span style="font-size: 0.75rem; font-weight: bold; color: white; background: #10b981; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">DPP</span>`;
-
-                            card.innerHTML = `
-                                <div class="thumbnail-placeholder" data-id="${course.id}">
-                                    ${thumbnailHTML}
-                                </div>
-                                <div class="course-info">
-                                    <h3 title="${course.title}" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">${titleHTML}</h3>
-                                    <div class="course-extra-info">
-                                        <div class="course-faculty">${course.facultyName || 'N/A Faculty'}</div>
-                                        <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
-                                    </div>
-                                    <p class="course-meta" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">${item.count} DPP / Assignment${item.count > 1 ? 's' : ''}</p>
-                                    <button class="solve-dpp-folder-btn" style="margin-top: auto; background: #10b981; border-color: #10b981; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%;">Solve DPP</button>
-                                </div>
-                            `;
-
-                            card.addEventListener('click', async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                switchView('dpp-view');
-                                if (typeof renderDppDetailView === 'function') {
-                                    await renderDppDetailView(course.id);
-                                }
-                            });
-
-                            if (dppsGrid) dppsGrid.appendChild(card);
-                        });
-                    } else {
-                        if (dppsSec) dppsSec.style.display = 'none';
-                    }
-                    
                     if (hasResults) {
                         noRes.style.display = 'none';
                         
@@ -11461,8 +11274,6 @@ window.initCourseFlix = async function() {
                             const searchView = document.getElementById('search-results-view');
                             const jumpBar = document.getElementById('search-jump-bar');
                             const btnLectures = document.getElementById('jump-to-lectures');
-                            const btnNotes = document.getElementById('jump-to-notes');
-                            const btnDpps = document.getElementById('jump-to-dpps');
                             const btnChapters = document.getElementById('jump-to-chapters');
                             const btnSubjects = document.getElementById('jump-to-subjects');
 
@@ -11470,25 +11281,24 @@ window.initCourseFlix = async function() {
 
                             // Show buttons if their respective sections have results
                             const hasLec = results.lectures && results.lectures.length > 0;
-                            const hasNotes = results.notes && results.notes.length > 0;
-                            const hasDpps = results.dpps && results.dpps.length > 0;
                             const hasChap = results.chapters && results.chapters.length > 0;
                             const hasSubj = results.subjects && results.subjects.length > 0;
                             
-                            if (btnLectures) btnLectures.style.display = hasLec ? 'block' : 'none';
-                            if (btnNotes) btnNotes.style.display = hasNotes ? 'block' : 'none';
-                            if (btnDpps) btnDpps.style.display = hasDpps ? 'block' : 'none';
-                            if (btnChapters) btnChapters.style.display = hasChap ? 'block' : 'none';
-                            if (btnSubjects) btnSubjects.style.display = hasSubj ? 'block' : 'none';
+                            btnLectures.style.display = hasLec ? 'block' : 'none';
+                            btnChapters.style.display = hasChap ? 'block' : 'none';
+                            btnSubjects.style.display = hasSubj ? 'block' : 'none';
 
-                            let sectionsCount = (hasLec ? 1 : 0) + (hasNotes ? 1 : 0) + (hasDpps ? 1 : 0) + (hasChap ? 1 : 0) + (hasSubj ? 1 : 0);
+                            // Check if scroll is needed
+                            // We compare scrollHeight to clientHeight to see if content overflows
+                            // We also ensure there's more than one section, otherwise jumping is pointless
+                            let sectionsCount = (hasLec ? 1 : 0) + (hasChap ? 1 : 0) + (hasSubj ? 1 : 0);
                             
                             if (searchView.scrollHeight > searchView.clientHeight && sectionsCount > 1) {
                                 jumpBar.style.display = 'flex';
                             } else {
                                 jumpBar.style.display = 'none';
                             }
-                        }, 50);
+                        }, 50); // Small delay to let the DOM paint and calculate heights accurately
                     } else {
                         noRes.style.display = 'block';
                         const jumpBar = document.getElementById('search-jump-bar');
@@ -11542,8 +11352,6 @@ window.initCourseFlix = async function() {
                 
                 // Jump Bar Event Listeners
                 const btnJumpLec = document.getElementById('jump-to-lectures');
-                const btnJumpNotes = document.getElementById('jump-to-notes');
-                const btnJumpDpps = document.getElementById('jump-to-dpps');
                 const btnJumpChap = document.getElementById('jump-to-chapters');
                 const btnJumpSubj = document.getElementById('jump-to-subjects');
                 
@@ -11570,19 +11378,19 @@ window.initCourseFlix = async function() {
                     if (sec && container) {
                         setActiveJumpBtn(btnId);
                         
+                        // The sticky header height is roughly 140px. 
+                        // Using offsetTop directly avoids the `scrollIntoView` bug that scrolls the entire page body.
                         const stickyHeader = container.firstElementChild;
                         const headerOffset = stickyHeader ? stickyHeader.offsetHeight : 140;
                         
                         container.scrollTo({
-                            top: sec.offsetTop - headerOffset - 20,
+                            top: sec.offsetTop - headerOffset - 20, // 20px extra padding
                             behavior: 'smooth'
                         });
                     }
                 }
 
                 if (btnJumpLec) btnJumpLec.addEventListener('click', () => customScrollToSection('search-results-lectures-section', 'jump-to-lectures'));
-                if (btnJumpNotes) btnJumpNotes.addEventListener('click', () => customScrollToSection('search-results-notes-section', 'jump-to-notes'));
-                if (btnJumpDpps) btnJumpDpps.addEventListener('click', () => customScrollToSection('search-results-dpps-section', 'jump-to-dpps'));
                 if (btnJumpChap) btnJumpChap.addEventListener('click', () => customScrollToSection('search-results-chapters-section', 'jump-to-chapters'));
                 if (btnJumpSubj) btnJumpSubj.addEventListener('click', () => customScrollToSection('search-results-subjects-section', 'jump-to-subjects'));
 
@@ -11671,6 +11479,7 @@ window.initCourseFlix = async function() {
                     }
                 }, true);
             }
+        }
 
         // --- NEW FEATURES INITIALIZATION ---
         
@@ -13380,5 +13189,4 @@ window.initCourseFlix = async function() {
 
     
     
-};
-}
+};
