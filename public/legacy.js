@@ -10864,19 +10864,67 @@ window.initCourseFlix = async function() {
                     }
                 });
 
-                backBtn.addEventListener('click', () => {
-                    const origin = searchView ? searchView.dataset.origin : 'dashboard-view';
-                    if (origin === 'home-view') {
-                        switchView('home-view');
-                        if (searchView) searchView.dataset.origin = 'dashboard-view';
-                    } else {
-                        switchView('dashboard-view');
+                function closeSearchAndReturnToOrigin() {
+                    const origin = (searchView && searchView.dataset.origin) ? searchView.dataset.origin : 'dashboard-view';
+                    const savedScrollTop = searchView ? parseFloat(searchView.dataset.scrollTop || '0') : 0;
+                    
+                    switchView(origin);
+                    
+                    setTimeout(() => {
+                        const targetView = document.querySelector('.view.active');
+                        if (targetView && savedScrollTop > 0) {
+                            targetView.scrollTop = savedScrollTop;
+                            window.scrollTo(0, savedScrollTop);
+                        }
+                    }, 50);
+                    
+                    if (searchView) {
+                        searchView.dataset.origin = 'dashboard-view';
+                        delete searchView.dataset.scrollTop;
                     }
-                    searchInput.value = '';
-                    backBtn.innerHTML = '<i className="fas fa-arrow-left"></i>';
-                    if (!searchInput.value.trim() && document.activeElement !== searchInput) {
+
+                    if (searchInput) searchInput.value = '';
+                    const searchResultsInput = document.getElementById('search-results-input');
+                    if (searchResultsInput) searchResultsInput.value = '';
+                    
+                    backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
+                    if (searchContainer && searchInput && !searchInput.value.trim() && document.activeElement !== searchInput) {
                         searchContainer.style.width = '220px';
                     }
+                }
+                window.closeSearchAndReturnToOrigin = closeSearchAndReturnToOrigin;
+
+                function openGlobalSearchShortcut() {
+                    const activeView = document.querySelector('.view.active');
+                    const searchResultsInput = document.getElementById('search-results-input');
+
+                    if (activeView && activeView.id !== 'search-results-view') {
+                        const originId = activeView.id === 'dashboard-view-el' ? 'dashboard-view' : activeView.id;
+                        const currentScroll = activeView.scrollTop || window.scrollY || 0;
+                        if (searchView) {
+                            searchView.dataset.origin = originId;
+                            searchView.dataset.scrollTop = currentScroll;
+                        }
+                        switchView('search-results-view');
+                    }
+
+                    const inputToFocus = (searchResultsInput && searchResultsInput.offsetParent !== null)
+                        ? searchResultsInput
+                        : (searchResultsInput || searchInput);
+
+                    if (inputToFocus) {
+                        setTimeout(() => {
+                            inputToFocus.focus();
+                            if (inputToFocus.value) {
+                                inputToFocus.select();
+                            }
+                        }, 50);
+                    }
+                }
+                window.openGlobalSearchShortcut = openGlobalSearchShortcut;
+
+                backBtn.addEventListener('click', () => {
+                    closeSearchAndReturnToOrigin();
                 });
 
                 window.globalSearchMode = window.globalSearchMode || 'partial';
@@ -11370,19 +11418,20 @@ window.initCourseFlix = async function() {
                     if (sourceInput === searchInput && searchResultsInput) searchResultsInput.value = query;
                     if (sourceInput === searchResultsInput && searchInput) searchInput.value = query;
 
-                    if (/^\d+$/.test(query) || query.length < 2) {
-                        if (document.querySelector('.view.active').id === 'search-results-view') {
-                             switchView('dashboard-view');
-                             // Transfer focus back to the global search input so the user doesn't lose focus
-                             setTimeout(() => {
-                                 if (searchInput) searchInput.focus();
-                             }, 50);
+                    const activeView = document.querySelector('.view.active');
+                    if (activeView && activeView.id !== 'search-results-view') {
+                        const originId = activeView.id === 'dashboard-view-el' ? 'dashboard-view' : activeView.id;
+                        const currentScroll = activeView.scrollTop || window.scrollY || 0;
+                        if (searchView) {
+                            searchView.dataset.origin = originId;
+                            searchView.dataset.scrollTop = currentScroll;
                         }
-                        return;
-                    }
-                    
-                    if (document.querySelector('.view.active').id !== 'search-results-view') {
                         switchView('search-results-view');
+                    }
+
+                    if (/^\d+$/.test(query) || query.length < 2) {
+                        renderSearchResults('');
+                        return;
                     }
                     
                     // Focus the big search bar if it just opened
@@ -11408,6 +11457,27 @@ window.initCourseFlix = async function() {
                         }, 300);
                     });
                 }
+
+                // Global Keyboard Shortcut: Control + Space anywhere on the entire app
+                document.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (typeof openGlobalSearchShortcut === 'function') {
+                            openGlobalSearchShortcut();
+                        }
+                        return;
+                    }
+                    if (e.key === 'Escape' || e.code === 'Escape') {
+                        const activeView = document.querySelector('.view.active');
+                        if (activeView && activeView.id === 'search-results-view') {
+                            e.preventDefault();
+                            if (typeof closeSearchAndReturnToOrigin === 'function') {
+                                closeSearchAndReturnToOrigin();
+                            }
+                        }
+                    }
+                }, true);
             }
         }
 

@@ -36,6 +36,29 @@ export default function App() {
     }
 
     window.scrollTo(0, 0);
+
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.openGlobalSearchShortcut === 'function') {
+          window.openGlobalSearchShortcut();
+        }
+      } else if (e.key === 'Escape' || e.code === 'Escape') {
+        const activeView = document.querySelector('.view.active');
+        if (activeView && activeView.id === 'search-results-view') {
+          e.preventDefault();
+          if (typeof window.closeSearchAndReturnToOrigin === 'function') {
+            window.closeSearchAndReturnToOrigin();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, []);
 
 
