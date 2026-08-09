@@ -38,22 +38,31 @@ export default function HomeView() {
   };
 
   useEffect(() => {
-    const raf = requestAnimationFrame(() => updatePill());
+    let ticking = false;
+    const throttledUpdatePill = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          updatePill();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
     const timer1 = setTimeout(updatePill, 50);
     const timer2 = setTimeout(updatePill, 150);
-    window.addEventListener('resize', updatePill);
+    window.addEventListener('resize', throttledUpdatePill);
 
     let resizeObserver;
     if (navContainerRef.current && window.ResizeObserver) {
-      resizeObserver = new ResizeObserver(() => updatePill());
+      resizeObserver = new ResizeObserver(throttledUpdatePill);
       resizeObserver.observe(navContainerRef.current);
     }
 
     return () => {
-      cancelAnimationFrame(raf);
       clearTimeout(timer1);
       clearTimeout(timer2);
-      window.removeEventListener('resize', updatePill);
+      window.removeEventListener('resize', throttledUpdatePill);
       if (resizeObserver) resizeObserver.disconnect();
     };
   }, [activeSection]);
@@ -67,12 +76,13 @@ export default function HomeView() {
     };
 
     fetchStats();
-    // Re-check stats when window becomes focused or when custom event fires
     window.addEventListener('focus', fetchStats);
     window.addEventListener('courseflix-data-updated', fetchStats);
+    window.addEventListener('courseflix:courses-loaded', fetchStats);
     return () => {
       window.removeEventListener('focus', fetchStats);
       window.removeEventListener('courseflix-data-updated', fetchStats);
+      window.removeEventListener('courseflix:courses-loaded', fetchStats);
     };
   }, []);
 
@@ -297,8 +307,8 @@ export default function HomeView() {
           <div className="stat-pill">
             <div className="stat-icon-wrapper emerald"><i className="fas fa-book-open"></i></div>
             <div className="stat-info">
-              <span className="stat-value">{stats.totalCourses > 0 ? stats.totalCourses : '12+'}</span>
-              <span className="stat-label">Core Subjects</span>
+              <span className="stat-value">{stats.totalCourses}</span>
+              <span className="stat-label">Core Subject{stats.totalCourses !== 1 ? 's' : ''}</span>
             </div>
           </div>
 
@@ -307,7 +317,7 @@ export default function HomeView() {
           <div className="stat-pill">
             <div className="stat-icon-wrapper cyan"><i className="fas fa-play-circle"></i></div>
             <div className="stat-info">
-              <span className="stat-value">{stats.totalLectures > 0 ? `${stats.totalLectures}+` : '850+'}</span>
+              <span className="stat-value">{stats.totalLectures}</span>
               <span className="stat-label">Video Lectures</span>
             </div>
           </div>
@@ -317,7 +327,7 @@ export default function HomeView() {
           <div className="stat-pill">
             <div className="stat-icon-wrapper violet"><i className="fas fa-clock"></i></div>
             <div className="stat-info">
-              <span className="stat-value">{stats.totalHours > 0 ? `${stats.totalHours}h` : '1793h'}</span>
+              <span className="stat-value">{stats.totalHours}h</span>
               <span className="stat-label">HD Content</span>
             </div>
           </div>
@@ -327,8 +337,8 @@ export default function HomeView() {
           <div className="stat-pill">
             <div className="stat-icon-wrapper amber"><i className="fas fa-star"></i></div>
             <div className="stat-info">
-              <span className="stat-value">{stats.starFaculties.length > 0 ? stats.starFaculties.length : '8+'}</span>
-              <span className="stat-label">Star Educator{stats.starFaculties.length !== 1 ? 's' : ''}</span>
+              <span className="stat-value">{stats.starFaculties ? stats.starFaculties.length : 0}</span>
+              <span className="stat-label">Star Educator{stats.starFaculties && stats.starFaculties.length !== 1 ? 's' : ''}</span>
             </div>
           </div>
         </div>
@@ -362,69 +372,109 @@ export default function HomeView() {
         </div>
 
         <div className="subject-pool-grid">
-          {defaultGateSubjects.map((sub, idx) => {
-            const details = getSubjectDetails(sub.name);
-            return (
-              <div 
-                key={idx} 
-                className="subject-chip-card"
-                onClick={() => {
-                  if (typeof window.openSubjectPage === 'function') {
-                    window.openSubjectPage(sub.name);
-                  } else {
-                    navigateTo('dashboard-view');
+          {(() => {
+            const dynamicKeys = Object.keys(stats.subjectStats || {});
+            let subjectsToRender = defaultGateSubjects;
+            
+            if (dynamicKeys.length > 0) {
+              const combined = [];
+              const subjectAliases = {
+                'data structures & algorithms': ['dsa', 'data structures', 'algorithms', 'ds & algo', 'algo', 'ds'],
+                'operating systems': ['os', 'operating system', 'opsys'],
+                'computer networks': ['cn', 'networks', 'networking', 'computer network'],
+                'database management systems': ['dbms', 'database', 'databases', 'db'],
+                'theory of computation': ['toc', 'theory of computations'],
+                'compiler design': ['cd', 'compiler', 'compilers'],
+                'computer organization & architecture': ['coa', 'computer architecture', 'computer organization'],
+                'digital logic & design': ['dld', 'digital logic', 'digital'],
+                'discrete mathematics': ['discrete', 'discrete math', 'discrete maths'],
+                'engineering mathematics': ['em', 'engineering math', 'engineering maths', 'maths', 'math'],
+                'general aptitude': ['aptitude', 'apti', 'ga']
+              };
+
+              dynamicKeys.forEach(key => {
+                const kLower = key.toLowerCase();
+                let matchedDefName = kLower;
+                for (const [main, aliases] of Object.entries(subjectAliases)) {
+                  if (main === kLower || aliases.includes(kLower)) {
+                    matchedDefName = main;
+                    break;
                   }
-                }}
-                style={{ '--accent-color': sub.color }}
-              >
-                <div className="chip-icon" style={{ backgroundColor: `${sub.color}15`, color: sub.color }}>
-                  <i className={`fas ${sub.icon}`}></i>
-                </div>
-                <div className="chip-content">
-                  <span className="chip-title">{sub.name}</span>
-                  <span className="chip-tag">{sub.tag}</span>
-                </div>
-                <div className="chip-arrow">
-                  <i className="fas fa-arrow-right"></i>
-                </div>
+                }
+                const found = defaultGateSubjects.find(s => s.name.toLowerCase() === matchedDefName);
+                if (found) combined.push({ ...found, dashboardKey: key });
+                else combined.push({ name: key, tag: 'Subject', icon: 'fa-book-open', color: '#3b82f6', dashboardKey: key });
+              });
+              
+              subjectsToRender = combined;
+            }
 
-                {/* --- HOVER POPOVER CARD --- */}
-                <div className="subject-hover-popover">
-                  <div className="popover-header">
-                    <i className="fas fa-analytics" style={{ color: sub.color }}></i>
-                    <span>{sub.name} Overview</span>
-                  </div>
+            return subjectsToRender
+              .filter(s => !s.name.toLowerCase().includes('practice') && !s.name.toLowerCase().includes('dpp'))
+              .map((sub, idx) => {
+                const details = getSubjectDetails(sub.dashboardKey || sub.name);
+                return (
+                  <div 
+                    key={idx} 
+                    className="subject-chip-card"
+                    onClick={() => {
+                      if (typeof window.openSubjectPage === 'function') {
+                        window.openSubjectPage(sub.name);
+                      } else {
+                        navigateTo('dashboard-view');
+                      }
+                    }}
+                    style={{ '--accent-color': sub.color }}
+                  >
+                    <div className="chip-icon" style={{ backgroundColor: `${sub.color}15`, color: sub.color }}>
+                      <i className={`fas ${sub.icon}`}></i>
+                    </div>
+                    <div className="chip-content">
+                      <span className="chip-title">{sub.name}</span>
+                      <span className="chip-tag">{sub.tag}</span>
+                    </div>
+                    <div className="chip-arrow">
+                      <i className="fas fa-arrow-right"></i>
+                    </div>
 
-                  <div className="popover-stats-grid">
-                    <div className="popover-stat-item">
-                      <i className="fas fa-video" style={{ color: sub.color }}></i>
-                      <div>
-                        <span className="popover-val">{details.totalLectures}</span>
-                        <span className="popover-lbl">Total Lectures</span>
+                    {/* --- HOVER POPOVER CARD --- */}
+                    <div className="subject-hover-popover">
+                      <div className="popover-header">
+                        <i className="fas fa-analytics" style={{ color: sub.color }}></i>
+                        <span>{sub.name} Overview</span>
+                      </div>
+
+                      <div className="popover-stats-grid">
+                        <div className="popover-stat-item">
+                          <i className="fas fa-video" style={{ color: sub.color }}></i>
+                          <div>
+                            <span className="popover-val">{details.totalLectures}</span>
+                            <span className="popover-lbl">Total Lectures</span>
+                          </div>
+                        </div>
+                        <div className="popover-stat-item">
+                          <i className="fas fa-chalkboard-teacher" style={{ color: '#06b6d4' }}></i>
+                          <div>
+                            <span className="popover-val">{details.facultiesCount}</span>
+                            <span className="popover-lbl">Faculty Teaching</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="popover-primary-fac">
+                        <div className="fac-header">
+                          <span className="fac-label"><i className="fas fa-star" style={{ color: '#f59e0b' }}></i> Primary Faculty</span>
+                        </div>
+                        <div className="fac-details">
+                          <strong className="fac-name">{details.primaryFaculty}</strong>
+                          <span className="fac-lecs">{details.primaryLectures} Lectures</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="popover-stat-item">
-                      <i className="fas fa-chalkboard-teacher" style={{ color: '#06b6d4' }}></i>
-                      <div>
-                        <span className="popover-val">{details.facultiesCount}</span>
-                        <span className="popover-lbl">Faculty Teaching</span>
-                      </div>
-                    </div>
                   </div>
-
-                  <div className="popover-primary-fac">
-                    <div className="fac-header">
-                      <span className="fac-label"><i className="fas fa-star" style={{ color: '#f59e0b' }}></i> Primary Faculty</span>
-                    </div>
-                    <div className="fac-details">
-                      <strong className="fac-name">{details.primaryFaculty}</strong>
-                      <span className="fac-lecs">{details.primaryLectures} Lectures</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+            });
+          })()}
         </div>
       </section>
 
@@ -454,10 +504,10 @@ export default function HomeView() {
         {/* Star Faculty Grid */}
         <div className="star-faculty-grid">
           {((stats.starFaculties && stats.starFaculties.length > 0
-            ? stats.starFaculties.filter(f => f && f.name && !f.name.toLowerCase().includes('multiple') && !f.name.toLowerCase().includes('unknown') && !f.name.toLowerCase().includes('n/a'))
+            ? stats.starFaculties.filter(f => f && f.name && !f.name.toLowerCase().includes('multiple') && !f.name.toLowerCase().includes('unknown') && !f.name.toLowerCase().includes('n/a') && f.totalHours > 0)
             : []
           ).length > 0
-            ? stats.starFaculties.filter(f => f && f.name && !f.name.toLowerCase().includes('multiple') && !f.name.toLowerCase().includes('unknown') && !f.name.toLowerCase().includes('n/a'))
+            ? stats.starFaculties.filter(f => f && f.name && !f.name.toLowerCase().includes('multiple') && !f.name.toLowerCase().includes('unknown') && !f.name.toLowerCase().includes('n/a') && f.totalHours > 0)
             : [
               { name: 'AMIT SIR', rating: 5, totalHours: 489, coursesCount: 4, lecturesCount: 343 },
               { name: 'ABHISHEK SAHU SIR', rating: 5, totalHours: 168, coursesCount: 2, lecturesCount: 65 },
@@ -501,8 +551,8 @@ export default function HomeView() {
                   <h3>{fac.name}</h3>
                   <span className="faculty-role">GATE CSE Master Educator</span>
                   <div className="faculty-metrics-row">
-                    <span><i className="fas fa-video"></i> {fac.lecturesCount} Lecs</span>
-                    <span><i className="fas fa-clock"></i> {fac.totalHours} Hours</span>
+                    <span><i className="fas fa-video"></i> {fac.totalLectures || fac.lecturesCount || 0} Lecs</span>
+                    <span><i className="fas fa-clock"></i> {fac.totalHours || 0} Hours</span>
                   </div>
                 </div>
               </div>

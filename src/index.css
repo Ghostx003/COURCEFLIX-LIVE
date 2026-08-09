@@ -286,9 +286,13 @@
             border-radius: 14px;
             box-shadow: var(--shadow), 0 0 0 1px var(--border-primary); 
             border: 1px solid var(--glass-border);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
+                        box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
+                        border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1); 
             display: flex; flex-direction: column; min-height: 370px; overflow: hidden;
             position: relative;
+            transform: translateZ(0);
+            will-change: transform, box-shadow, border-color;
         }
         .course-card:hover {
             transform: translateY(-4px) scale(1.006);
@@ -302,13 +306,17 @@
             display: flex; align-items: center; justify-content: center; position: relative;
             flex-shrink: 0; cursor: pointer; background-size: cover; background-position: center;
             overflow: hidden;
+            border-top-left-radius: 13px;
+            border-top-right-radius: 13px;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .thumbnail-placeholder::after {
             content: ''; position: absolute; inset: 0;
             background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.5) 100%);
             pointer-events: none;
+            transition: opacity 0.35s ease;
         }
-        .thumbnail-placeholder > i { font-size: 2.5rem; color: var(--text-secondary); opacity: 0.35; transition: transform 0.3s ease; }
+        .thumbnail-placeholder > i { font-size: 2.5rem; color: var(--text-secondary); opacity: 0.35; transition: transform 0.35s ease, color 0.35s ease, opacity 0.35s ease; }
         .thumbnail-placeholder:hover > i { transform: scale(1.1); color: var(--accent-primary); opacity: 0.6; }
         .thumbnail-placeholder.has-thumbnail > i { display: none; }
         
@@ -319,7 +327,7 @@
             color: white; border: 1px solid rgba(255,255,255,0.15); 
             border-radius: 50%; width: 30px; height: 30px;
             cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; 
-            opacity: 0; transition: all 0.25s ease; z-index: 5;
+            opacity: 0; transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, background 0.2s ease; z-index: 5;
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
         .remove-course-btn { top: 8px; right: 8px; }
@@ -330,7 +338,8 @@
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         
         .remove-course-btn:hover, .remove-thumbnail-btn:hover { background: var(--accent-danger); transform: scale(1.1); border-color: transparent; }
-        .refresh-course-btn:hover, .relocate-course-btn:hover { background: var(--accent-primary); transform: scale(1.1); border-color: transparent; }
+        .relocate-course-btn:hover { background: var(--accent-primary); transform: scale(1.1); border-color: transparent; }
+        .refresh-course-btn:hover { background: var(--accent-primary); transform: translateX(-50%) scale(1.1); border-color: transparent; }
         
         .course-card:hover .remove-course-btn, 
         .course-card:hover .relocate-course-btn, 
@@ -388,9 +397,8 @@
             z-index: 10;
         }
         .enter-course-btn:hover { 
-            transform: translateY(-2px);
             box-shadow: 0 6px 20px var(--accent-glow), 0 0 15px rgba(16, 185, 129, 0.4);
-            filter: brightness(1.08);
+            filter: brightness(1.1);
         }
 
         .course-extra-info { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text-secondary); margin: 6px 0; gap: 8px; }

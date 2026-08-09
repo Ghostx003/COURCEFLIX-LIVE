@@ -25,6 +25,7 @@ import CompletionCalculatorModalModal from './components/modals/CompletionCalcul
 import CompletionModal from './components/modals/CompletionModal';
 import ModalOverlayModal from './components/modals/ModalOverlayModal';
 import ImportModalOverlayModal from './components/modals/ImportModalOverlayModal';
+import FloatingTimer from './components/views/FloatingTimer';
 import './index.css';
 
 export default function App() {
@@ -34,17 +35,7 @@ export default function App() {
       window.initCourseFlix();
     }
 
-    const preventWindowScroll = () => {
-      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0 || document.body.scrollTop !== 0) {
-        window.scrollTo(0, 0);
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-      }
-    };
-
-    window.addEventListener('scroll', preventWindowScroll, { passive: true });
     window.scrollTo(0, 0);
-    return () => window.removeEventListener('scroll', preventWindowScroll);
   }, []);
 
 
@@ -76,6 +67,7 @@ export default function App() {
       <CompletionModal />
       <ModalOverlayModal />
       <ImportModalOverlayModal />
+      <FloatingTimer />
       {/* Remaining fragments */}
       <div id="legacy-fragments">
         {/* Doubt Full Overlay */}
@@ -306,6 +298,10 @@ export default function App() {
                         <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
                             <span style={{"color":"var(--text-secondary)"}}>Open Shortcuts Menu</span>
                             <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>/</kbd>
+                        </div>
+                        <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center"}}>
+                            <span style={{"color":"var(--text-secondary)"}}>Toggle Floating Timer (Pomodoro / Stopwatch)</span>
+                            <kbd style={{"background":"var(--bg-tertiary)","padding":"3px 8px","borderRadius":"5px","border":"1px solid var(--border-secondary)","fontWeight":"600"}}>Enter</kbd>
                         </div>
                     </div>
                 </div>

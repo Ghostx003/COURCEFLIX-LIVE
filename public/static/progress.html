@@ -1362,7 +1362,6 @@ window.addEventListener('unhandledrejection', function(e) {
                     renderDailySchedule();
                     renderHoursActivityChart();
                     renderLearningTimeChart();
-                    renderRankings();
                     renderLectureTracker();
                     alert(`Successfully added ${newLogsAdded} missing completed lectures to your logs.`);
                 } else {
@@ -2439,6 +2438,15 @@ window.addEventListener('unhandledrejection', function(e) {
             }
         };
         
+        const parseLogDate = (dateStr) => {
+            if (!dateStr) return new Date(0);
+            if (typeof dateStr === 'string' && dateStr.length === 10 && dateStr.includes('-')) {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                return new Date(y, m - 1, d);
+            }
+            return new Date(dateStr);
+        };
+        
         const getCourseflixLogsForPeriod = (period) => {
             const logs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
             const now = new Date();
@@ -2448,7 +2456,8 @@ window.addEventListener('unhandledrejection', function(e) {
             const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
             return logs.filter(log => {
-                const logDate = new Date(log.date);
+                if (!log.date) return false;
+                const logDate = parseLogDate(log.date);
                 if (period === 'today') return logDate >= today;
                 if (period === 'week') return logDate >= weekStart;
                 if (period === 'month') return logDate >= monthStart;
@@ -2456,21 +2465,21 @@ window.addEventListener('unhandledrejection', function(e) {
             });
         };
 
-           const getCourseflixStats = (period) => {
+        const getCourseflixStats = (period) => {
             const filteredLogs = getCourseflixLogsForPeriod(period);
             const cfSubjects = JSON.parse(localStorage.getItem('courseflix_subjects') || '[]');
             
             const stats = {};
             // Prime with all enrolled subjects from CourseFlix
             cfSubjects.forEach(subject => {
-                const completed = subject.completedLectures || 0;
-                const estMin = completed * 45;
                 stats[subject.name] = { 
-                    minutes: estMin, 
-                    count: completed, 
+                    minutes: 0, 
+                    count: 0, 
+                    loggedMinutes: 0,
+                    loggedCount: 0,
                     teacher: subject.faculty || 'Unknown',
                     totalLectures: subject.totalLectures || 0,
-                    completedLectures: completed
+                    completedLectures: subject.completedLectures || 0
                 };
             });
 
@@ -2478,15 +2487,28 @@ window.addEventListener('unhandledrejection', function(e) {
                 const subject = log.subject || log.course || log.courseName;
                 if (!subject) return;
                 if (!stats[subject]) {
-                    stats[subject] = { minutes: 0, count: 0, teacher: log.teacher || log.faculty || 'Unknown' };
+                    stats[subject] = { minutes: 0, count: 0, loggedMinutes: 0, loggedCount: 0, teacher: log.teacher || log.faculty || 'Unknown', totalLectures: 0, completedLectures: 0 };
                 }
                 const durMinutes = (log.duration || log.lectureDuration || 0) / 60;
+                let addedMins = 0;
                 if (durMinutes > 0) {
-                    stats[subject].minutes = (stats[subject].minutes || 0) + durMinutes;
+                    addedMins = durMinutes;
                 } else if (log.completed || log.id) {
-                    stats[subject].minutes = (stats[subject].minutes || 0) + 45;
+                    addedMins = 45;
                 }
-                stats[subject].count = Math.max(stats[subject].count || 0, (stats[subject].count || 0) + 1);
+                stats[subject].loggedMinutes += addedMins;
+                stats[subject].loggedCount += 1;
+            });
+            
+            Object.values(stats).forEach(stat => {
+                if (period === 'today' || period === 'week') {
+                    stat.minutes = stat.loggedMinutes;
+                    stat.count = stat.loggedCount;
+                } else {
+                    const missingCount = Math.max(0, stat.completedLectures - stat.loggedCount);
+                    stat.count = stat.loggedCount + missingCount;
+                    stat.minutes = stat.loggedMinutes + (missingCount * 45);
+                }
             });
             return stats;
         };
@@ -2514,10 +2536,9 @@ window.addEventListener('unhandledrejection', function(e) {
 
             const allSubjectEntries = Object.entries(leastStats);
             const activeLeastEntries = allSubjectEntries.filter(([,data]) => data.minutes > 0 || data.count > 0);
-            const targetLeastEntries = activeLeastEntries.length > 0 ? activeLeastEntries : allSubjectEntries;
 
-            if (targetLeastEntries.length > 0) {
-                const [leastStudied, data] = targetLeastEntries.sort(([, a], [, b]) => (a.minutes || a.count) - (b.minutes || b.count))[0];
+            if (activeLeastEntries.length > 0) {
+                const [leastStudied, data] = activeLeastEntries.sort(([, a], [, b]) => (a.minutes || a.count) - (b.minutes || b.count))[0];
                 leastStudiedSubjectEl.textContent = leastStudied;
                 leastStudiedHoursEl.textContent = `${formatMinutesToHoursAndMinutes(data.minutes)}`;
                 renderStarRating(leastStudiedRatingEl, leastStudied);
@@ -3303,8 +3324,8 @@ window.addEventListener('unhandledrejection', function(e) {
             }
         };
 
-        if (heatmapPrevBtn) heatmapPrevBtn.addEventListener('click', () => { heatmapDate.setMonth(heatmapDate.getMonth() - 1); renderHeatmap(); });
-        if (heatmapNextBtn) heatmapNextBtn.addEventListener('click', () => { heatmapDate.setMonth(heatmapDate.getMonth() + 1); renderHeatmap(); });
+        if (heatmapPrevBtn) heatmapPrevBtn.addEventListener('click', () => { heatmapDate.setDate(1); heatmapDate.setMonth(heatmapDate.getMonth() - 1); renderHeatmap(); });
+        if (heatmapNextBtn) heatmapNextBtn.addEventListener('click', () => { heatmapDate.setDate(1); heatmapDate.setMonth(heatmapDate.getMonth() + 1); renderHeatmap(); });
 
         const renderMostStudiedTable = (period, specificMonth = null) => {
             const mostStudiedList = document.getElementById('most-studied-list');
@@ -3526,50 +3547,117 @@ window.addEventListener('unhandledrejection', function(e) {
                 const request = indexedDB.open('CourseFlixDB');
                 request.onsuccess = (e) => {
                     const db = e.target.result;
-                    if (!db.objectStoreNames.contains('courses')) return;
-                    const tx = db.transaction('courses', 'readonly');
-                    const store = tx.objectStore('courses');
-                    const getAllReq = store.getAll();
-                    getAllReq.onsuccess = () => {
-                        const courses = getAllReq.result || [];
-                        let existingLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
-                        let newLogsAdded = 0;
-                        const today = new Date().toISOString().split('T')[0];
+                    if (db.objectStoreNames.contains('progress') && db.objectStoreNames.contains('courses')) {
+                        const tx = db.transaction(['courses', 'progress'], 'readonly');
+                        const progressStore = tx.objectStore('progress');
+                        const coursesStore = tx.objectStore('courses');
+                        
+                        let allCourses = {};
+                        coursesStore.getAll().onsuccess = (e) => {
+                            (e.target.result || []).forEach(c => allCourses[c.id] = c);
+                            
+                            progressStore.getAll().onsuccess = (e2) => {
+                                const allProgress = e2.target.result || [];
+                                let existingLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
+                                let newLogsAdded = 0;
+                                const today = new Date().toISOString().split('T')[0];
 
-                        courses.forEach(course => {
-                            if (course.lectures && Array.isArray(course.lectures)) {
-                                course.lectures.forEach(lecture => {
-                                    if (lecture.completed) {
-                                        const logExists = existingLogs.some(log => log.courseId === course.id && log.lectureName === lecture.name);
-                                        if (!logExists) {
+                                allProgress.forEach(prog => {
+                                    if (prog.completed) {
+                                        const existingLog = existingLogs.find(log => (log.courseId === prog.courseId && log.lectureName === prog.lectureName) || log.lectureId === prog.id);
+                                        const realDuration = prog.lectureDuration || prog.duration || 2700;
+                                        if (!existingLog) {
+                                            const course = allCourses[prog.courseId];
+                                            const lectureDateStr = prog.completedAt ? new Date(prog.completedAt).toISOString().split('T')[0] : (prog.lastStudiedAt ? new Date(prog.lastStudiedAt).toISOString().split('T')[0] : today);
                                             existingLogs.push({
                                                 id: Date.now() + Math.random(),
-                                                courseId: course.id,
-                                                courseName: course.title,
-                                                course: course.title,
-                                                subject: course.title,
-                                                teacher: course.facultyName || 'Unknown',
-                                                chapter: lecture.chapter || 'Main Content',
-                                                lectureName: lecture.name,
-                                                duration: lecture.duration || 2700,
-                                                date: today,
-                                                timestamp: Date.now()
+                                                lectureId: prog.lectureId || (prog.id ? prog.id.split('_').pop() : null),
+                                                courseId: prog.courseId,
+                                                courseName: course ? course.title : prog.courseName || 'Unknown Course',
+                                                course: course ? course.title : prog.courseName || 'Unknown Course',
+                                                subject: course ? course.title : prog.courseName || 'Unknown Course',
+                                                teacher: prog.faculty || (course ? course.facultyName : 'Unknown'),
+                                                chapter: prog.chapter || 'Main Content',
+                                                lectureName: prog.lectureName || (prog.id ? prog.id.split('_').slice(1).join('_') : 'Unknown Lecture'),
+                                                duration: realDuration,
+                                                date: lectureDateStr,
+                                                timestamp: prog.completedAt ? new Date(prog.completedAt).getTime() : Date.now()
                                             });
                                             newLogsAdded++;
+                                        } else if (existingLog.duration === 2700 && realDuration !== 2700) {
+                                            existingLog.duration = realDuration;
+                                            newLogsAdded++; // Force a save and re-render
                                         }
                                     }
                                 });
-                            }
-                        });
 
-                        if (newLogsAdded > 0) {
-                            localStorage.setItem('courseflix_logs', JSON.stringify(existingLogs));
-                            updateMostLeastCards();
-                            renderLearningTimeChart();
-                            renderRankings();
-                            renderLectureTracker();
-                        }
-                    };
+                                if (newLogsAdded > 0) {
+                                    localStorage.setItem('courseflix_logs', JSON.stringify(existingLogs));
+                                    updateMostLeastCards();
+                                    renderLearningTimeChart();
+                                    renderLectureTracker();
+                                    renderHoursActivity();
+                                    renderDailySchedule();
+                                    renderMostStudiedTable(mostStudiedPeriodSelect.value);
+                                    renderLeastStudiedTable(leastStudiedPeriodSelect.value);
+                                    renderHeatmap();
+                                }
+                            };
+                        };
+                    } else if (db.objectStoreNames.contains('courses')) {
+                        // Fallback
+                        const tx = db.transaction('courses', 'readonly');
+                        const store = tx.objectStore('courses');
+                        const getAllReq = store.getAll();
+                        getAllReq.onsuccess = () => {
+                            const courses = getAllReq.result || [];
+                            let existingLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
+                            let newLogsAdded = 0;
+                            const today = new Date().toISOString().split('T')[0];
+
+                            courses.forEach(course => {
+                                if (course.lectures && Array.isArray(course.lectures)) {
+                                    course.lectures.forEach(lecture => {
+                                        if (lecture.completed) {
+                                            const existingLog = existingLogs.find(log => log.courseId === course.id && log.lectureName === lecture.name);
+                                            const realDuration = lecture.duration || lecture.lectureDuration || 2700;
+                                            if (!existingLog) {
+                                                existingLogs.push({
+                                                    id: Date.now() + Math.random(),
+                                                    courseId: course.id,
+                                                    courseName: course.title,
+                                                    course: course.title,
+                                                    subject: course.title,
+                                                    teacher: course.facultyName || 'Unknown',
+                                                    chapter: lecture.chapter || 'Main Content',
+                                                    lectureName: lecture.name,
+                                                    duration: realDuration,
+                                                    date: today,
+                                                    timestamp: Date.now()
+                                                });
+                                                newLogsAdded++;
+                                            } else if (existingLog.duration === 2700 && realDuration !== 2700) {
+                                                existingLog.duration = realDuration;
+                                                newLogsAdded++;
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+
+                            if (newLogsAdded > 0) {
+                                localStorage.setItem('courseflix_logs', JSON.stringify(existingLogs));
+                                updateMostLeastCards();
+                                renderLearningTimeChart();
+                                renderLectureTracker();
+                                renderHoursActivity();
+                                renderDailySchedule();
+                                renderMostStudiedTable(mostStudiedPeriodSelect.value);
+                                renderLeastStudiedTable(leastStudiedPeriodSelect.value);
+                                renderHeatmap();
+                            }
+                        };
+                    }
                 };
             } catch (err) {
                 console.warn("Auto sync logs error:", err);
@@ -3578,6 +3666,25 @@ window.addEventListener('unhandledrejection', function(e) {
 
         const renderDashboard = () => {
             dashboardDateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            // Restore dashboard period preferences
+            const prefLearning = localStorage.getItem('dashPref_learningTimePeriod');
+            if (prefLearning) learningTimePeriodSelect.value = prefLearning;
+            
+            const prefHours = localStorage.getItem('dashPref_hoursActivityPeriod');
+            if (prefHours) {
+                hoursActivityPeriodSelect.value = prefHours;
+                if (prefHours === 'monthly' && hoursActivityMonthSelect) {
+                    hoursActivityMonthSelect.classList.remove('hidden');
+                }
+            }
+            
+            const prefMost = localStorage.getItem('dashPref_mostStudiedPeriod');
+            if (prefMost) mostStudiedPeriodSelect.value = prefMost;
+            
+            const prefLeast = localStorage.getItem('dashPref_leastStudiedPeriod');
+            if (prefLeast) leastStudiedPeriodSelect.value = prefLeast;
+            
             updateMostLeastCards();
             renderLearningTimeChart();
             renderHoursActivity();
@@ -3585,14 +3692,18 @@ window.addEventListener('unhandledrejection', function(e) {
             renderCourseList();
             renderAssignments();
             renderLectureTracker();
-            renderMostStudiedTable('week');
-            renderLeastStudiedTable('week');
+            renderMostStudiedTable(mostStudiedPeriodSelect.value);
+            renderLeastStudiedTable(leastStudiedPeriodSelect.value);
             renderHeatmap();
             autoSyncLogsFromDB();
         };
         
-        learningTimePeriodSelect.addEventListener('change', renderLearningTimeChart);
+        learningTimePeriodSelect.addEventListener('change', () => {
+            localStorage.setItem('dashPref_learningTimePeriod', learningTimePeriodSelect.value);
+            renderLearningTimeChart();
+        });
         hoursActivityPeriodSelect.addEventListener('change', () => {
+            localStorage.setItem('dashPref_hoursActivityPeriod', hoursActivityPeriodSelect.value);
             if (hoursActivityPeriodSelect.value === 'monthly') {
                 hoursActivityMonthSelect.classList.remove('hidden');
             } else {
@@ -3601,8 +3712,14 @@ window.addEventListener('unhandledrejection', function(e) {
             renderHoursActivity();
         });
         if (hoursActivityMonthSelect) hoursActivityMonthSelect.addEventListener('change', renderHoursActivity);
-        mostStudiedPeriodSelect.addEventListener('change', updateMostLeastCards);
-        leastStudiedPeriodSelect.addEventListener('change', updateMostLeastCards);
+        mostStudiedPeriodSelect.addEventListener('change', () => {
+            localStorage.setItem('dashPref_mostStudiedPeriod', mostStudiedPeriodSelect.value);
+            updateMostLeastCards();
+        });
+        leastStudiedPeriodSelect.addEventListener('change', () => {
+            localStorage.setItem('dashPref_leastStudiedPeriod', leastStudiedPeriodSelect.value);
+            updateMostLeastCards();
+        });
 
         
         // --- BACKUP/IMPORT/RESET LOGIC ---
@@ -3625,7 +3742,15 @@ window.addEventListener('unhandledrejection', function(e) {
                     pinnedSubjects: localStorage.getItem('pinnedSubjects') || '[]',
                     facultyData: localStorage.getItem('facultyData') || '{}',
                     userName: localStorage.getItem('userName'),
-                    studyPlannerState: localStorage.getItem('studyPlannerState')
+                    studyPlannerState: localStorage.getItem('studyPlannerState'),
+                    courseflix_logs: localStorage.getItem('courseflix_logs') || '[]',
+                    courseflix_subjects: localStorage.getItem('courseflix_subjects') || '[]',
+                    courseflix_dpps: localStorage.getItem('courseflix_dpps') || '[]',
+                    dppStatuses: localStorage.getItem('dppStatuses') || '{}',
+                    dashPref_learningTimePeriod: localStorage.getItem('dashPref_learningTimePeriod') || 'week',
+                    dashPref_hoursActivityPeriod: localStorage.getItem('dashPref_hoursActivityPeriod') || 'week',
+                    dashPref_mostStudiedPeriod: localStorage.getItem('dashPref_mostStudiedPeriod') || 'week',
+                    dashPref_leastStudiedPeriod: localStorage.getItem('dashPref_leastStudiedPeriod') || 'week'
                 };
 
                 const jsonString = JSON.stringify(dataToBackup, null, 2);
@@ -3672,7 +3797,11 @@ window.addEventListener('unhandledrejection', function(e) {
                             localStorage.clear();
                             Object.keys(importedData).forEach(key => {
                                 if (importedData[key] !== null && importedData[key] !== undefined) {
-                                    localStorage.setItem(key, importedData[key]);
+                                    if (typeof importedData[key] === 'object') {
+                                        localStorage.setItem(key, JSON.stringify(importedData[key]));
+                                    } else {
+                                        localStorage.setItem(key, importedData[key]);
+                                    }
                                 }
                             });
                             alert('Data imported successfully! The application will now reload.');
@@ -4163,6 +4292,21 @@ window.addEventListener('unhandledrejection', function(e) {
                 if (studyData[todayKey]) {
                     renderSubjects();
                 }
+            }
+            if (event.key === 'courseflix_logs' || event.key === 'courseflix_subjects' || event.key === 'courseData') {
+                updateMostLeastCards();
+                renderLearningTimeChart();
+                renderHoursActivity();
+                renderDailySchedule();
+                renderCourseList();
+                renderLectureTracker();
+                renderHeatmap();
+                
+                // For tables, use the currently selected period from the toggle buttons
+                const activeRankerBtn = document.querySelector('.ranker-toggle-btn.active');
+                const period = activeRankerBtn ? activeRankerBtn.dataset.period : 'week';
+                renderMostStudiedTable(period);
+                renderLeastStudiedTable(period);
             }
         });
 

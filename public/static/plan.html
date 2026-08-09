@@ -12,9 +12,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <!-- Tone.js lazy-loaded on user gesture -->
     <style>
         /* THEME & COLOR SYSTEM */
         :root {
@@ -283,37 +282,39 @@ window.addEventListener('DOMContentLoaded', () => {
     </aside>
     <main class="flex items-start justify-center min-h-screen p-2 sm:p-4 pt-20 sm:pt-24">
         <div id="schedule-view" class="w-full max-w-3xl bg-main rounded-2xl shadow-lg p-4 sm:p-6 border border-secondary">
-            <header class="flex items-center justify-between mb-6 flex-wrap gap-x-4 gap-y-3">
-                <div class="flex items-center space-x-3">
-                    <a href="../index.html" class="p-2 rounded-full hover:bg-tertiary transition-colors flex items-center justify-center text-subtle hover:text-main" title="Back to CourseFlix">
+            <header class="flex items-center justify-between mb-6 w-full">
+                <div class="flex items-center gap-3">
+                    <a href="../index.html" class="p-2 rounded-full hover:bg-tertiary transition-colors flex items-center justify-center text-subtle hover:text-main shrink-0" title="Back to CourseFlix">
                         <i class="fas fa-arrow-left text-lg"></i>
                     </a>
-                    <button data-action="toggleSidebar" class="p-2 rounded-full hover:bg-tertiary transition-colors">
+                    <button data-action="toggleSidebar" class="p-2 rounded-full hover:bg-tertiary transition-colors shrink-0">
                         <svg class="w-6 h-6 text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                     </button>
-                    <div>
-                        <h1 id="today-date" class="text-xl font-bold text-main"></h1>
-                        <p id="today-day" class="text-sm text-subtle font-medium"></p>
+                    <div class="shrink-0">
+                        <h1 id="today-date" class="text-xl font-bold text-main whitespace-nowrap"></h1>
+                        <p id="today-day" class="text-sm text-subtle font-medium whitespace-nowrap"></p>
                     </div>
-                    <button data-action="toggleMode" id="mode-toggle-btn" class="p-2 ml-1 rounded-full hover:bg-tertiary transition-colors text-subtle hover:text-main" title="Toggle Mode">
+                    <button data-action="toggleMode" id="mode-toggle-btn" class="p-2 ml-1 rounded-full hover:bg-tertiary transition-colors text-subtle hover:text-main shrink-0" title="Toggle Mode">
                         <i class="fas fa-th-large text-lg"></i>
                     </button>
-                    <div class="flex items-center border-l border-secondary pl-3 ml-1 space-x-2">
+                    <div class="flex items-center border-l border-secondary pl-3 ml-1 space-x-2 shrink-0">
                         <div id="p2p-status" class="hidden">
                             <div id="p2p-status-indicator" class="disconnected" title="Sync Status"></div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="flex items-center space-x-2 flex-wrap justify-end gap-y-2">
-                    <div id="progress-summary" class="flex items-center space-x-2 text-md font-semibold text-main"></div>
-                    <button data-action="addBreak" class="btn btn-secondary text-sm">
-                        Break
-                    </button>
-                    <button data-action="openModal" data-modal="edit-subjects-modal" class="btn btn-secondary text-sm">Edit</button>
-                    <button data-action="openModal" data-modal="generate-schedule-modal" class="btn btn-primary text-sm">
-                        Generate
-                    </button>
+                <div class="flex items-center gap-4 shrink-0">
+                    <div id="progress-summary" class="flex items-center space-x-2 text-md font-semibold text-main whitespace-nowrap"></div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button data-action="addBreak" class="btn btn-secondary text-sm whitespace-nowrap">
+                            Break
+                        </button>
+                        <button data-action="openModal" data-modal="edit-subjects-modal" class="btn btn-secondary text-sm whitespace-nowrap">Edit</button>
+                        <button data-action="openModal" data-modal="generate-schedule-modal" class="btn btn-primary text-sm whitespace-nowrap">
+                            Generate
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -728,8 +729,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- Notification & Sound System ---
-    const initializeAudio = () => { if (typeof Tone !== 'undefined' && !synth) { synth = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination(); audioInitialized = true; } };
-    const playAlarmSound = () => { if (synth) { const now = Tone.now(); synth.triggerAttackRelease("G5", "16n", now); synth.triggerAttackRelease("G5", "16n", now + 0.15); synth.triggerAttackRelease("G5", "16n", now + 0.3); } };
+    let tonePromise = null;
+
+    const ensureToneAudio = () => {
+        if (typeof Tone !== 'undefined') {
+            if (!audioInitialized) {
+                return Tone.start().then(() => {
+                    if (!synth) {
+                        synth = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination();
+                    }
+                    audioInitialized = true;
+                }).catch(() => {});
+            }
+            return Promise.resolve();
+        }
+        if (!tonePromise) {
+            tonePromise = new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = "https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js";
+                script.onload = () => {
+                    if (typeof Tone !== 'undefined') {
+                        Tone.start().then(() => {
+                            if (!synth) {
+                                synth = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination();
+                            }
+                            audioInitialized = true;
+                            resolve();
+                        }).catch(() => resolve());
+                    } else {
+                        resolve();
+                    }
+                };
+                script.onerror = () => resolve();
+                document.head.appendChild(script);
+            });
+        }
+        return tonePromise;
+    };
+
+    const initializeAudio = () => { ensureToneAudio(); };
+    const playAlarmSound = () => {
+        ensureToneAudio().then(() => {
+            if (synth && typeof Tone !== 'undefined') {
+                try {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("G5", "16n", now);
+                    synth.triggerAttackRelease("G5", "16n", now + 0.15);
+                    synth.triggerAttackRelease("G5", "16n", now + 0.3);
+                } catch (e) {}
+            }
+        });
+    };
     const triggerNotification = (currentItemId, title, body) => { playAlarmSound(); if (Notification.permission === 'granted') { const notif = new Notification(title, { body: body, icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⏰</text></svg>', tag: `study-planner-${currentItemId}` }); notif.onclick = () => { window.focus(); completeTaskById(currentItemId); notif.close(); }; } };
     const checkTaskEndings = () => { const now = new Date(); const key = formatDateKey(now); const schedule = state.studyData[key] || []; if (schedule.length === 0) return; for (let i = 0; i < schedule.length; i++) { const item = schedule[i]; if (item.completed || item.notified || !item.startTime) continue; const startTime = new Date(item.startTime); const endTime = calculateEndTime(startTime, item.durationHours); const timeDiff = endTime.getTime() - now.getTime(); if (timeDiff > 0 && timeDiff <= 2500) { item.notified = true; const currentTaskName = item.name || item.text; let isLastTask = true; let nextTaskName = ""; for (let j = i + 1; j < schedule.length; j++) { if (!schedule[j].completed) { isLastTask = false; nextTaskName = schedule[j].name || schedule[j].text; break; } } let title, body; if (isLastTask) { title = "Schedule Complete!"; body = "You have finished all your tasks! Great work! 😊✅"; } else { title = "Time's Up!"; body = `Stop studying ${currentTaskName} and start ${nextTaskName}.`; } triggerNotification(item.id, title, body); break; } } };
     const setupNotificationTimer = () => { if (notificationInterval) clearInterval(notificationInterval); notificationInterval = setInterval(checkTaskEndings, 1000); };
@@ -784,7 +834,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // Sync with global keys for single-source-of-truth behavior
             const globalStudyData = localStorage.getItem('studyData');
             if (globalStudyData) {
-                try { state.studyData = JSON.parse(globalStudyData); } catch(e) {}
+                try { 
+                    state.studyData = JSON.parse(globalStudyData); 
+                    if (typeof state.studyData === 'string') {
+                        state.studyData = JSON.parse(state.studyData);
+                    }
+                } catch(e) {}
+            }
+            if (typeof state.studyData !== 'object' || state.studyData === null || Array.isArray(state.studyData)) {
+                state.studyData = {};
             }
             const globalSessionEndTime = localStorage.getItem('studySessionEndTime');
             if (globalSessionEndTime) {
@@ -2312,10 +2370,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const importedData = JSON.parse(jsonString);
                 if (!importedData.masterSubjects || !importedData.studyData || !importedData.settings) { throw new Error("Data format is incorrect."); }
                 showConfirm('Are you sure you want to import this data? Your current schedule and settings will be overwritten.', () => {
-                    state.masterSubjects = importedData.masterSubjects || [];
-                    state.studyData = importedData.studyData || {};
-                    state.settings = { ...state.settings, ...importedData.settings };
-                    state.scheduleHistory = importedData.scheduleHistory || [];
+                    state.masterSubjects = (typeof importedData.masterSubjects === 'string' ? JSON.parse(importedData.masterSubjects) : importedData.masterSubjects) || [];
+                    state.studyData = (typeof importedData.studyData === 'string' ? JSON.parse(importedData.studyData) : importedData.studyData) || {};
+                    state.settings = { ...state.settings, ...((typeof importedData.settings === 'string' ? JSON.parse(importedData.settings) : importedData.settings) || {}) };
+                    state.scheduleHistory = (typeof importedData.scheduleHistory === 'string' ? JSON.parse(importedData.scheduleHistory) : importedData.scheduleHistory) || [];
                     state.progress = importedData.progress || {};
                     state.mastery = importedData.mastery || {};
                     state.progressData = importedData.progressData || {};
@@ -3402,7 +3460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.body.addEventListener('click', (e) => {
-        if (!audioInitialized && typeof Tone !== 'undefined') { Tone.start().then(() => { initializeAudio(); console.log('Audio context started!'); }); }
+        if (!audioInitialized) { ensureToneAudio(); }
         
         const actionTarget = e.target.closest('[data-action]');
         if (actionTarget && actions[actionTarget.dataset.action]) {

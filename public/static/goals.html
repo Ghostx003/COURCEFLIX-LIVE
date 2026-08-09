@@ -314,7 +314,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         function getSubfolderFacultyName(course, fullPath) {
-            if (!fullPath) return course.facultyName || 'Unknown Faculty';
+            if (!fullPath) return course.facultyName || 'N/A Faculty';
             const parts = fullPath.split('/');
             for (let i = parts.length; i > 0; i--) {
                 const currentPath = parts.slice(0, i).join('/');
@@ -322,7 +322,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     return course.subCourseData[currentPath].facultyName;
                 }
             }
-            return course.facultyName || 'Unknown Faculty';
+            return course.facultyName || 'N/A Faculty';
         }
 
         function isSubfolderIgnored(course, fullPath) {
@@ -364,10 +364,24 @@ window.addEventListener('DOMContentLoaded', () => {
                 } catch (e) { console.warn(e); }
             }
 
+            // Check parent / top window
             if ((!allCourses || allCourses.length === 0) && window.parent) {
-                if (Array.isArray(window.parent.courses)) {
+                if (Array.isArray(window.parent.courses) && window.parent.courses.length > 0) {
                     allCourses = window.parent.courses;
+                } else if (window.top && Array.isArray(window.top.courses) && window.top.courses.length > 0) {
+                    allCourses = window.top.courses;
                 }
+            }
+
+            // Check localStorage courseflix_courses fallback
+            if (!allCourses || allCourses.length === 0) {
+                try {
+                    const rawLS = localStorage.getItem('courseflix_courses');
+                    if (rawLS) {
+                        const parsed = JSON.parse(rawLS);
+                        if (Array.isArray(parsed) && parsed.length > 0) allCourses = parsed;
+                    }
+                } catch(e) {}
             }
 
             courses = allCourses || [];
@@ -375,23 +389,38 @@ window.addEventListener('DOMContentLoaded', () => {
             (allProgress || []).forEach(p => { if (p && p.id) courseProgress[p.id] = p; });
             
             groupedSubjects = {};
-            courses.forEach(course => {
-                if (course.isIgnored) return;
 
-                let baseName = course.title || course.name || 'Subject';
-                if (!groupedSubjects[baseName]) groupedSubjects[baseName] = new Set();
+            // Add subjects from courses (ignoring courses and subfolders marked as isIgnored)
+            courses.forEach(course => {
+                if (!course || course.isIgnored) return;
+
+                let baseName = course.title || course.name || course.folderName || 'Subject';
                 
-                if (course.chapters && course.chapters.length > 0) {
+                let validFaculties = new Set();
+
+                if (course.chapters && Array.isArray(course.chapters) && course.chapters.length > 0) {
                     course.chapters.forEach(ch => {
                         if (!isSubfolderIgnored(course, ch.name)) {
-                            groupedSubjects[baseName].add(getSubfolderFacultyName(course, ch.name));
+                            const subFaculty = getSubfolderFacultyName(course, ch.name);
+                            if (subFaculty && subFaculty !== 'N/A Faculty' && subFaculty !== 'Unknown Faculty') {
+                                validFaculties.add(subFaculty);
+                            }
                         }
                     });
-                } else {
-                    groupedSubjects[baseName].add(course.facultyName || 'Unknown Faculty');
+                }
+                
+                // Fallback to top-level faculty if no subfolder faculties were found
+                if (validFaculties.size === 0 && course.facultyName) {
+                    validFaculties.add(course.facultyName);
+                }
+
+                if (validFaculties.size > 0) {
+                    if (!groupedSubjects[baseName]) groupedSubjects[baseName] = new Set();
+                    validFaculties.forEach(f => groupedSubjects[baseName].add(f));
                 }
             });
-            
+
+            // Clean up empty subjects
             Object.keys(groupedSubjects).forEach(key => {
                 if (groupedSubjects[key].size === 0) delete groupedSubjects[key];
             });
@@ -752,8 +781,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (firstUncompletedIdx !== -1) return;
                 const progId = `${lec.courseId}_${lec.lectureId}`;
                 const prog = courseProgress[progId];
-                let isCompleted = false;
-                if (prog) {
+                let isCompleted = lec.completed || false;
+                if (!isCompleted && prog) {
                     const durSecs = lec.duration && typeof lec.duration === 'number' ? lec.duration : 3600;
                     if (prog.completed) isCompleted = true;
                     else if (prog.currentTime >= durSecs && durSecs > 0) isCompleted = true;
@@ -776,10 +805,16 @@ window.addEventListener('DOMContentLoaded', () => {
                     if (prog.completed) watchedTime = durSecs;
                     else if (prog.currentTime) watchedTime = prog.currentTime;
                 }
+                
+                let isCompleted = lec.completed || false;
                 let lecPercentage = durSecs > 0 ? Math.round((watchedTime / durSecs) * 100) : 0;
                 if (lecPercentage > 100) lecPercentage = 100;
                 
-                let isCompleted = lecPercentage === 100;
+                if (isCompleted) {
+                    lecPercentage = 100;
+                } else if (lecPercentage === 100) {
+                    isCompleted = true;
+                }
 
                 let lecPercentageColor = 'var(--text-secondary)';
                 if (lecPercentage > 0) {
@@ -799,7 +834,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 const m = Math.floor((durSecs % 3600) / 60);
                 const durStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
 
-                const course = courses.find(c => c.id === parseInt(lec.courseId));
+                const course = courses.find(c => String(c.id) === String(lec.courseId));
                 let thumbSrc = null;
                 if (course) {
                     if (lec.chName && course.subCourseData && course.subCourseData[lec.chName] && course.subCourseData[lec.chName].thumbnail) {
@@ -1037,6 +1072,28 @@ window.addEventListener('DOMContentLoaded', () => {
                 setupEventListeners();
                 renderSubjectsList();
                 
+                // Add event listeners for dynamic course updates
+                window.addEventListener('message', async (e) => {
+                    await loadData();
+                    renderSubjectsList();
+                });
+                window.addEventListener('focus', async () => {
+                    await loadData();
+                    renderSubjectsList();
+                });
+
+                // Auto-retry polling if subject list is initially empty
+                let retryCount = 0;
+                const retryTimer = setInterval(async () => {
+                    if (Object.keys(groupedSubjects).length > 0 || retryCount >= 10) {
+                        clearInterval(retryTimer);
+                        return;
+                    }
+                    retryCount++;
+                    await loadData();
+                    renderSubjectsList();
+                }, 400);
+
                 const saved = localStorage.getItem('courseflix_goals_playlist');
                 if (saved) {
                     try {

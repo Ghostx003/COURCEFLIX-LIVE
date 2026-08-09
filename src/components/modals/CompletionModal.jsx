@@ -156,7 +156,16 @@ export default function CompletionModal() {
       const request = indexedDB.open('CourseFlixDB');
       request.onsuccess = (e) => {
         const db = e.target.result;
+        let pending = 0;
+        const checkDone = () => {
+          pending--;
+          if (pending <= 0) {
+            try { db.close(); } catch (err) {}
+          }
+        };
+
         if (db.objectStoreNames.contains('courses')) {
+          pending++;
           const tx = db.transaction('courses', 'readonly');
           const store = tx.objectStore('courses');
           const getAllReq = store.getAll();
@@ -167,9 +176,13 @@ export default function CompletionModal() {
             } else if (window.courses && Array.isArray(window.courses) && window.courses.length > 0) {
               setAllCourses(window.courses);
             }
+            checkDone();
           };
+          getAllReq.onerror = () => checkDone();
         }
+
         if (db.objectStoreNames.contains('progress')) {
+          pending++;
           const txProg = db.transaction('progress', 'readonly');
           const storeProg = txProg.objectStore('progress');
           const getProgReq = storeProg.getAll();
@@ -179,7 +192,13 @@ export default function CompletionModal() {
               progMap[p.id] = p;
             });
             setCourseProgressMap(progMap);
+            checkDone();
           };
+          getProgReq.onerror = () => checkDone();
+        }
+
+        if (pending === 0) {
+          try { db.close(); } catch (err) {}
         }
       };
     } catch (err) {

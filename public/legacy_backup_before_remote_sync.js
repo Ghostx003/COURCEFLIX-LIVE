@@ -358,9 +358,7 @@ window.initCourseFlix = async function() {
         }
 
         async function syncCourseflixSubjects() {
-            const allCourses = (typeof courses !== 'undefined' && courses && courses.length > 0) 
-                ? courses 
-                : await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
+            const allCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
             let cfSubjects = [];
             allCourses.forEach(course => {
                 const prog = calculateCourseProgress(course);
@@ -599,46 +597,20 @@ window.initCourseFlix = async function() {
                     req.onerror = () => resolve([]);
                 });
 
-                // Build fast maps for active courses and active lectures
-                const activeCoursesMap = new Map();
+                // Build a map of active lecture IDs per course
                 const activeLectureMap = {};
-                const hiddenSubfoldersMap = new Map();
-
                 activeCourses.forEach(c => {
-                    if (c) {
-                        const cId = parseInt(c.id);
-                        activeCoursesMap.set(cId, c);
-                        if (Array.isArray(c.lectures)) {
-                            activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
-                        }
-                        if (c.subCourseData) {
-                            const hiddenSet = new Set();
-                            for (const key of Object.keys(c.subCourseData)) {
-                                if (c.subCourseData[key]?.hidden) {
-                                    hiddenSet.add(String(key).toLowerCase().trim());
-                                }
-                            }
-                            if (hiddenSet.size > 0) hiddenSubfoldersMap.set(cId, hiddenSet);
-                        }
+                    if (c && Array.isArray(c.lectures)) {
+                        activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
                     }
                 });
 
                 const isRecordValid = (courseId, subfolderPath, lectureId, itemId) => {
                     if (!courseId) return false;
                     const cId = parseInt(courseId);
-                    const course = activeCoursesMap.get(cId);
+                    const course = activeCourses.find(c => parseInt(c.id) === cId);
                     if (!course) return false;
-                    if (subfolderPath) {
-                        const hiddenSet = hiddenSubfoldersMap.get(cId);
-                        if (hiddenSet && hiddenSet.size > 0) {
-                            const normSub = String(subfolderPath).toLowerCase().trim();
-                            for (const normKey of hiddenSet) {
-                                if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
-                                    return false;
-                                }
-                            }
-                        }
-                    }
+                    if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) return false;
                     
                     // Check missing/deleted lecture if lecture information is available
                     let lecId = lectureId ? String(lectureId) : null;
@@ -1199,9 +1171,7 @@ window.initCourseFlix = async function() {
                     const handle = course.handle;
                     if (handle && typeof handle.queryPermission === 'function') {
                         try {
-                            const permReq = handle.queryPermission({ mode: 'read' });
-                            const timeout = new Promise(r => setTimeout(() => r('denied'), 80));
-                            course.isLinked = (await Promise.race([permReq, timeout])) === 'granted';
+                            course.isLinked = await handle.queryPermission({ mode: 'read' }) === 'granted';
                         } catch (e) {
                             course.isLinked = false;
                         }
@@ -1222,14 +1192,9 @@ window.initCourseFlix = async function() {
             if (typeof syncCourseflixSubjects === 'function') {
                 syncCourseflixSubjects();
             }
-            const runPurge = () => {
+            setTimeout(() => {
                 purgeAllDataForDeletedCoursesAndSubfolders().catch(err => console.warn('Background purge error:', err));
-            };
-            if (window.requestIdleCallback) {
-                window.requestIdleCallback(runPurge, { timeout: 6000 });
-            } else {
-                setTimeout(runPurge, 3500);
-            }
+            }, 150);
         }
         
         async function scanDirectoryHandle(dirHandle, basePath = '', cachedLectures = [], fastPass = false) {
@@ -1788,11 +1753,12 @@ window.initCourseFlix = async function() {
                 return;
             }
 
-            // Pre-scan ONLY empty courses that have no lectures array yet
+            // Pre-scan any linked courses that need handle scanning so duration stats are populated BEFORE sorting
             for (const course of courses) {
-                if (course.isLinked && course.handle && !course.lectures) {
+                const needsHandleScan = course.lectures && course.lectures.length > 0 && !course.lectures[0].handle;
+                if (course.isLinked && course.handle && (!course.lectures || needsHandleScan)) {
                     try {
-                        const courseData = await scanDirectoryHandle(course.handle, '', [], true);
+                        const courseData = await scanDirectoryHandle(course.handle, '', course.lectures || [], true);
                         course.lectures = courseData.lectures;
                         course.totalDuration = courseData.totalDuration;
                         course.chapters = courseData.chapters;
@@ -10540,18 +10506,8 @@ window.initCourseFlix = async function() {
                 switchView('home-view');
             }
 
-            let lastStatsCache = null;
-            let lastStatsCacheTime = 0;
-            let lastStatsCoursesRef = null;
-
-            window.getCourseflixStats = function(forceRefresh = false) {
-                const currentCourses = (typeof courses !== 'undefined' && Array.isArray(courses)) ? courses : [];
-                const now = Date.now();
-                if (!forceRefresh && lastStatsCache && lastStatsCoursesRef === currentCourses && (now - lastStatsCacheTime < 10000)) {
-                    return lastStatsCache;
-                }
-
-                let totalCourses = currentCourses.length;
+            window.getCourseflixStats = function() {
+                let totalCourses = (typeof courses !== 'undefined' && Array.isArray(courses)) ? courses.length : 0;
                 let totalLectures = 0;
                 let totalSec = 0;
                 const facultyMap = new Map();
@@ -10735,7 +10691,7 @@ window.initCourseFlix = async function() {
                     }
                 });
 
-                const statsResult = {
+                return {
                     totalCourses,
                     totalLectures,
                     totalHours: Math.round(totalSec / 3600),
@@ -10743,10 +10699,6 @@ window.initCourseFlix = async function() {
                     subjectStats: formattedSubjectStats,
                     trivia
                 };
-                lastStatsCache = statsResult;
-                lastStatsCacheTime = Date.now();
-                lastStatsCoursesRef = currentCourses;
-                return statsResult;
             };
 
             window.openSubjectPage = function(subjectName) {

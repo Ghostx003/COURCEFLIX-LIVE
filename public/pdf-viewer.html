@@ -533,13 +533,12 @@
           if (!isBuildingPages) {
             window.setZoom('fit');
           }
-        }, 150);
+        }, 200);
       }
     };
 
     const resizeObserver = new ResizeObserver(triggerRefit);
     resizeObserver.observe(scrollView);
-    if (document.body) resizeObserver.observe(document.body);
     window.addEventListener('resize', triggerRefit);
     document.addEventListener('transitionend', triggerRefit);
 
