@@ -447,6 +447,11 @@ export async function purgeAllDataForDeletedCoursesAndSubfolders(options = {}) {
             await new Promise((resolve) => {
                 progRequest.onsuccess = (e) => {
                     const db = e.target.result;
+                    db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                    const finish = () => {
+                        try { db.close(); } catch(err) {}
+                        resolve();
+                    };
                     if (db.objectStoreNames.contains('assignmentFiles')) {
                         const tx = db.transaction('assignmentFiles', 'readwrite');
                         const store = tx.objectStore('assignmentFiles');
@@ -463,11 +468,11 @@ export async function purgeAllDataForDeletedCoursesAndSubfolders(options = {}) {
                                     totalPurgedCount++;
                                 }
                             }
-                            resolve();
+                            finish();
                         };
-                        keysReq.onerror = () => resolve();
+                        keysReq.onerror = () => finish();
                     } else {
-                        resolve();
+                        finish();
                     }
                 };
                 progRequest.onerror = () => resolve();

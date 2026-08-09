@@ -68,7 +68,14 @@ window.initCourseFlix = async function() {
                     }
                 };
                 request.onblocked = (e) => {
-                    console.warn("IndexedDB connection blocked by another open tab. Waiting...", e);
+                    dbPromise = null;
+                    console.warn("IndexedDB connection blocked by another open tab.", e);
+                    if (typeof window !== 'undefined') {
+                        const shouldReload = confirm("Database connection is blocked by another open tab or page. Click OK to refresh and unblock the database.");
+                        if (shouldReload) {
+                            window.location.reload();
+                        }
+                    }
                 };
             });
             return dbPromise;
@@ -748,6 +755,11 @@ window.initCourseFlix = async function() {
                     await new Promise((resolve) => {
                         progRequest.onsuccess = (e) => {
                             const db = e.target.result;
+                            db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                            const finish = () => {
+                                try { db.close(); } catch(err) {}
+                                resolve();
+                            };
                             if (db.objectStoreNames.contains('assignmentFiles')) {
                                 const tx = db.transaction('assignmentFiles', 'readwrite');
                                 const store = tx.objectStore('assignmentFiles');
@@ -764,11 +776,11 @@ window.initCourseFlix = async function() {
                                             totalPurgedCount++;
                                         }
                                     }
-                                    resolve();
+                                    finish();
                                 };
-                                keysReq.onerror = () => resolve();
+                                keysReq.onerror = () => finish();
                             } else {
-                                resolve();
+                                finish();
                             }
                         };
                         progRequest.onerror = () => resolve();
@@ -5403,6 +5415,11 @@ window.initCourseFlix = async function() {
                 await new Promise((resolve) => {
                     progRequest.onsuccess = async (e) => {
                         const db = e.target.result;
+                        db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                        const finish = () => {
+                            try { db.close(); } catch(err) {}
+                            resolve();
+                        };
                         if (db.objectStoreNames.contains('assignmentFiles')) {
                             const tx = db.transaction('assignmentFiles', 'readonly');
                             const store = tx.objectStore('assignmentFiles');
@@ -5432,11 +5449,11 @@ window.initCourseFlix = async function() {
                                             console.warn("Could not inspect progress file size", id, err);
                                         }
                                     }
-                                    resolve();
+                                    finish();
                                 };
                             };
                         } else {
-                            resolve();
+                            finish();
                         }
                     };
                     progRequest.onerror = () => resolve();
@@ -6547,8 +6564,13 @@ window.initCourseFlix = async function() {
                             };
                             progRequest.onsuccess = async (e) => {
                                 const db = e.target.result;
+                                db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                                const finish = () => {
+                                    try { db.close(); } catch(err) {}
+                                    resolve();
+                                };
                                 if (!db.objectStoreNames.contains('assignmentFiles')) {
-                                    return resolve();
+                                    return finish();
                                 }
                                 const tx = db.transaction('assignmentFiles', 'readwrite');
                                 const store = tx.objectStore('assignmentFiles');
@@ -6563,8 +6585,8 @@ window.initCourseFlix = async function() {
                                         store.put(file, pFile.id);
                                     }
                                 }
-                                tx.oncomplete = () => resolve();
-                                tx.onerror = () => resolve();
+                                tx.oncomplete = () => finish();
+                                tx.onerror = () => finish();
                             };
                             progRequest.onerror = () => resolve();
                         });

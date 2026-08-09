@@ -156,6 +156,7 @@ export default function CompletionModal() {
       const request = indexedDB.open('CourseFlixDB');
       request.onsuccess = (e) => {
         const db = e.target.result;
+        db.onversionchange = () => { try { db.close(); } catch (err) {} };
         let pending = 0;
         const checkDone = () => {
           pending--;

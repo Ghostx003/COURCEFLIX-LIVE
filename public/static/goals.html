@@ -304,9 +304,20 @@ window.addEventListener('DOMContentLoaded', () => {
         async function initDB() {
             return new Promise((resolve) => {
                 try {
-                    const request = indexedDB.open(DB_NAME);
+                    const version = typeof DB_VERSION !== 'undefined' ? DB_VERSION : 13;
+                    const request = indexedDB.open(DB_NAME, version);
                     request.onerror = () => resolve();
-                    request.onsuccess = () => { db = request.result; resolve(); };
+                    request.onsuccess = () => {
+                        db = request.result;
+                        if (db) {
+                            db.onversionchange = () => { try { db.close(); } catch(err) {} };
+                        }
+                        resolve();
+                    };
+                    request.onblocked = (e) => {
+                        console.warn("IndexedDB blocked by another open tab in goals.html", e);
+                        resolve();
+                    };
                 } catch (e) {
                     resolve();
                 }

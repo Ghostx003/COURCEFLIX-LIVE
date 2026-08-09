@@ -1320,12 +1320,23 @@ window.addEventListener('unhandledrejection', function(e) {
                 const courses = await new Promise((resolve, reject) => {
                     request.onsuccess = (e) => {
                         const db = e.target.result;
-                        if (!db.objectStoreNames.contains('courses')) return resolve([]);
+                        db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                        if (!db.objectStoreNames.contains('courses')) {
+                            try { db.close(); } catch(err) {}
+                            return resolve([]);
+                        }
                         const tx = db.transaction('courses', 'readonly');
                         const store = tx.objectStore('courses');
                         const getAllReq = store.getAll();
-                        getAllReq.onsuccess = () => resolve(getAllReq.result || []);
-                        getAllReq.onerror = () => reject("Error fetching courses");
+                        getAllReq.onsuccess = () => {
+                            const res = getAllReq.result || [];
+                            try { db.close(); } catch(err) {}
+                            resolve(res);
+                        };
+                        getAllReq.onerror = () => {
+                            try { db.close(); } catch(err) {}
+                            reject("Error fetching courses");
+                        };
                     };
                     request.onerror = () => reject("Error opening DB");
                 });
@@ -1410,16 +1421,32 @@ window.addEventListener('unhandledrejection', function(e) {
                 request.onerror = () => reject("Error opening CourseFlixDB");
                 request.onsuccess = (e) => {
                     const db = e.target.result;
-                    if (!db.objectStoreNames.contains('dpps')) return resolve(null);
+                    db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                    if (!db.objectStoreNames.contains('dpps')) {
+                        try { db.close(); } catch(err) {}
+                        return resolve(null);
+                    }
                     const store = db.transaction('dpps', 'readonly').objectStore('dpps');
                     const getReq = store.get(Number(id));
                     getReq.onsuccess = () => {
-                        if (getReq.result) return resolve(getReq.result);
+                        if (getReq.result) {
+                            try { db.close(); } catch(err) {}
+                            return resolve(getReq.result);
+                        }
                         const getStringReq = store.get(String(id));
-                        getStringReq.onsuccess = () => resolve(getStringReq.result);
-                        getStringReq.onerror = () => resolve(null);
+                        getStringReq.onsuccess = () => {
+                            try { db.close(); } catch(err) {}
+                            resolve(getStringReq.result);
+                        };
+                        getStringReq.onerror = () => {
+                            try { db.close(); } catch(err) {}
+                            resolve(null);
+                        };
                     };
-                    getReq.onerror = () => reject("Error getting DPP");
+                    getReq.onerror = () => {
+                        try { db.close(); } catch(err) {}
+                        reject("Error getting DPP");
+                    };
                 };
             });
         };
@@ -2890,12 +2917,23 @@ window.addEventListener('unhandledrejection', function(e) {
                     const request = indexedDB.open('CourseFlixDB');
                     request.onsuccess = (e) => {
                         const db = e.target.result;
-                        if (!db.objectStoreNames.contains('dpps')) return resolve([]);
+                        db.onversionchange = () => { try { db.close(); } catch (err) {} };
+                        if (!db.objectStoreNames.contains('dpps')) {
+                            try { db.close(); } catch(err) {}
+                            return resolve([]);
+                        }
                         const tx = db.transaction('dpps', 'readonly');
-                    const store = tx.objectStore('dpps');
+                        const store = tx.objectStore('dpps');
                         const getAllReq = store.getAll();
-                        getAllReq.onsuccess = () => resolve(getAllReq.result || []);
-                        getAllReq.onerror = () => resolve([]);
+                        getAllReq.onsuccess = () => {
+                            const res = getAllReq.result || [];
+                            try { db.close(); } catch(err) {}
+                            resolve(res);
+                        };
+                        getAllReq.onerror = () => {
+                            try { db.close(); } catch(err) {}
+                            resolve([]);
+                        };
                     };
                     request.onerror = () => resolve([]);
                 });
@@ -3118,17 +3156,21 @@ window.addEventListener('unhandledrejection', function(e) {
                             const request = indexedDB.open('CourseFlixDB');
                             request.onsuccess = (ev) => {
                                 const db = ev.target.result;
+                                db.onversionchange = () => { try { db.close(); } catch (err) {} };
                                 if (db.objectStoreNames.contains('dpps')) {
                                     const tx = db.transaction('dpps', 'readwrite');
                                     // Try deleting by number first, then string
                                     tx.objectStore('dpps').delete(Number(originalId));
                                     tx.objectStore('dpps').delete(String(originalId));
                                     tx.oncomplete = () => {
+                                        try { db.close(); } catch(err) {}
                                         let cfDpps = JSON.parse(localStorage.getItem('courseflix_dpps') || '[]');
                                         cfDpps = cfDpps.filter(d => String(d.id) !== originalId);
                                         localStorage.setItem('courseflix_dpps', JSON.stringify(cfDpps));
                                         renderAssignments();
                                     };
+                                } else {
+                                    try { db.close(); } catch(err) {}
                                 }
                             };
                         } else {
@@ -3547,6 +3589,7 @@ window.addEventListener('unhandledrejection', function(e) {
                 const request = indexedDB.open('CourseFlixDB');
                 request.onsuccess = (e) => {
                     const db = e.target.result;
+                    db.onversionchange = () => { try { db.close(); } catch (err) {} };
                     if (db.objectStoreNames.contains('progress') && db.objectStoreNames.contains('courses')) {
                         const tx = db.transaction(['courses', 'progress'], 'readonly');
                         const progressStore = tx.objectStore('progress');
@@ -3557,6 +3600,7 @@ window.addEventListener('unhandledrejection', function(e) {
                             (e.target.result || []).forEach(c => allCourses[c.id] = c);
                             
                             progressStore.getAll().onsuccess = (e2) => {
+                                try { db.close(); } catch(err) {}
                                 const allProgress = e2.target.result || [];
                                 let existingLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
                                 let newLogsAdded = 0;
@@ -3610,6 +3654,7 @@ window.addEventListener('unhandledrejection', function(e) {
                         const store = tx.objectStore('courses');
                         const getAllReq = store.getAll();
                         getAllReq.onsuccess = () => {
+                            try { db.close(); } catch(err) {}
                             const courses = getAllReq.result || [];
                             let existingLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
                             let newLogsAdded = 0;
@@ -3657,6 +3702,8 @@ window.addEventListener('unhandledrejection', function(e) {
                                 renderHeatmap();
                             }
                         };
+                    } else {
+                        try { db.close(); } catch(err) {}
                     }
                 };
             } catch (err) {
@@ -3907,6 +3954,7 @@ window.addEventListener('unhandledrejection', function(e) {
                 const request = indexedDB.open('CourseFlixDB');
                 request.onsuccess = (event) => {
                     const db = event.target.result;
+                    db.onversionchange = () => { try { db.close(); } catch (err) {} };
                     try {
                         const transaction = db.transaction('doubts', 'readwrite');
                         const store = transaction.objectStore('doubts');
@@ -3916,8 +3964,13 @@ window.addEventListener('unhandledrejection', function(e) {
                             if (toDelete && toDelete.id) {
                                 transaction.objectStore('doubts').delete(toDelete.id);
                             }
+                            try { db.close(); } catch(err) {}
                         };
-                    } catch (e) { console.error('Failed to delete doubt from IndexedDB:', e); }
+                        transaction.onerror = () => { try { db.close(); } catch(err) {} };
+                    } catch (e) {
+                        try { db.close(); } catch(err) {}
+                        console.error('Failed to delete doubt from IndexedDB:', e);
+                    }
                 };
             };
 

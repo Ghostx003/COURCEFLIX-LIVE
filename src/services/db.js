@@ -48,7 +48,14 @@ export function openDB() {
             }
         };
         request.onblocked = (e) => {
-            console.warn("IndexedDB connection blocked by another open tab. Waiting...", e);
+            dbPromise = null;
+            console.warn("IndexedDB connection blocked by another open tab.", e);
+            if (typeof window !== 'undefined') {
+                const shouldReload = confirm("Database connection is blocked by another open tab or page. Click OK to refresh and unblock the database.");
+                if (shouldReload) {
+                    window.location.reload();
+                }
+            }
         };
     });
     return dbPromise;
