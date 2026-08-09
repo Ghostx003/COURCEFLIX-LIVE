@@ -42,6 +42,72 @@ export function updateCustomDashboardBtn() {
     }
 }
 
+export function syncIframesTheme(palette, mode) {
+    const currentPalette = palette || document.documentElement.getAttribute('data-palette') || 'emerald';
+    const currentMode = mode || document.documentElement.getAttribute('data-theme') || 'dark';
+    
+    document.querySelectorAll('iframe').forEach(iframe => {
+        try {
+            if (iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'theme-changed', palette: currentPalette, mode: currentMode }, '*');
+            }
+            if (iframe.contentDocument && iframe.contentDocument.documentElement) {
+                iframe.contentDocument.documentElement.setAttribute('data-palette', currentPalette);
+                iframe.contentDocument.documentElement.setAttribute('data-theme', currentMode);
+            }
+        } catch(e) {}
+    });
+}
+
+export function applyPalette(paletteName) {
+    const validPalettes = ['emerald', 'violet', 'blue', 'red', 'amber', 'rose', 'cyan'];
+    const palette = validPalettes.includes(paletteName) ? paletteName : 'emerald';
+    document.documentElement.setAttribute('data-palette', palette);
+    localStorage.setItem('courseflix_palette', palette);
+
+    // Update swatches active UI state
+    document.querySelectorAll('.palette-btn').forEach(btn => {
+        if (btn.getAttribute('data-palette-val') === palette) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    syncIframesTheme(palette, null);
+
+    // Notify any custom listeners if needed
+    window.dispatchEvent(new CustomEvent('courseflix-palette-changed', { detail: { palette } }));
+}
+
+export function applyThemeMode(modeName) {
+    const validModes = ['dark', 'pure-black'];
+    const mode = validModes.includes(modeName) ? modeName : 'dark';
+    document.documentElement.setAttribute('data-theme', mode);
+    localStorage.setItem('courseflix_theme_mode', mode);
+
+    // Update theme mode active UI state
+    document.querySelectorAll('.theme-mode-btn').forEach(btn => {
+        if (btn.getAttribute('data-mode-val') === mode) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    syncIframesTheme(null, mode);
+
+    window.dispatchEvent(new CustomEvent('courseflix-theme-mode-changed', { detail: { mode } }));
+}
+
+export function initTheme() {
+    const savedPalette = localStorage.getItem('courseflix_palette') || 'emerald';
+    const savedMode = localStorage.getItem('courseflix_theme_mode') || 'dark';
+    applyPalette(savedPalette);
+    applyThemeMode(savedMode);
+    syncIframesTheme(savedPalette, savedMode);
+}
+
 export function openSettingsModal() {
     const skipTimeInput = document.getElementById('settings-skip-time');
     const playbackSpeedInput = document.getElementById('settings-playback-speed');
@@ -66,6 +132,12 @@ export function openSettingsModal() {
     if (customBtnNameInput) customBtnNameInput.value = btnData.name;
     if (customBtnUrlInput) customBtnUrlInput.value = btnData.url;
     if (customBtnHideInput) customBtnHideInput.checked = btnData.hidden;
+
+    // Refresh active palette and theme mode indicators
+    const currentPalette = localStorage.getItem('courseflix_palette') || 'emerald';
+    const currentMode = localStorage.getItem('courseflix_theme_mode') || 'dark';
+    applyPalette(currentPalette);
+    applyThemeMode(currentMode);
     
     if (settingsModalOverlay) settingsModalOverlay.classList.remove('hidden');
 }
@@ -123,10 +195,40 @@ export function saveSettings() {
 }
 
 export function initSettingsListeners() {
+    initTheme();
     const openSettingsBtn = document.getElementById('open-settings-btn');
     const saveSettingsBtn = document.getElementById('save-settings-btn');
     if (openSettingsBtn) openSettingsBtn.addEventListener('click', openSettingsModal);
     if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettings);
+    
+    // Delegated click listener for palette swatches and theme mode buttons
+    document.addEventListener('click', (e) => {
+        const paletteBtn = e.target.closest('.palette-btn');
+        if (paletteBtn) {
+            const paletteVal = paletteBtn.getAttribute('data-palette-val');
+            if (paletteVal) applyPalette(paletteVal);
+            return;
+        }
+
+        const themeModeBtn = e.target.closest('.theme-mode-btn');
+        if (themeModeBtn) {
+            const modeVal = themeModeBtn.getAttribute('data-mode-val');
+            if (modeVal) applyThemeMode(modeVal);
+            return;
+        }
+
+        const themeToggleNavBtn = e.target.closest('#theme-toggle-btn');
+        if (themeToggleNavBtn) {
+            const currentMode = document.documentElement.getAttribute('data-theme') || 'dark';
+            const nextMode = currentMode === 'pure-black' ? 'dark' : 'pure-black';
+            applyThemeMode(nextMode);
+            showToast(`Theme: ${nextMode.replace('-', ' ').toUpperCase()}`);
+            return;
+        }
+    });
+
+    window.addEventListener('open-settings-modal', openSettingsModal);
+
     updateCustomDashboardBtn();
 }
 
@@ -137,4 +239,8 @@ if (typeof window !== 'undefined') {
     window.openSettingsModal = openSettingsModal;
     window.saveSettings = saveSettings;
     window.initSettingsListeners = initSettingsListeners;
+    window.applyPalette = applyPalette;
+    window.applyThemeMode = applyThemeMode;
+    window.initTheme = initTheme;
 }
+

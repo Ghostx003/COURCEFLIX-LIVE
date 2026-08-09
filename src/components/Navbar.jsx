@@ -248,7 +248,7 @@ export default function Navbar() {
                 id="completion-feature-btn" 
                 className="nav-link completion-btn"
                 onClick={() => window.dispatchEvent(new CustomEvent('open-completion-modal'))}
-                style={{"background":"linear-gradient(135deg, #10b981 0%, #059669 100%)","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px rgba(16, 185, 129, 0.3)","border":"1px solid rgba(255,255,255,0.2)","cursor":"pointer"}}
+                style={{"background":"var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))","color":"white","marginLeft":"3px","padding":"4px 10px","fontSize":"0.76rem","display":"inline-flex","alignItems":"center","borderRadius":"20px","boxShadow":"0 4px 12px var(--accent-glow)","border":"1px solid rgba(255,255,255,0.2)","cursor":"pointer"}}
                 title="Open Completion Planner & Target Tracker"
             >
                 <i className="fas fa-chart-pie" style={{"marginRight":"4px"}}></i> Completion
@@ -281,6 +281,34 @@ export default function Navbar() {
                 }}
             >
                 <i className={`fas ${hideIgnored ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+            </button>
+            <button 
+                id="nav-open-settings-btn"
+                className="nav-link"
+                onClick={() => {
+                    if (typeof window.openSettingsModal === 'function') {
+                        window.openSettingsModal();
+                    } else {
+                        window.dispatchEvent(new CustomEvent('open-settings-modal'));
+                    }
+                }}
+                style={{
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-secondary)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '30px',
+                    height: '30px',
+                    borderRadius: '50%',
+                    padding: '0',
+                    marginLeft: '3px'
+                }}
+                title="Open Settings & Color Palettes"
+            >
+                <i className="fas fa-gear"></i>
             </button>
         </div>
         
@@ -386,7 +414,7 @@ export default function Navbar() {
                                     type="button"
                                     className="primary-btn"
                                     onClick={() => setIsDDayPopoverOpen(false)}
-                                    style={{ flex: 1, justifyContent: 'center', fontSize: '0.85rem', padding: '10px 12px', borderRadius: '10px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                                    style={{ flex: 1, justifyContent: 'center', fontSize: '0.85rem', padding: '10px 12px', borderRadius: '10px', background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))' }}
                                 >
                                     Done
                                 </button>

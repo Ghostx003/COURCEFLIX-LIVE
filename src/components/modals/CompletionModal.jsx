@@ -977,7 +977,7 @@ export default function CompletionModal() {
               width: '42px',
               height: '42px',
               borderRadius: '12px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1765,7 +1765,7 @@ export default function CompletionModal() {
                         setShowCoursePicker(true);
                       }}
                       style={{
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))',
                         color: 'white',
                         border: 'none',
                         padding: '8px 16px',
@@ -2097,7 +2097,7 @@ export default function CompletionModal() {
               onClick={() => setShowCoursePicker(false)}
               style={{
                 width: '100%',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))',
                 color: 'white',
                 border: 'none',
                 padding: '12px',

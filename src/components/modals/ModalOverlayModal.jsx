@@ -52,7 +52,7 @@ export default function ModalOverlayModal() {
             <button className="close-modal-btn" title="Close">&times;</button>
             <h2>Manage Courses</h2>
             <div id="add-subcourse-container" style={{display: 'none', width: '100%', marginBottom: '0.6rem'}}>
-                <button id="add-subcourse-btn" className="primary-btn" style={{width: '100%', justifyContent: 'center', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', padding: '10px 14px', borderRadius: '10px', fontSize: '0.88rem'}}>
+                <button id="add-subcourse-btn" className="primary-btn" style={{width: '100%', justifyContent: 'center', background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))', padding: '10px 14px', borderRadius: '10px', fontSize: '0.88rem'}}>
                     <i className="fas fa-folder-plus"></i> <span id="add-subcourse-btn-text">Add Sub-Course in this location</span>
                 </button>
             </div>
