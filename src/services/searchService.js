@@ -111,37 +111,27 @@ export function performGlobalSearch(query) {
         }
     });
     
-    const matchedNotes = [];
-    const matchedDpps = [];
-    const seenNotes = new Set();
-    const seenDpps = new Set();
-
-    // Search Notes & Assignments in progressData
+    // Search Notes & Assignments grouped by course
+    const notesByCourse = new Map();
+    const dppsByCourse = new Map();
     const progressObj = window.courseProgress || {};
+
     Object.values(progressObj).forEach(prog => {
         if (!prog) return;
         const course = courses.find(c => String(c.id) === String(prog.courseId));
-        const courseTitle = course ? course.title : (prog.courseName || '');
+        if (!course) return;
+        const courseTitle = course.title || '';
         const chapterName = prog.chapter || prog.folderName || 'Main Content';
-        const facultyName = prog.faculty || prog.teacher || (course ? course.facultyName : '');
+        const facultyName = prog.faculty || prog.teacher || course.facultyName || '';
 
-        // 1. Notes (PDF attachments)
+        // 1. Notes
         if (prog.pdfHandle || prog.pdfName) {
             const noteName = prog.pdfName || prog.lectureName || 'Lecture Note';
             if (checkMatch(noteName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${noteName}`;
-                if (!seenNotes.has(key)) {
-                    seenNotes.add(key);
-                    matchedNotes.push({
-                        type: 'note',
-                        course,
-                        progress: prog,
-                        name: noteName,
-                        chapter: chapterName,
-                        courseTitle: courseTitle,
-                        facultyName: facultyName
-                    });
+                if (!notesByCourse.has(course.id)) {
+                    notesByCourse.set(course.id, { course, count: 0, sampleNote: noteName });
                 }
+                notesByCourse.get(course.id).count++;
             }
         }
 
@@ -149,20 +139,10 @@ export function performGlobalSearch(query) {
         if (prog.assignmentHandle || prog.assignmentName) {
             const dppName = prog.assignmentName || prog.lectureName || 'Assignment';
             if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${dppName}`;
-                if (!seenDpps.has(key)) {
-                    seenDpps.add(key);
-                    matchedDpps.push({
-                        type: 'dpp',
-                        course,
-                        progress: prog,
-                        name: dppName,
-                        chapter: chapterName,
-                        courseTitle: courseTitle,
-                        facultyName: facultyName,
-                        handle: prog.assignmentHandle
-                    });
+                if (!dppsByCourse.has(course.id)) {
+                    dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
                 }
+                dppsByCourse.get(course.id).count++;
             }
         }
     });
@@ -174,30 +154,35 @@ export function performGlobalSearch(query) {
             rawLocalDpps.forEach(dpp => {
                 if (!dpp) return;
                 const course = courses.find(c => String(c.id) === String(dpp.courseId));
+                if (!course) return;
                 const dppName = dpp.fileName || dpp.name || dpp.title || `DPP ${dpp.id || ''}`;
                 const chapterName = dpp.folderName || dpp.chapter || 'Assignments';
-                const courseTitle = course ? course.title : '';
-                const facultyName = course ? course.facultyName : '';
+                const courseTitle = course.title || '';
+                const facultyName = course.facultyName || '';
 
                 if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                    const key = `${dpp.courseId}_${dpp.id || dppName}`;
-                    if (!seenDpps.has(key)) {
-                        seenDpps.add(key);
-                        matchedDpps.push({
-                            type: 'dpp',
-                            course,
-                            dppData: dpp,
-                            name: dppName,
-                            chapter: chapterName,
-                            courseTitle: courseTitle,
-                            facultyName: facultyName,
-                            handle: dpp.fileHandle || dpp.handle
-                        });
+                    if (!dppsByCourse.has(course.id)) {
+                        dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
                     }
+                    dppsByCourse.get(course.id).count++;
                 }
             });
         }
     } catch (e) {}
+
+    const matchedNotes = Array.from(notesByCourse.values()).map(item => ({
+        type: 'notes_folder',
+        course: item.course,
+        count: item.count,
+        sampleNote: item.sampleNote
+    }));
+
+    const matchedDpps = Array.from(dppsByCourse.values()).map(item => ({
+        type: 'dpp_folder',
+        course: item.course,
+        count: item.count,
+        sampleDpp: item.sampleDpp
+    }));
 
     if (matchedSubjects.length === 0 && matchedChapters.length === 1) {
         matchedSubjects.push(matchedChapters.pop());

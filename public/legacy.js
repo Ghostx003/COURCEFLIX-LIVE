@@ -11037,37 +11037,27 @@ window.initCourseFlix = async function() {
                                     matchedLectures.push({ course, lecture: l });
                                 }
                             });
-                    const matchedNotes = [];
-                    const matchedDpps = [];
-                    const seenNotes = new Set();
-                    const seenDpps = new Set();
-
-                    // Search Notes & Assignments in progressData / courseProgress
+                    // Search Notes & Assignments grouped by course
+                    const notesByCourse = new Map();
+                    const dppsByCourse = new Map();
                     const progressObj = (typeof courseProgress !== 'undefined' && courseProgress) ? courseProgress : (window.courseProgress || {});
+
                     Object.values(progressObj).forEach(prog => {
                         if (!prog) return;
                         const course = courses.find(c => String(c.id) === String(prog.courseId));
-                        const courseTitle = course ? course.title : (prog.courseName || '');
+                        if (!course) return;
+                        const courseTitle = course.title || '';
                         const chapterName = prog.chapter || prog.folderName || 'Main Content';
-                        const facultyName = prog.faculty || prog.teacher || (course ? course.facultyName : '');
+                        const facultyName = prog.faculty || prog.teacher || course.facultyName || '';
 
-                        // 1. Notes (PDF attachments)
+                        // 1. Notes
                         if (prog.pdfHandle || prog.pdfName) {
                             const noteName = prog.pdfName || prog.lectureName || 'Lecture Note';
                             if (checkMatch(noteName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${noteName}`;
-                                if (!seenNotes.has(key)) {
-                                    seenNotes.add(key);
-                                    matchedNotes.push({
-                                        type: 'note',
-                                        course,
-                                        progress: prog,
-                                        name: noteName,
-                                        chapter: chapterName,
-                                        courseTitle: courseTitle,
-                                        facultyName: facultyName
-                                    });
+                                if (!notesByCourse.has(course.id)) {
+                                    notesByCourse.set(course.id, { course, count: 0, sampleNote: noteName });
                                 }
+                                notesByCourse.get(course.id).count++;
                             }
                         }
 
@@ -11075,20 +11065,10 @@ window.initCourseFlix = async function() {
                         if (prog.assignmentHandle || prog.assignmentName) {
                             const dppName = prog.assignmentName || prog.lectureName || 'Assignment';
                             if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                                const key = `${prog.courseId}_${prog.lectureId || prog.id}_${dppName}`;
-                                if (!seenDpps.has(key)) {
-                                    seenDpps.add(key);
-                                    matchedDpps.push({
-                                        type: 'dpp',
-                                        course,
-                                        progress: prog,
-                                        name: dppName,
-                                        chapter: chapterName,
-                                        courseTitle: courseTitle,
-                                        facultyName: facultyName,
-                                        handle: prog.assignmentHandle
-                                    });
+                                if (!dppsByCourse.has(course.id)) {
+                                    dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
                                 }
+                                dppsByCourse.get(course.id).count++;
                             }
                         }
                     });
@@ -11100,30 +11080,35 @@ window.initCourseFlix = async function() {
                             rawLocalDpps.forEach(dpp => {
                                 if (!dpp) return;
                                 const course = courses.find(c => String(c.id) === String(dpp.courseId));
+                                if (!course) return;
                                 const dppName = dpp.fileName || dpp.name || dpp.title || `DPP ${dpp.id || ''}`;
                                 const chapterName = dpp.folderName || dpp.chapter || 'Assignments';
-                                const courseTitle = course ? course.title : '';
-                                const facultyName = course ? course.facultyName : '';
+                                const courseTitle = course.title || '';
+                                const facultyName = course.facultyName || '';
 
                                 if (checkMatch(dppName) || checkMatch(chapterName) || checkMatch(courseTitle) || checkMatch(facultyName)) {
-                                    const key = `${dpp.courseId}_${dpp.id || dppName}`;
-                                    if (!seenDpps.has(key)) {
-                                        seenDpps.add(key);
-                                        matchedDpps.push({
-                                            type: 'dpp',
-                                            course,
-                                            dppData: dpp,
-                                            name: dppName,
-                                            chapter: chapterName,
-                                            courseTitle: courseTitle,
-                                            facultyName: facultyName,
-                                            handle: dpp.fileHandle || dpp.handle
-                                        });
+                                    if (!dppsByCourse.has(course.id)) {
+                                        dppsByCourse.set(course.id, { course, count: 0, sampleDpp: dppName });
                                     }
+                                    dppsByCourse.get(course.id).count++;
                                 }
                             });
                         }
                     } catch (e) {}
+
+                    const matchedNotes = Array.from(notesByCourse.values()).map(item => ({
+                        type: 'notes_folder',
+                        course: item.course,
+                        count: item.count,
+                        sampleNote: item.sampleNote
+                    }));
+
+                    const matchedDpps = Array.from(dppsByCourse.values()).map(item => ({
+                        type: 'dpp_folder',
+                        course: item.course,
+                        count: item.count,
+                        sampleDpp: item.sampleDpp
+                    }));
 
                     // "IF THERE IS ONLY 1 CHAPATER OR SUBJECT THEN SHOW THEM BY DEFAULT ON ROW 1"
                     if (matchedSubjects.length === 0 && matchedChapters.length === 1) {
@@ -11143,9 +11128,9 @@ window.initCourseFlix = async function() {
                     const lecSec = document.getElementById('search-results-lectures-section');
                     const lecList = document.getElementById('search-results-lectures-list');
                     const notesSec = document.getElementById('search-results-notes-section');
-                    const notesList = document.getElementById('search-results-notes-list');
+                    const notesGrid = document.getElementById('search-results-notes-grid');
                     const dppsSec = document.getElementById('search-results-dpps-section');
-                    const dppsList = document.getElementById('search-results-dpps-list');
+                    const dppsGrid = document.getElementById('search-results-dpps-grid');
                     const facSec = document.getElementById('search-results-faculty-section');
                     const facGrid = document.getElementById('search-results-faculty-grid');
                     const facTitle = document.getElementById('faculty-section-title');
@@ -11155,8 +11140,8 @@ window.initCourseFlix = async function() {
                     if (subjGrid) subjGrid.innerHTML = ''; 
                     if (chapGrid) chapGrid.innerHTML = ''; 
                     if (lecList) lecList.innerHTML = ''; 
-                    if (notesList) notesList.innerHTML = '';
-                    if (dppsList) dppsList.innerHTML = '';
+                    if (notesGrid) notesGrid.innerHTML = '';
+                    if (dppsGrid) dppsGrid.innerHTML = '';
                     if (facGrid) facGrid.innerHTML = '';
                     
                     let hasResults = false;
@@ -11360,93 +11345,109 @@ window.initCourseFlix = async function() {
                         lecSec.style.display = 'none';
                     }
                     
-                    // Render Notes
+                    // Render Notes Cards (Square Boxes)
                     if (results.notes && results.notes.length > 0) {
                         hasResults = true;
                         if (notesSec) notesSec.style.display = 'block';
                         const notesTitle = notesSec ? notesSec.querySelector('h2') : null;
-                        if (notesTitle) notesTitle.innerHTML = `${results.notes.length} PDF Note${results.notes.length > 1 ? 's' : ''} Found`;
+                        if (notesTitle) notesTitle.innerHTML = `Matching Notes Folders (${results.notes.length})`;
 
-                        results.notes.forEach(note => {
-                            const itemEl = document.createElement('div');
-                            itemEl.className = 'search-note-item search-anim-item';
-                            itemEl.style.animationDelay = `${animDelay}s`;
+                        results.notes.forEach(item => {
+                            const course = item.course;
+                            const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
+                                `<i class="fa${i < (course.rating || 0) ? 's' : 'r'} fa-star" style="color: ${i < (course.rating || 0) ? '#eab308' : 'var(--text-secondary)'};"></i>`
+                            ).join('');
+
+                            let thumbnailHTML = '<i class="fas fa-book-open" style="font-size: 3rem;"></i>';
+                            if (course.thumbnail) {
+                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-book-open\\' style=\\'font-size: 3rem;\\'></i>'">`;
+                            }
+
+                            const card = document.createElement('div');
+                            card.className = 'course-card search-anim-item';
+                            card.style.animationDelay = `${animDelay}s`;
                             animDelay += 0.03;
-                            itemEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-secondary); border: 1px solid var(--border-secondary); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s;';
+                            card.dataset.courseId = course.id;
 
-                            itemEl.innerHTML = `
-                                <div style="display: flex; align-items: center; gap: 14px; overflow: hidden; width: 100%;">
-                                    <div style="font-size: 1.4rem; color: #3b82f6; flex-shrink: 0;"><i class="fas fa-file-pdf"></i></div>
-                                    <div style="display: flex; flex-direction: column; overflow: hidden; flex-grow: 1;">
-                                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                            <span style="color: var(--text-primary); font-weight: 600; font-size: 0.98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${note.name}</span>
-                                            <span style="font-size: 0.72rem; font-weight: bold; color: white; background: #3b82f6; padding: 2px 8px; border-radius: 12px; flex-shrink: 0;">PDF Note</span>
-                                        </div>
-                                        <span style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 2px;">${note.courseTitle || 'Course'} • ${note.chapter} ${note.facultyName ? '• ' + note.facultyName : ''}</span>
-                                    </div>
+                            const titleHTML = `${course.title} <span style="font-size: 0.75rem; font-weight: bold; color: white; background: #3b82f6; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">Notes</span>`;
+
+                            card.innerHTML = `
+                                <div class="thumbnail-placeholder" data-id="${course.id}">
+                                    ${thumbnailHTML}
                                 </div>
-                                <button class="icon-btn" style="background: var(--bg-tertiary); color: #3b82f6; border-radius: 8px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid rgba(59, 130, 246, 0.3);">
-                                    <i class="fas fa-book-open"></i> Open Note
-                                </button>
+                                <div class="course-info">
+                                    <h3 title="${course.title}" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">${titleHTML}</h3>
+                                    <div class="course-extra-info">
+                                        <div class="course-faculty">${course.facultyName || 'N/A Faculty'}</div>
+                                        <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
+                                    </div>
+                                    <p class="course-meta" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">${item.count} Class Note${item.count > 1 ? 's' : ''}</p>
+                                    <button class="enter-course-btn" style="margin-top: auto; background: #3b82f6; border-color: #3b82f6;">View Notes Folder</button>
+                                </div>
                             `;
 
-                            itemEl.addEventListener('click', () => {
-                                if (note.progress && note.progress.pdfHandle) {
-                                    if (typeof showMediaViewer === 'function') {
-                                        showMediaViewer(note.progress.pdfHandle, 'PDF', note.name, note.progress);
-                                    }
-                                } else if (note.course && note.progress) {
-                                    playLectureFromAnywhere(note.course.id, note.progress.lectureId || note.progress.id, 'search-results-view', note.chapter);
+                            card.addEventListener('click', async () => {
+                                switchView('notes-view');
+                                if (typeof renderNotesDetailView === 'function') {
+                                    await renderNotesDetailView(course.id);
                                 }
                             });
 
-                            if (notesList) notesList.appendChild(itemEl);
+                            if (notesGrid) notesGrid.appendChild(card);
                         });
                     } else {
                         if (notesSec) notesSec.style.display = 'none';
                     }
 
-                    // Render DPPs & Assignments
+                    // Render DPP Cards (Square Boxes)
                     if (results.dpps && results.dpps.length > 0) {
                         hasResults = true;
                         if (dppsSec) dppsSec.style.display = 'block';
                         const dppsTitle = dppsSec ? dppsSec.querySelector('h2') : null;
-                        if (dppsTitle) dppsTitle.innerHTML = `${results.dpps.length} DPP / Assignment${results.dpps.length > 1 ? 's' : ''} Found`;
+                        if (dppsTitle) dppsTitle.innerHTML = `Matching DPP Folders (${results.dpps.length})`;
 
-                        results.dpps.forEach(dpp => {
-                            const itemEl = document.createElement('div');
-                            itemEl.className = 'search-dpp-item search-anim-item';
-                            itemEl.style.animationDelay = `${animDelay}s`;
+                        results.dpps.forEach(item => {
+                            const course = item.course;
+                            const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
+                                `<i class="fa${i < (course.rating || 0) ? 's' : 'r'} fa-star" style="color: ${i < (course.rating || 0) ? '#eab308' : 'var(--text-secondary)'};"></i>`
+                            ).join('');
+
+                            let thumbnailHTML = '<i class="fas fa-file-invoice" style="font-size: 3rem;"></i>';
+                            if (course.thumbnail) {
+                                thumbnailHTML = `<img src="${course.thumbnail}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-file-invoice\\' style=\\'font-size: 3rem;\\'></i>'">`;
+                            }
+
+                            const card = document.createElement('div');
+                            card.className = 'course-card search-anim-item';
+                            card.style.animationDelay = `${animDelay}s`;
                             animDelay += 0.03;
-                            itemEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-secondary); border: 1px solid var(--border-secondary); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s;';
+                            card.dataset.courseId = course.id;
 
-                            itemEl.innerHTML = `
-                                <div style="display: flex; align-items: center; gap: 14px; overflow: hidden; width: 100%;">
-                                    <div style="font-size: 1.4rem; color: #10b981; flex-shrink: 0;"><i class="fas fa-tasks"></i></div>
-                                    <div style="display: flex; flex-direction: column; overflow: hidden; flex-grow: 1;">
-                                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                            <span style="color: var(--text-primary); font-weight: 600; font-size: 0.98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dpp.name}</span>
-                                            <span style="font-size: 0.72rem; font-weight: bold; color: white; background: #10b981; padding: 2px 8px; border-radius: 12px; flex-shrink: 0;">DPP / Assignment</span>
-                                        </div>
-                                        <span style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 2px;">${dpp.courseTitle || 'Course'} • ${dpp.chapter} ${dpp.facultyName ? '• ' + dpp.facultyName : ''}</span>
-                                    </div>
+                            const titleHTML = `${course.title} <span style="font-size: 0.75rem; font-weight: bold; color: white; background: #10b981; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">DPP</span>`;
+
+                            card.innerHTML = `
+                                <div class="thumbnail-placeholder" data-id="${course.id}">
+                                    ${thumbnailHTML}
                                 </div>
-                                <button class="icon-btn" style="background: var(--bg-tertiary); color: #10b981; border-radius: 8px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid rgba(16, 185, 129, 0.3);">
-                                    <i class="fas fa-eye"></i> View Assignment
-                                </button>
+                                <div class="course-info">
+                                    <h3 title="${course.title}" style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">${titleHTML}</h3>
+                                    <div class="course-extra-info">
+                                        <div class="course-faculty">${course.facultyName || 'N/A Faculty'}</div>
+                                        <div class="course-rating" style="pointer-events: none;">${ratingStarsHTML}</div>
+                                    </div>
+                                    <p class="course-meta" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">${item.count} DPP / Assignment${item.count > 1 ? 's' : ''}</p>
+                                    <button class="enter-course-btn" style="margin-top: auto; background: #10b981; border-color: #10b981;">Solve DPP</button>
+                                </div>
                             `;
 
-                            itemEl.addEventListener('click', () => {
-                                if (dpp.handle && typeof showMediaViewer === 'function') {
-                                    showMediaViewer(dpp.handle, 'Assignment', dpp.name, dpp.progress || null);
-                                } else if (dpp.progress && dpp.progress.assignmentHandle && typeof showMediaViewer === 'function') {
-                                    showMediaViewer(dpp.progress.assignmentHandle, 'Assignment', dpp.name, dpp.progress);
-                                } else if (dpp.course) {
-                                    playLectureFromAnywhere(dpp.course.id, dpp.progress ? (dpp.progress.lectureId || dpp.progress.id) : null, 'search-results-view', dpp.chapter);
+                            card.addEventListener('click', async () => {
+                                switchView('dpp-view');
+                                if (typeof renderDppDetailView === 'function') {
+                                    await renderDppDetailView(course.id);
                                 }
                             });
 
-                            if (dppsList) dppsList.appendChild(itemEl);
+                            if (dppsGrid) dppsGrid.appendChild(card);
                         });
                     } else {
                         if (dppsSec) dppsSec.style.display = 'none';

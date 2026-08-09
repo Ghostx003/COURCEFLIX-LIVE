@@ -35,12 +35,12 @@ export default function SearchResultsView() {
 
             <div id="search-results-notes-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>
                 <h2 id="notes-section-title" style={{"fontSize":"1.25rem","marginBottom":"16px","color":"var(--text-secondary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"8px","fontWeight":"500"}}>Matching Notes</h2>
-                <div id="search-results-notes-list" style={{"display":"flex","flexDirection":"column","gap":"12px"}}></div>
+                <div id="search-results-notes-grid" className="course-grid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px"}}></div>
             </div>
 
             <div id="search-results-dpps-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>
                 <h2 id="dpps-section-title" style={{"fontSize":"1.25rem","marginBottom":"16px","color":"var(--text-secondary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"8px","fontWeight":"500"}}>Matching DPPs & Assignments</h2>
-                <div id="search-results-dpps-list" style={{"display":"flex","flexDirection":"column","gap":"12px"}}></div>
+                <div id="search-results-dpps-grid" className="course-grid" style={{"display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px"}}></div>
             </div>
 
             <div id="search-results-chapters-section" style={{"marginBottom":"40px","display":"none","scrollMarginTop":"140px"}}>
