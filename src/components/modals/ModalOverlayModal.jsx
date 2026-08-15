@@ -52,11 +52,29 @@ export default function ModalOverlayModal() {
             <button className="close-modal-btn" title="Close">&times;</button>
             <h2>Manage Courses</h2>
             <div id="add-subcourse-container" style={{display: 'none', width: '100%', marginBottom: '0.6rem'}}>
-                <button id="add-subcourse-btn" className="primary-btn" style={{width: '100%', justifyContent: 'center', background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))', padding: '10px 14px', borderRadius: '10px', fontSize: '0.88rem'}}>
+                <button 
+                    id="add-subcourse-btn" 
+                    className="primary-btn" 
+                    onClick={(e) => {
+                        e.preventDefault();
+                        if (typeof window.triggerAddSubcourse === 'function') window.triggerAddSubcourse();
+                    }}
+                    style={{width: '100%', justifyContent: 'center', background: 'var(--brand-gradient, linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-hover) 100%))', padding: '10px 14px', borderRadius: '10px', fontSize: '0.88rem'}}
+                >
                     <i className="fas fa-folder-plus"></i> <span id="add-subcourse-btn-text">Add Sub-Course in this location</span>
                 </button>
             </div>
-            <button id="add-folder-btn" className="secondary-btn"><i className="fas fa-folder-plus"></i> Add Course Folder</button>
+            <button 
+                id="add-folder-btn" 
+                className="secondary-btn"
+                onClick={(e) => {
+                    e.preventDefault();
+                    if (typeof window.triggerAddCourseFolder === 'function') window.triggerAddCourseFolder();
+                }}
+            >
+                <i className="fas fa-folder-plus"></i> Add Course Folder
+            </button>
+            <button id="add-custom-course-btn" className="secondary-btn" onClick={() => window.dispatchEvent(new Event('open-custom-course-creator'))}><i className="fas fa-plus"></i> Add Custom Course</button>
             <hr style={{"width":"100%","border":"none","borderTop":"1px solid var(--border-primary)"}} />
             <button id="import-btn" className="secondary-btn"><i className="fas fa-file-import"></i> Import Backup</button>
             <button id="export-btn" className="secondary-btn" onClick={(e) => {

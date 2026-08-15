@@ -9,16 +9,37 @@ if (typeof window !== 'undefined') {
     window.isBookmarkCyclingSession = false;
 }
 
+export function getActiveLectureId() {
+    if (typeof window !== 'undefined') {
+        if (window.currentActiveLectureId) return window.currentActiveLectureId;
+        if (window.currentLectureId) return window.currentLectureId;
+    }
+    const currentLectureLi = typeof window !== 'undefined' ? window.currentLectureLi : null;
+    if (currentLectureLi && currentLectureLi.dataset && currentLectureLi.dataset.lectureId) {
+        return currentLectureLi.dataset.lectureId;
+    }
+    if (typeof document !== 'undefined') {
+        const activeLi = document.querySelector('#chapter-list li.active, .lecture-item.active');
+        if (activeLi && activeLi.dataset && activeLi.dataset.lectureId) {
+            return activeLi.dataset.lectureId;
+        }
+    }
+    const course = typeof window !== 'undefined' ? window.currentCourse : null;
+    if (course && course.lastPlayedLecture && course.lastPlayedLecture.lectureId) {
+        return course.lastPlayedLecture.lectureId;
+    }
+    return null;
+}
+
 export function renderBookmarks() {
     const bookmarksContainer = document.getElementById('bookmarks-container');
-    const currentCourse = window.currentCourse;
-    const currentLectureLi = window.currentLectureLi;
-    const videoPlayer = document.getElementById('video-player') || window.videoPlayer;
+    const currentCourse = typeof window !== 'undefined' ? window.currentCourse : null;
+    const lectureId = getActiveLectureId();
+    const videoPlayer = document.getElementById('video-player') || (typeof window !== 'undefined' ? window.videoPlayer : null);
 
-    if (!bookmarksContainer || !currentCourse || !currentLectureLi || !videoPlayer || isNaN(videoPlayer.duration)) return;
+    if (!bookmarksContainer || !currentCourse || !lectureId || !videoPlayer || isNaN(videoPlayer.duration) || !videoPlayer.duration) return;
 
     bookmarksContainer.innerHTML = '';
-    const lectureId = currentLectureLi.dataset.lectureId;
     const progress = getLectureProgress(currentCourse.id, lectureId);
     const bookmarks = progress.bookmarks || [];
 
@@ -53,37 +74,70 @@ export function renderBookmarks() {
                 videoPlayer.currentTime = time;
             }
         };
-        bookmarksContainer.appendChild(dot);
-    });
-}
+                bookmarksContainer.appendChild(dot);
+            });
 
-export async function addBookmark() {
-    const currentCourse = window.currentCourse;
-    const currentLectureLi = window.currentLectureLi;
-    const videoPlayer = document.getElementById('video-player') || window.videoPlayer;
+            // Populate Bookmarks Popover List
+            const popoverList = document.getElementById('bookmarks-popover-list');
+            if (popoverList) {
+                popoverList.innerHTML = '';
+                if (bookmarks.length === 0) {
+                    popoverList.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);text-align:center;padding:10px 0;">No bookmarks saved yet. Press Z to add!</div>';
+                } else {
+                    bookmarks.forEach(time => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:0.82rem;border:1px solid var(--border-secondary);';
+                        item.innerHTML = `
+                            <span class="bookmark-time-link" style="color:var(--accent-primary);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:6px;">
+                                <i class="fas fa-play" style="font-size:0.7rem;"></i> ${formatTime(time)}
+                            </span>
+                            <button class="delete-bookmark-item-btn" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.85rem;padding:2px 4px;" title="Remove bookmark"><i class="fas fa-trash"></i></button>
+                        `;
+                        item.querySelector('.bookmark-time-link').onclick = (e) => {
+                            e.stopPropagation();
+                            videoPlayer.currentTime = time;
+                            showToast(`Jumped to bookmark: ${formatTime(time)}`);
+                        };
+                        item.querySelector('.delete-bookmark-item-btn').onclick = async (e) => {
+                            e.stopPropagation();
+                            const newBookmarks = bookmarks.filter(b => b !== time);
+                            await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks: newBookmarks });
+                            renderBookmarks();
+                            showToast('Bookmark removed');
+                        };
+                        popoverList.appendChild(item);
+                    });
+                }
+            }
+        }
 
-    if (!currentCourse || !currentLectureLi || !videoPlayer || videoPlayer.seeking) return;
-    const lectureId = currentLectureLi.dataset.lectureId;
-    const progress = getLectureProgress(currentCourse.id, lectureId);
-    const bookmarks = progress.bookmarks || [];
-    const currentTime = videoPlayer.currentTime;
+        export async function addBookmark() {
+            const currentCourse = typeof window !== 'undefined' ? window.currentCourse : null;
+            const lectureId = getActiveLectureId();
+            const videoPlayer = document.getElementById('video-player') || (typeof window !== 'undefined' ? window.videoPlayer : null);
 
-    if (!bookmarks.some(b => Math.abs(b - currentTime) < 1)) { // Avoid duplicate bookmarks
-        bookmarks.push(currentTime);
-        bookmarks.sort((a, b) => a - b);
-        await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks });
-        renderBookmarks();
-        showToast(`Bookmark added at ${formatTime(currentTime)}`);
-    }
-}
+            if (!currentCourse || !lectureId || !videoPlayer) return;
+            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const bookmarks = progress.bookmarks || [];
+            const currentTime = videoPlayer.currentTime;
+
+            if (!bookmarks.some(b => Math.abs(b - currentTime) < 1)) { // Avoid duplicate bookmarks
+                bookmarks.push(currentTime);
+                bookmarks.sort((a, b) => a - b);
+                await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks });
+                renderBookmarks();
+                showToast(`Bookmark added at ${formatTime(currentTime)}`);
+            } else {
+                showToast(`Bookmark already exists at ${formatTime(currentTime)}`);
+            }
+        }
 
 export function cycleBookmarks() {
-    const currentCourse = window.currentCourse;
-    const currentLectureLi = window.currentLectureLi;
-    const videoPlayer = document.getElementById('video-player') || window.videoPlayer;
+    const currentCourse = typeof window !== 'undefined' ? window.currentCourse : null;
+    const lectureId = getActiveLectureId();
+    const videoPlayer = document.getElementById('video-player') || (typeof window !== 'undefined' ? window.videoPlayer : null);
 
-    if (!currentCourse || !currentLectureLi || !videoPlayer) return;
-    const lectureId = currentLectureLi.dataset.lectureId;
+    if (!currentCourse || !lectureId || !videoPlayer) return;
     const progress = getLectureProgress(currentCourse.id, lectureId);
     const bookmarks = progress.bookmarks || [];
 
@@ -107,7 +161,7 @@ export function cycleBookmarks() {
 }
 
 export function jumpToPresentTimeline() {
-    const videoPlayer = document.getElementById('video-player') || window.videoPlayer;
+    const videoPlayer = document.getElementById('video-player') || (typeof window !== 'undefined' ? window.videoPlayer : null);
     if (!videoPlayer) return;
 
     let targetTime = window.savedTimelinePosition;
@@ -123,11 +177,10 @@ export function jumpToPresentTimeline() {
 }
 
 export async function clearCurrentVideoBookmarks() {
-    const currentCourse = window.currentCourse;
-    const currentLectureLi = window.currentLectureLi;
-    if (!currentCourse || !currentLectureLi) return;
+    const currentCourse = typeof window !== 'undefined' ? window.currentCourse : null;
+    const lectureId = getActiveLectureId();
+    if (!currentCourse || !lectureId) return;
     if (confirm('Are you sure you want to clear all bookmarks for this video?')) {
-        const lectureId = currentLectureLi.dataset.lectureId;
         const progress = getLectureProgress(currentCourse.id, lectureId);
         await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks: [] });
         renderBookmarks();

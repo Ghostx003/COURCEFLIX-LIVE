@@ -1,6 +1,92 @@
 window.initCourseFlix = async function() {
-
     
+    // Inject bulletproof CSS to hide video controls for custom courses
+    const customCourseStyle = document.createElement('style');
+    customCourseStyle.textContent = `
+        #video-wrapper.custom-playing .video-controls-container,
+        #video-wrapper.custom-playing .seek-overlay,
+        #video-wrapper.custom-playing #unmute-btn {
+            display: none !important;
+        }
+    `;
+    document.head.appendChild(customCourseStyle);
+
+    // Create custom bookmark UI globally (outside React)
+    const customBookmarkUI = document.createElement('div');
+    customBookmarkUI.id = 'custom-bookmark-ui-container';
+    customBookmarkUI.className = 'hidden';
+    customBookmarkUI.style.cssText = 'position: fixed; bottom: 30px; right: 30px; z-index: 99999; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; font-family: sans-serif;';
+    
+    customBookmarkUI.innerHTML = `
+        <!-- Display Notification -->
+        <div id="custom-bookmark-notification" class="hidden" style="background: white; color: black; padding: 14px 20px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 15px; transition: opacity 0.3s ease-out; display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+            <div>Last time you were at <span id="custom-bookmark-time-display" style="color: #2563eb;"></span></div>
+            <i class="fas fa-times" id="custom-bookmark-close-btn" style="cursor: pointer; color: #ef4444; font-size: 18px; transition: color 0.2s;" onmouseover="this.style.color='#b91c1c'" onmouseout="this.style.color='#ef4444'" title="Dismiss"></i>
+        </div>
+
+        <!-- Save Form -->
+        <div id="custom-bookmark-form-container" class="hidden" style="background: white; color: black; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 10px;">
+            <div style="font-size: 14px; font-weight: bold; color: #374151;">Store Left Off Time</div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="number" id="cb-hour" placeholder="Hr" min="0" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
+                <span style="color: #6b7280; font-weight: bold;">:</span>
+                <input type="number" id="cb-min" placeholder="Min" min="0" max="59" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
+                <span style="color: #6b7280; font-weight: bold;">:</span>
+                <input type="number" id="cb-sec" placeholder="Sec" min="0" max="59" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="cb-cancel-btn" style="background: #e5e7eb; color: #374151; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Cancel</button>
+                <button id="cb-save-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Save</button>
+            </div>
+        </div>
+
+        <!-- Floating Action Button -->
+        <button id="custom-bookmark-fab" style="background: #2563eb; color: white; border: none; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; transition: transform 0.2s, background 0.2s;" onmouseover="this.style.transform='scale(1.1)'; this.style.background='#1d4ed8';" onmouseout="this.style.transform='scale(1)'; this.style.background='#2563eb';" title="Store Time">
+            <i class="fas fa-bookmark"></i>
+        </button>
+    `;
+    document.body.appendChild(customBookmarkUI);
+
+    const cbNotif = document.getElementById('custom-bookmark-notification');
+    const cbFormContainer = document.getElementById('custom-bookmark-form-container');
+    const cbFab = document.getElementById('custom-bookmark-fab');
+
+    document.getElementById('custom-bookmark-close-btn').addEventListener('click', () => {
+        cbNotif.style.opacity = '0';
+        setTimeout(() => cbNotif.classList.add('hidden'), 300);
+    });
+
+    cbFab.addEventListener('click', () => {
+        cbNotif.classList.add('hidden');
+        cbFormContainer.classList.remove('hidden');
+        cbFab.classList.add('hidden');
+        document.getElementById('cb-hour').focus();
+    });
+
+    document.getElementById('cb-cancel-btn').addEventListener('click', () => {
+        cbFormContainer.classList.add('hidden');
+        cbFab.classList.remove('hidden');
+    });
+
+    document.getElementById('cb-save-btn').addEventListener('click', async () => {
+        const h = parseInt(document.getElementById('cb-hour').value) || 0;
+        const m = parseInt(document.getElementById('cb-min').value) || 0;
+        const s = parseInt(document.getElementById('cb-sec').value) || 0;
+        
+        let val = '';
+        if (h > 0) val += `${h}:`;
+        val += `${m.toString().padStart(h > 0 ? 2 : 1, '0')}:${s.toString().padStart(2, '0')}`;
+        
+        if (window.currentActiveCourse && window.currentActiveLectureId) {
+            const prog = getLectureProgress(window.currentActiveCourse.id, window.currentActiveLectureId) || {};
+            await saveLectureProgress({ ...prog, courseId: window.currentActiveCourse.id, lectureId: window.currentActiveLectureId, customBookmarkTime: val });
+            
+            cbFormContainer.classList.add('hidden');
+            cbFab.classList.remove('hidden');
+            if (typeof showToast === 'function') showToast('Time stored successfully!');
+        }
+    });
+
         const themeToggleBtn = document.getElementById('theme-toggle-btn');
         if (themeToggleBtn) {
             let isPureBlack = localStorage.getItem('pure-black-theme') === 'true';
@@ -413,13 +499,22 @@ window.initCourseFlix = async function() {
         async function getHistoryEntries() {
             await ensureDB();
             if (cachedHistory) return cachedHistory;
-            return new Promise((resolve, reject) => {
-                const request = getStore(HISTORY_STORE, 'readonly').getAll();
-                request.onsuccess = () => {
-                    cachedHistory = request.result;
-                    resolve(cachedHistory);
-                };
-                request.onerror = reject;
+            return new Promise((resolve) => {
+                try {
+                    const store = getStore(HISTORY_STORE, 'readonly');
+                    if (!store) return resolve([]);
+                    const request = store.getAll();
+                    request.onsuccess = () => {
+                        cachedHistory = request.result || [];
+                        resolve(cachedHistory);
+                    };
+                    request.onerror = (e) => {
+                        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                        resolve([]);
+                    };
+                } catch (err) {
+                    resolve([]);
+                }
             });
         }
 
@@ -1191,6 +1286,7 @@ window.initCourseFlix = async function() {
             }, 10);
             
             if (viewId !== 'player-view') {
+                window.customLectureTracking = null;
                 if (pushState) {
                     sessionStorage.removeItem('courseflixState');
                 }
@@ -1218,7 +1314,7 @@ window.initCourseFlix = async function() {
                             course.isLinked = false;
                         }
                     } else {
-                        course.isLinked = false;
+                        course.isLinked = !!course.isCustomCourse;
                     }
                 }));
             }
@@ -1248,6 +1344,7 @@ window.initCourseFlix = async function() {
             const chapters = {};
             const lectures = [];
             let totalDuration = 0;
+            let hasInaccessibleFiles = false;
             const videoRegex = /\.(mp4|mkv|webm|mov|avi|m4v|ts|flv|wmv|3gp|ogv|mp3|m4a|aac)$/i;
             
             async function recurse(currentHandle, path) {
@@ -1289,6 +1386,9 @@ window.initCourseFlix = async function() {
                             totalDuration += duration;
                         } catch (e) {
                             console.error(`Could not process file ${entry.name}:`, e);
+                            if (e.name === 'NotFoundError' || e.name === 'NotReadableError' || e.name === 'NotAllowedError') {
+                                hasInaccessibleFiles = true;
+                            }
                         }
                     } else if (entry.kind === 'directory') {
                         await recurse(entry, path ? `${path}/${entry.name}` : (basePath ? `${basePath}/${entry.name}` : entry.name));
@@ -1298,7 +1398,7 @@ window.initCourseFlix = async function() {
 
             await recurse(dirHandle, basePath);
             const sortedChapters = Object.values(chapters).filter(ch => ch.lectures.length > 0).sort((a, b) => naturalSort(a, b));
-            return { chapters: sortedChapters, videoCount: lectures.length, lectures, totalDuration };
+            return { chapters: sortedChapters, videoCount: lectures.length, lectures, totalDuration, hasInaccessibleFiles };
         }
 
         let isEnrichingDurations = false;
@@ -1865,7 +1965,7 @@ window.initCourseFlix = async function() {
                     `<i class="fa-star ${ (course.rating || 0) > i ? 'fas' : 'far'}" data-value="${i + 1}"></i>`
                 ).join('');
                 
-                const splitViewHtml = course.isLinked ? `
+                const splitViewHtml = (course.isLinked && !course.isCustomCourse) ? `
                     <label class="split-view-label" title="Show subfolders as separate courses">
                         <input type="checkbox" class="split-course-cb" data-id="${course.id}" ${course.isSplitView ? 'checked' : ''}>
                         Split by Folders
@@ -1874,8 +1974,8 @@ window.initCourseFlix = async function() {
                 card.innerHTML = `
                     <div class="thumbnail-placeholder ${course.thumbnail ? 'has-thumbnail' : ''}" data-id="${course.id}" style="${course.thumbnail ? `background-image: url('${course.thumbnail}')` : ''}">
                         <i class="fas fa-photo-video"></i>
-                        <button class="relocate-course-btn" data-id="${course.id}" title="Relocate Main Course Folder"><i class="fas fa-link"></i></button>
-                        <button class="refresh-course-btn" data-id="${course.id}" title="Refresh Course Content"><i class="fas fa-sync-alt"></i></button>
+                        ${!course.isCustomCourse ? `<button class="relocate-course-btn" data-id="${course.id}" title="Relocate Main Course Folder"><i class="fas fa-link"></i></button>
+                        <button class="refresh-course-btn" data-id="${course.id}" title="Refresh Course Content"><i class="fas fa-sync-alt"></i></button>` : `<button class="refresh-custom-course-btn" data-id="${course.id}" title="Refresh HTML Links"><i class="fas fa-sync-alt"></i></button>`}
                         <button class="remove-thumbnail-btn" data-id="${course.id}" title="Remove Thumbnail"><i class="fas fa-times"></i></button>
                         <button class="remove-course-btn" data-id="${course.id}" title="Remove Course"><i class="fas fa-trash"></i></button>
                     </div>
@@ -1945,19 +2045,42 @@ window.initCourseFlix = async function() {
 
         async function renderSubcourseView(courseId, basePath = '', pushState = true) {
             const course = courses.find(c => String(c.id) === String(courseId));
-            if (!course || !course.handle) return;
+            if (!course) return;
+
+            if (!course.isLinked && !course.isCustomCourse) {
+                if (course.handle) {
+                    if (await course.handle.requestPermission({ mode: 'read' }) !== 'granted') {
+                        showToast('Permission denied.', true);
+                        return;
+                    }
+                    course.isLinked = true;
+                } else {
+                    try {
+                        const handle = await window.showDirectoryPicker();
+                        course.handle = handle;
+                        course.isLinked = true;
+                        course.folderName = handle.name;
+                        await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                    } catch (e) {
+                        showToast('Linking cancelled.', true);
+                        return;
+                    }
+                }
+            } else if (!course.isCustomCourse && course.handle) {
+                if (await course.handle.queryPermission({ mode: 'read' }) !== 'granted') {
+                    if (await course.handle.requestPermission({ mode: 'read' }) !== 'granted') {
+                        showToast('Permission denied.', true);
+                        return;
+                    }
+                }
+            }
+            
+            if (!course.handle && !course.isCustomCourse) return;
             
             if (pushState) {
                 const newHash = '#subcourse/' + courseId + (basePath ? '/' + encodeURIComponent(basePath) : '');
                 if (window.location.hash !== newHash) {
                     window.history.pushState(null, '', newHash);
-                }
-            }
-
-            if (await course.handle.queryPermission({ mode: 'read' }) !== 'granted') {
-                if (await course.handle.requestPermission({ mode: 'read' }) !== 'granted') {
-                    showToast('Permission denied.', true);
-                    return;
                 }
             }
 
@@ -1973,8 +2096,10 @@ window.initCourseFlix = async function() {
             const subcourseGrid = document.getElementById('subcourse-grid');
             subcourseGrid.innerHTML = '';
             
+            course.chapters = course.chapters || [];
+            
             // Find relevant chapters that sit inside the basePath
-            const relevantChapters = course.chapters.filter(ch => basePath === '' || ch.name.startsWith(basePath + '/') || ch.name === basePath);
+            const relevantChapters = course.chapters.filter(ch => basePath === '' || (ch.name || '').startsWith(basePath + '/') || (ch.name || '') === basePath);
             
             // Extract immediate subdirectories
             const immediateSubfoldersSet = new Set();
@@ -2041,7 +2166,7 @@ window.initCourseFlix = async function() {
                 }
                 thumb = thumb || course.thumbnail || null;
 
-                const subLectures = course.lectures.filter(l => l.chapter === fullPath || l.chapter.startsWith(fullPath + '/'));
+                const subLectures = course.lectures.filter(l => (l.chapter || '') === fullPath || (l.chapter || '').startsWith(fullPath + '/'));
                 let completed = 0;
                 let timeCompleted = 0;
                 let subTotalDuration = 0;
@@ -2060,7 +2185,7 @@ window.initCourseFlix = async function() {
                 const remainingDuration = Math.max(0, subTotalDuration - timeCompleted);
 
                 // Does this folder have deeper folders?
-                const hasDeeper = course.chapters.some(ch => ch.name.startsWith(fullPath + '/') && ch.name.length > fullPath.length + 1);
+                const hasDeeper = course.chapters.some(ch => (ch.name || '').startsWith(fullPath + '/') && (ch.name || '').length > fullPath.length + 1);
                 
                 const splitViewHtml = hasDeeper ? `
                     <label class="split-view-label" title="Show subfolders as separate courses">
@@ -2389,9 +2514,49 @@ window.initCourseFlix = async function() {
 
         function extractNumberFromText(str) {
             if (!str) return null;
-            const matches = str.match(/\d+/g);
-            if (!matches) return null;
-            return parseInt(matches[matches.length - 1], 10);
+            
+            // 1. Priority match for Lecture / Class / Part / L
+            const priorityMatch = str.match(/(?:lec(?:ture)?|l|part|class|#|no\.?)[-_ ]*0*(\d+)/i);
+            if (priorityMatch) return parseInt(priorityMatch[1], 10);
+            
+            // 2. Priority Roman numerals after a lecture prefix (I to XXX)
+            const romanMatch = str.match(/(?:lec(?:ture)?|l|part|class|#|no\.?)[-_ ]*(x{0,2}(?:ix|iv|v?i{0,3}))(?:[-_ ]|\b|$)/i);
+            if (romanMatch && romanMatch[1]) {
+                const r = { 'i': 1, 'v': 5, 'x': 10 };
+                let n = 0, s = romanMatch[1].toLowerCase();
+                for (let i = 0; i < s.length; i++) {
+                    const curr = r[s[i]], next = r[s[i + 1]];
+                    if (curr < next) n -= curr;
+                    else n += curr;
+                }
+                if (n > 0) return n;
+            }
+            
+            // 3. Fallback for Chapter
+            const chMatch = str.match(/(?:ch(?:apter)?)[-_ ]*0*(\d+)/i);
+            if (chMatch) return parseInt(chMatch[1], 10);
+            
+            // 4. Standalone Arabic numeral (only accept reasonable lecture numbers <= 500 to avoid years like 2024)
+            const standaloneMatches = [...str.matchAll(/(?:^|\b|[-_ ])0*(\d+)(?:[-_ ]|\b|$)/g)];
+            for (const match of standaloneMatches) {
+                const num = parseInt(match[1], 10);
+                if (num > 0 && num <= 500) return num;
+            }
+            
+            // 5. Standalone Roman numeral (Strict to avoid matching random words like 'I', 'V')
+            const standaloneRomanMatch = str.match(/(?:^|\b|[-_ ])(x{1,2}(?:ix|iv|v?i{0,3})|ix|iv|v?i{1,3})(?:[-_ ]|\b|$)/i);
+            if (standaloneRomanMatch && standaloneRomanMatch[1]) {
+                const r = { 'i': 1, 'v': 5, 'x': 10 };
+                let n = 0, s = standaloneRomanMatch[1].toLowerCase();
+                for (let i = 0; i < s.length; i++) {
+                    const curr = r[s[i]], next = r[s[i + 1]];
+                    if (curr < next) n -= curr;
+                    else n += curr;
+                }
+                if (n > 0) return n;
+            }
+
+            return null;
         }
 
         function buildLectureItemHTML(displayName, progress, lectureId = '') {
@@ -2556,12 +2721,62 @@ window.initCourseFlix = async function() {
             updateDropZonesForSelectedLecture();
         }
 
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', async (e) => {
             const toggleBtn = e.target.closest('#smart-add-toggle-btn');
             if (toggleBtn) {
                 isSmartAddActive = !isSmartAddActive;
                 updateSmartAddUIState();
                 showToast(isSmartAddActive ? 'Smart Add Enabled: Drag & drop N files to auto-assign.' : 'Manual Mode Enabled.');
+            }
+
+            const clearAllBtn = e.target.closest('#clear-all-pdfs-btn');
+            if (clearAllBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+                const detailView = document.getElementById('upload-detail-view');
+                if (!detailView) return;
+                const rawId = detailView.dataset.courseId;
+                if (!rawId) return;
+                const courseId = parseCourseId(rawId);
+
+                const course = (typeof courses !== 'undefined' ? courses : window.courses || []).find(c => String(c.id) === String(courseId));
+                const courseTitle = course ? course.title : 'this course';
+
+                if (!confirm(`Are you sure you want to delete all attached PDFs in ${courseTitle}? This action cannot be undone.`)) {
+                    return;
+                }
+
+                let deletedCount = 0;
+                try {
+                    const allProgress = await new Promise(r => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                    for (const prog of allProgress) {
+                        if (prog && String(prog.courseId) === String(courseId) && (prog.pdfHandle || prog.pdfName)) {
+                            delete prog.pdfHandle;
+                            delete prog.pdfName;
+                            await saveLectureProgress(prog);
+                            deletedCount++;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Error reading PROGRESS_STORE:', err);
+                }
+
+                for (const key in courseProgress) {
+                    if (courseProgress[key] && String(courseProgress[key].courseId) === String(courseId) && (courseProgress[key].pdfHandle || courseProgress[key].pdfName)) {
+                        delete courseProgress[key].pdfHandle;
+                        delete courseProgress[key].pdfName;
+                        await saveLectureProgress(courseProgress[key]);
+                    }
+                }
+
+                if (deletedCount > 0) {
+                    showToast(`Deleted all ${deletedCount} attached PDFs from ${courseTitle}.`);
+                } else {
+                    showToast(`No attached PDFs found in ${courseTitle}.`);
+                }
+
+                const subfolder = detailView.dataset.uploadSubfolder || null;
+                await renderLectureUploadDetail(courseId, subfolder);
             }
 
             const browseBtn = e.target.closest('.browse-file-btn');
@@ -2795,7 +3010,7 @@ window.initCourseFlix = async function() {
                 showToast('This subcourse has been deleted.', true);
                 return;
             }
-            if (!course.isLinked) {
+            if (!course.isLinked && !course.isCustomCourse) {
                 const handle = course.handle;
                 if (await handle.requestPermission({ mode: 'read' }) !== 'granted') { 
                     showToast('Permission to access course files denied.', true);
@@ -2823,7 +3038,28 @@ window.initCourseFlix = async function() {
             chapterListDiv.innerHTML = '<p style="text-align:center; padding: 20px;">Loading lectures...</p>';
             toggleCompletedBtn.classList.add('hidden');
             
-            if (!currentCourse.lectures || !currentCourse.chapters) {
+            if (currentCourse.isCustomCourse) {
+                const addLectBtn = document.getElementById('add-custom-lectures-btn');
+                if (addLectBtn) addLectBtn.classList.remove('hidden');
+
+                if (!currentCourse.lectures || currentCourse.lectures.length === 0) {
+                    const wrapper = document.getElementById('video-wrapper');
+                    if (wrapper) wrapper.classList.add('hidden');
+                    chapterListDiv.innerHTML = '<p id="no-content-message" style="padding:20px; text-align:center; color:var(--text-secondary);">No lectures yet. Click "Import HTML" above to begin.</p>';
+                    return;
+                } else {
+                    const wrapper = document.getElementById('video-wrapper');
+                    if (wrapper) wrapper.classList.remove('hidden');
+                }
+            } else {
+                const addLectBtn = document.getElementById('add-custom-lectures-btn');
+                if (addLectBtn) addLectBtn.classList.add('hidden');
+
+                const wrapper = document.getElementById('video-wrapper');
+                if (wrapper) wrapper.classList.remove('hidden');
+            }
+
+            if (!currentCourse.isCustomCourse && (!currentCourse.lectures || !currentCourse.chapters)) {
                 try {
                     await refreshCourse(currentCourse.id, null);
                 } catch (error) {
@@ -2876,7 +3112,7 @@ window.initCourseFlix = async function() {
                     backToLibraryBtn.dataset.view = 'subcourse-view';
                 }
                 backToLibraryBtn.dataset.subfolder = subfolder;
-                clearBookmarksBtn.classList.remove('hidden');
+                clearBookmarksBtn?.classList.remove('hidden');
             } else if (originView === 'review-view' || originView === 'practice-view') {
                 const status = originView.split('-')[0];
                 const statusLectures = Object.values(courseProgress)
@@ -2889,10 +3125,10 @@ window.initCourseFlix = async function() {
                 }).filter(chapter => chapter.lectures.length > 0);
                 
                 courseTitleMenu.textContent = `${currentCourse.title} (${status.charAt(0).toUpperCase() + status.slice(1)} Lectures)`;
-                clearBookmarksBtn.classList.add('hidden');
+                clearBookmarksBtn?.classList.add('hidden');
             } else {
                 courseTitleMenu.textContent = currentCourse.title;
-                clearBookmarksBtn.classList.remove('hidden');
+                clearBookmarksBtn?.classList.remove('hidden');
             }
 
             updateMenuProgress(subfolder);
@@ -2924,7 +3160,7 @@ window.initCourseFlix = async function() {
             backToLibraryBtn.textContent = 'Back to Goals';
             backToLibraryBtn.dataset.view = 'goals';
             courseTitleMenu.textContent = `Daily Goals Playlist`;
-            clearBookmarksBtn.classList.add('hidden');
+            clearBookmarksBtn?.classList.add('hidden');
             toggleCompletedBtn.classList.remove('hidden');
 
             const saved = localStorage.getItem('courseflix_goals_playlist');
@@ -3009,7 +3245,7 @@ window.initCourseFlix = async function() {
                 dateSuffix = ` (${formatted})`;
             }
             courseTitleMenu.textContent = `📅 Calendar Event Playlist${dateSuffix}`;
-            clearBookmarksBtn.classList.add('hidden');
+            clearBookmarksBtn?.classList.add('hidden');
             toggleCompletedBtn.classList.remove('hidden');
 
             const saved = localStorage.getItem('courseflix_calendar_playlist');
@@ -3079,7 +3315,7 @@ window.initCourseFlix = async function() {
             backToLibraryBtn.dataset.view = `${status}-view`;
 
             courseTitleMenu.textContent = `🤝 Study Together: ${status.charAt(0).toUpperCase() + status.slice(1)}`;
-            clearBookmarksBtn.classList.add('hidden');
+            clearBookmarksBtn?.classList.add('hidden');
             toggleCompletedBtn.classList.remove('hidden');
 
             const allItems = Object.values(courseProgress).filter(p => p.status === status);
@@ -3135,7 +3371,8 @@ window.initCourseFlix = async function() {
                  const chapterDuration = chapter.lectures.reduce((sum, lect) => sum + (lect.duration || 0), 0);
 
                  // Show only the deepest path part to save space
-                 const displayName = chapter.name.split('/').pop();
+                 const chapterName = chapter.name || chapter.title || 'Lectures';
+                 const displayName = chapterName.split('/').pop();
 
                  chapterDiv.innerHTML = `
                      <div class="chapter-title">
@@ -3154,13 +3391,16 @@ window.initCourseFlix = async function() {
                      lectureLi.dataset.lectureId = lecture.id;
                      if (lecture.overrideCourseId) lectureLi.dataset.courseId = lecture.overrideCourseId;
 
+                     const lectDisplayName = lecture.displayName || lecture.title || `Lecture ${lecture.id}`;
+                     
                      lectureLi.innerHTML = `
                          <div class="lecture-checkbox ${progress.completed ? 'completed' : ''}"><i class="fas fa-check"></i></div>
-                         <div class="lecture-title ${progress.completed ? 'completed' : ''}" title="${lecture.displayName} (Double-click to rename)">${lecture.displayName}</div>
+                         <div class="lecture-title ${progress.completed ? 'completed' : ''}" title="${lectDisplayName} (Double-click to rename)">${lectDisplayName}</div>
                          <span class="lecture-duration">${formatTime(lecture.duration)}</span>
-                         <button class="status-btn ${progress.status || ''}" data-lecture-name="${lecture.displayName}" data-duration="${lecture.duration}">
+                         <button class="status-btn ${progress.status || ''}" data-lecture-name="${lectDisplayName}" data-duration="${lecture.duration}">
                              ${progress.status ? progress.status.toUpperCase() : 'STATUS'}
-                         </button>`;
+                         </button>
+                         ${(currentCourse && currentCourse.isCustomCourse) ? `<button class="delete-custom-lecture-btn" data-lecture-id="${lecture.id}" title="Delete Lecture" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; margin-left:6px;"><i class="fas fa-trash"></i></button>` : ''}`;
                      lectureList.appendChild(lectureLi);
                  }
                  chapterDiv.appendChild(lectureList);
@@ -3290,6 +3530,9 @@ window.initCourseFlix = async function() {
             currentLectureLi = liElement;
             currentLectureLi.classList.add('active');
             const lectureId = liElement.dataset.lectureId;
+            window.currentLectureId = lectureId;
+            window.currentActiveLectureId = lectureId;
+            window.currentCourse = currentCourse;
             
             const courseIdOverride = liElement.dataset.courseId;
             if (courseIdOverride && (!currentCourse || parseInt(courseIdOverride) !== currentCourse.id)) {
@@ -3324,6 +3567,62 @@ window.initCourseFlix = async function() {
             }
 
             try {
+                if (currentCourse.isCustomCourse || lecture.customUrl) {
+                    const iframePlayer = document.getElementById('custom-iframe-player');
+                    if (iframePlayer) {
+                        videoPlayer.pause();
+                        videoPlayer.removeAttribute('src');
+                        videoPlayer.load();
+                        
+                        iframePlayer.src = lecture.customUrl || lecture.url;
+                        iframePlayer.classList.remove('hidden');
+                        videoPlayer.classList.add('hidden');
+                        if (videoWrapper) videoWrapper.classList.add('custom-playing');
+                        
+                        const controlsContainer = document.querySelector('.video-controls-container');
+                        if (controlsContainer) controlsContainer.classList.add('hidden');
+                        
+                        addHistoryEntry(currentCourse.id, lectureId, currentCourse.title, lecture.displayName, lecture.duration || 0, currentSubfolder, currentCourse.thumbnail).catch(console.error);
+
+                        // Custom bookmark heuristic tracking
+                        const prog = getLectureProgress(currentCourse.id, lectureId) || {};
+                        const notif = document.getElementById('custom-bookmark-notification');
+                        const timeDisplay = document.getElementById('custom-bookmark-time-display');
+                        // Setup global variables for manual save
+                        window.currentActiveCourse = currentCourse;
+                        window.currentActiveLectureId = lectureId;
+                        
+                        const uiContainer = document.getElementById('custom-bookmark-ui-container');
+                        if (uiContainer) uiContainer.classList.remove('hidden');
+
+                        const fab = document.getElementById('custom-bookmark-fab');
+                        
+                        if (fab) fab.classList.remove('hidden');
+                        
+                        if (prog.customBookmarkTime && prog.customBookmarkTime !== '0:00' && prog.customBookmarkTime !== '0:00:00') {
+                            if (timeDisplay && notif) {
+                                let formattedTime = prog.customBookmarkTime;
+                                const tParts = prog.customBookmarkTime.split(':').map(n => parseInt(n, 10));
+                                if (tParts.length === 3) {
+                                    formattedTime = `${tParts[0]} Hour ${tParts[1]} Min ${tParts[2]} Sec`;
+                                } else if (tParts.length === 2) {
+                                    formattedTime = `${tParts[0]} Min ${tParts[1]} Sec`;
+                                }
+                                timeDisplay.textContent = formattedTime;
+                                notif.classList.remove('hidden');
+                                notif.style.opacity = '1';
+                                if (window.customBookmarkNotifTimeout) clearTimeout(window.customBookmarkNotifTimeout);
+                                window.customBookmarkNotifTimeout = setTimeout(() => {
+                                    notif.style.opacity = '0';
+                                    setTimeout(() => notif.classList.add('hidden'), 300);
+                                }, 10000);
+                            }
+                        }
+
+                    }
+                    return;
+                }
+
                 if (!lecture.handle || typeof lecture.handle.getFile !== 'function') {
                     console.warn("Lecture handle is missing or invalid. Attempting to recover...");
                     if (currentCourse.handle && currentCourse.isLinked) {
@@ -3343,6 +3642,21 @@ window.initCourseFlix = async function() {
                         return;
                     }
                 }
+
+                const uiContainer = document.getElementById('custom-bookmark-ui-container');
+                if (uiContainer) uiContainer.classList.add('hidden');
+                const iframePlayer = document.getElementById('custom-iframe-player');
+                if (iframePlayer) {
+                    iframePlayer.classList.add('hidden');
+                    iframePlayer.removeAttribute('src');
+                    const notif = document.getElementById('custom-bookmark-notification');
+                    if (notif) notif.classList.add('hidden');
+                }
+                if (videoWrapper) videoWrapper.classList.remove('custom-playing');
+                videoPlayer.classList.remove('hidden');
+                const controlsContainer = document.querySelector('.video-controls-container');
+                if (controlsContainer) controlsContainer.classList.remove('hidden');
+
                 const file = await lecture.handle.getFile();
                 if(videoPlayer.src) URL.revokeObjectURL(videoPlayer.src);
                 videoPlayer.src = URL.createObjectURL(file);
@@ -3436,14 +3750,36 @@ window.initCourseFlix = async function() {
                                 if (await subHandle.queryPermission({ mode: 'read' }) === 'granted') {
                                     const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
                                     // Remove old scan results for this subpath
-                                    newCourseData.lectures = newCourseData.lectures.filter(l => !(l.chapter === subPath || l.chapter.startsWith(subPath + '/')));
-                                    newCourseData.chapters = newCourseData.chapters.filter(ch => !(ch.name === subPath || ch.name.startsWith(subPath + '/')));
+                                    newCourseData.lectures = newCourseData.lectures.filter(l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/')));
+                                    newCourseData.chapters = newCourseData.chapters.filter(ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/')));
                                     // Inject custom scan results
                                     newCourseData.lectures.push(...subData.lectures);
                                     newCourseData.chapters.push(...subData.chapters);
                                 }
                             } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
                         }
+                    }
+                }
+
+                // Preserve custom lectures and chapters that don't have disk handles
+                if (course.lectures) {
+                    const customLectures = course.lectures.filter(l => l.customUrl);
+                    if (customLectures.length > 0) {
+                        newCourseData.lectures.push(...customLectures);
+                        
+                        // Extract unique chapters from custom lectures
+                        const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
+                        customChapterNames.forEach(chapterName => {
+                            if (!newCourseData.chapters.find(ch => ch.name === chapterName)) {
+                                const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                                newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
+                            } else {
+                                // If chapter exists (unlikely for pure custom, but possible if mixed), append lectures
+                                const existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
+                                const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                                existingChapter.lectures.push(...chapterLectures);
+                            }
+                        });
                     }
                 }
 
@@ -3941,8 +4277,19 @@ window.initCourseFlix = async function() {
                             if (course) {
                                 course.subCourseData = course.subCourseData || {};
                                 course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
-                                course.subCourseData[subfolder].hidden = true;
-                                course.subCourseData[subfolder].isIgnored = true;
+                                
+                                if (course.subCourseData[subfolder].isCustom) {
+                                    // It's a custom subcourse, permanently delete its lectures to free up space
+                                    course.lectures = course.lectures.filter(l => l.chapter !== subfolder && !l.chapter.startsWith(subfolder + '/'));
+                                    course.chapters = course.chapters.filter(ch => ch.name !== subfolder && !ch.name.startsWith(subfolder + '/'));
+                                    delete course.subCourseData[subfolder];
+                                    course.videoCount = course.lectures.length;
+                                } else {
+                                    // Standard subcourse, just hide it
+                                    course.subCourseData[subfolder].hidden = true;
+                                    course.subCourseData[subfolder].isIgnored = true;
+                                }
+                                
                                 await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
                                 await purgeAllDataForDeletedCoursesAndSubfolders();
                                 const parentPath = getParentPath(subfolder);
@@ -4006,6 +4353,100 @@ window.initCourseFlix = async function() {
                 e.stopPropagation(); 
                 const courseId = parseInt(refreshBtn.dataset.id); 
                 await refreshCourse(courseId, refreshBtn); 
+                return;
+            }
+            
+            const refreshCustomBtn = e.target.closest('.refresh-custom-course-btn');
+            if (refreshCustomBtn) {
+                e.stopPropagation();
+                const courseId = parseInt(refreshCustomBtn.dataset.id);
+                
+                let uploader = document.getElementById('custom-course-refresh-upload');
+                if (!uploader) {
+                    uploader = document.createElement('input');
+                    uploader.type = 'file';
+                    uploader.id = 'custom-course-refresh-upload';
+                    uploader.accept = '.html,.htm';
+                    uploader.style.display = 'none';
+                    document.body.appendChild(uploader);
+                    
+                    uploader.addEventListener('change', async (ev) => {
+                        const file = ev.target.files[0];
+                        if (!file) return;
+                        
+                        const cId = parseInt(uploader.dataset.courseId);
+                        const targetCourse = courses.find(c => c.id === cId);
+                        if (!targetCourse) return;
+
+                        const reader = new FileReader();
+                        reader.onload = async (readEv) => {
+                            const htmlText = readEv.target.result;
+                            
+                            const parseDurationString = (str) => {
+                                let seconds = 0;
+                                const hrMatch = str.match(/(\d+)\s*hr/i);
+                                const minMatch = str.match(/(\d+)\s*min/i);
+                                const secMatch = str.match(/(\d+)\s*sec/i);
+                                if (hrMatch) seconds += parseInt(hrMatch[1]) * 3600;
+                                if (minMatch) seconds += parseInt(minMatch[1]) * 60;
+                                if (secMatch) seconds += parseInt(secMatch[1]);
+                                return seconds;
+                            };
+
+                            const urlRegex = /https:\/\/unacademy-player\.netlify\.app\/[A-Za-z0-9]+/g;
+                            const urls = [];
+                            let match;
+                            while ((match = urlRegex.exec(htmlText)) !== null) {
+                                urls.push({ url: match[0], index: match.index });
+                            }
+                            
+                            const newLectures = [];
+                            const seenUrls = new Set();
+                            
+                            for (let i = 0; i < urls.length; i++) {
+                                const currentUrl = urls[i].url;
+                                if (seenUrls.has(currentUrl)) continue;
+                                seenUrls.add(currentUrl);
+                                
+                                const startIndex = urls[i].index;
+                                const endIndex = i + 1 < urls.length ? urls[i+1].index : htmlText.length;
+                                const chunk = htmlText.substring(startIndex, endIndex);
+                                
+                                const durMatch = chunk.match(/<span[^>]*class=["'][^"']*duration-badge[^"']*["'][^>]*>.*?⏱️\s*(.*?)<\/span>/is) || chunk.match(/⏱️\s*([0-9\sA-Za-z]+)/is);
+                                let durationSeconds = 0;
+                                if (durMatch) {
+                                    durationSeconds = parseDurationString(durMatch[1]);
+                                }
+                                
+                                newLectures.push({
+                                    id: Date.now().toString() + '_' + newLectures.length,
+                                    displayName: `Lecture ${newLectures.length + 1}`,
+                                    customUrl: currentUrl,
+                                    duration: durationSeconds
+                                });
+                            }
+                            
+                            if (newLectures.length === 0) {
+                                showToast("No valid links found in the selected file.", true);
+                                return;
+                            }
+                            
+                            targetCourse.lectures = newLectures;
+                            targetCourse.chapters = [{ name: "Custom Lectures", lectures: newLectures }];
+                            targetCourse.videoCount = newLectures.length;
+                            
+                            await new Promise(r => getStore(STORE_NAME, 'readwrite').put(targetCourse).onsuccess = r);
+                            
+                            showToast(`Refreshed! Found ${newLectures.length} lectures.`);
+                            renderCourseGrid();
+                        };
+                        reader.readAsText(file);
+                        uploader.value = ''; // Reset for next time
+                    });
+                }
+                
+                uploader.dataset.courseId = courseId;
+                uploader.click();
                 return;
             }
             
@@ -4323,6 +4764,23 @@ window.initCourseFlix = async function() {
 
         // --- Player View Listeners ---
         chapterListDiv.addEventListener('click', async (e) => {
+            const deleteBtn = e.target.closest('.delete-custom-lecture-btn');
+            if (deleteBtn && currentCourse && currentCourse.isCustomCourse) {
+                e.stopPropagation();
+                const lecId = deleteBtn.dataset.lectureId;
+                if (!confirm('Are you sure you want to delete this lecture?')) return;
+                
+                currentCourse.lectures = currentCourse.lectures.filter(l => l.id !== lecId);
+                currentCourse.videoCount = currentCourse.lectures.length;
+                for (const chapter of currentCourse.chapters) {
+                    chapter.lectures = chapter.lectures.filter(l => l.id !== lecId);
+                }
+                await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(currentCourse).onsuccess = resolve);
+                showToast("Lecture deleted.");
+                renderPlayer(currentCourse.id, null, lastView);
+                return;
+            }
+
             const lectureLi = e.target.closest('li');
             const chapterTitle = e.target.closest('.chapter-title');
 
@@ -4667,14 +5125,12 @@ window.initCourseFlix = async function() {
                     if (subContainer) subContainer.style.display = 'none';
                     if (addFolderBtn) {
                         addFolderBtn.style.display = 'block';
-                        addFolderBtn.innerHTML = '<i class="fas fa-folder-plus"></i> Add Course Folder';
                     }
                 }
             } else {
                 if (subContainer) subContainer.style.display = 'none';
                 if (addFolderBtn) {
                     addFolderBtn.style.display = 'block';
-                    addFolderBtn.innerHTML = '<i class="fas fa-folder-plus"></i> Add Course Folder';
                 }
             }
 
@@ -4682,35 +5138,37 @@ window.initCourseFlix = async function() {
         });
         document.getElementById('modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') e.target.classList.add('hidden'); });
         
-        const addSubBtnEl = document.getElementById('add-subcourse-btn');
-        if (addSubBtnEl) {
-            addSubBtnEl.addEventListener('click', async () => {
-                const subContainer = document.getElementById('add-subcourse-container');
-                const courseId = parseInt(subContainer?.dataset.courseId);
-                const basePath = subContainer?.dataset.subPath || '';
+        window.triggerAddSubcourse = async function() {
+            const subContainer = document.getElementById('add-subcourse-container');
+            const courseId = parseInt(subContainer?.dataset.courseId);
+            const basePath = subContainer?.dataset.subPath || '';
+            
+            const courseList = (typeof courses !== 'undefined' ? courses : window.courses) || [];
+            if (!courseId || !courseList.length) return;
+            const course = courseList.find(c => c.id === courseId);
+            if (!course) return;
+            
+            try {
+                const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
+                const targetSubPath = basePath ? `${basePath}/${dirHandle.name}` : dirHandle.name;
+                const courseData = await scanDirectoryHandle(dirHandle, targetSubPath, course.lectures || []);
                 
-                if (!courseId || typeof courses === 'undefined') return;
-                const course = courses.find(c => c.id === courseId);
-                if (!course) return;
+                course.lectures = course.lectures || [];
+                course.chapters = course.chapters || [];
                 
-                try {
-                    const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
-                    const targetSubPath = basePath ? `${basePath}/${dirHandle.name}` : dirHandle.name;
-                    const courseData = await scanDirectoryHandle(dirHandle, targetSubPath, course.lectures || []);
-                    
-                    if (courseData.videoCount === 0) {
-                        return showToast('No videos found in this folder or its subfolders.', true);
-                    }
-                    
-                    course.lectures = course.lectures || [];
-                    course.chapters = course.chapters || [];
-                    
+                if (!course.chapters.some(c => c.name === targetSubPath)) {
+                    course.chapters.push({ name: targetSubPath, lectures: [] });
+                }
+                
+                if (courseData && courseData.lectures) {
                     courseData.lectures.forEach(newLec => {
                         if (!course.lectures.some(existing => existing.id === newLec.id)) {
                             course.lectures.push(newLec);
                         }
                     });
-                    
+                }
+                
+                if (courseData && courseData.chapters) {
                     courseData.chapters.forEach(newCh => {
                         const existingCh = course.chapters.find(c => c.name === newCh.name);
                         if (existingCh) {
@@ -4723,41 +5181,43 @@ window.initCourseFlix = async function() {
                             course.chapters.push(newCh);
                         }
                     });
-                    
-                    course.videoCount = (course.videoCount || 0) + courseData.videoCount;
-                    course.totalDuration = (course.totalDuration || 0) + courseData.totalDuration;
-                    
-                    await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
-                    showToast(`Sub-course "${dirHandle.name}" added successfully (${courseData.videoCount} videos)!`, false);
-                    
-                    const subView = document.getElementById('subcourse-view');
-                    if (subView && subView.classList.contains('active')) {
-                        await renderSubcourseView(course.id, basePath);
-                    } else {
-                        await loadCoursesFromDB();
-                    }
-                } catch (e) {
-                    if (e.name !== 'AbortError') console.error(e);
-                } finally {
-                    document.getElementById('modal-overlay').classList.add('hidden');
                 }
-            });
-        }
+                
+                const addedVideoCount = courseData ? (courseData.videoCount || 0) : 0;
+                const addedDuration = courseData ? (courseData.totalDuration || 0) : 0;
+                course.videoCount = (course.videoCount || 0) + addedVideoCount;
+                course.totalDuration = (course.totalDuration || 0) + addedDuration;
+                
+                await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
+                showToast(`Sub-course "${dirHandle.name}" added successfully (${addedVideoCount} videos)!`, false);
+                
+                const subView = document.getElementById('subcourse-view');
+                if (subView && subView.classList.contains('active') && typeof renderSubcourseView === 'function') {
+                    await renderSubcourseView(course.id, basePath);
+                } else if (typeof loadCoursesFromDB === 'function') {
+                    await loadCoursesFromDB();
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error(e);
+            } finally {
+                const modal = document.getElementById('modal-overlay');
+                if (modal) modal.classList.add('hidden');
+            }
+        };
+
+        // Event listener removed as React ModalOverlayModal handles clicks
 
         async function processAndAddCourseFolder(dirHandle) {
             const courseData = await scanDirectoryHandle(dirHandle);
-            if (courseData.videoCount === 0) {
-                showToast(`No videos found in "${dirHandle.name || 'selected folder'}" or its subfolders.`, true);
-                return false;
-            }
+            const videoCount = courseData ? (courseData.videoCount || 0) : 0;
             const newCourse = {
                 id: Date.now() + Math.floor(Math.random() * 1000),
                 title: dirHandle.name || 'Imported Course',
                 handle: dirHandle,
-                videoCount: courseData.videoCount,
-                lectures: courseData.lectures,
-                totalDuration: courseData.totalDuration,
-                chapters: courseData.chapters
+                videoCount: videoCount,
+                lectures: courseData ? (courseData.lectures || []) : [],
+                totalDuration: courseData ? (courseData.totalDuration || 0) : 0,
+                chapters: courseData ? (courseData.chapters || []) : []
             };
             await new Promise((resolve, reject) => {
                 const req = getStore(STORE_NAME, 'readwrite').add(newCourse);
@@ -4765,6 +5225,19 @@ window.initCourseFlix = async function() {
                 req.onerror = reject;
             });
             await loadCoursesFromDB();
+            if (videoCount === 0) {
+                if (courseData && courseData.hasInaccessibleFiles) {
+                    showToast(`Error: Files in "${dirHandle.name || 'Course'}" are inaccessible (likely cloud-only placeholders). Please download them to your device first.`, true);
+                } else {
+                    showToast(`Course folder "${dirHandle.name || 'Course'}" added successfully (0 videos).`, false);
+                }
+            } else {
+                if (courseData && courseData.hasInaccessibleFiles) {
+                    showToast(`Course "${dirHandle.name || 'Course'}" added, but some files were inaccessible (likely cloud-only placeholders) and skipped.`, true);
+                } else {
+                    showToast(`Course "${dirHandle.name || 'Course'}" added successfully (${videoCount} videos)!`, false);
+                }
+            }
             return true;
         }
 
@@ -4797,16 +5270,125 @@ window.initCourseFlix = async function() {
             return null;
         }
 
-        document.getElementById('add-folder-btn').addEventListener('click', async () => { 
-            try {
-                const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
-                await processAndAddCourseFolder(dirHandle);
-            } catch (e) {
-                if (e.name !== 'AbortError') console.error(e);
-            } finally {
-                document.getElementById('modal-overlay').classList.add('hidden');
+        function pickFolderViaFileInput() {
+            return new Promise((resolve) => {
+                let input = document.getElementById('fallback-folder-input');
+                if (!input) {
+                    input = document.createElement('input');
+                    input.type = 'file';
+                    input.id = 'fallback-folder-input';
+                    input.webkitdirectory = true;
+                    input.directory = true;
+                    input.multiple = true;
+                    input.style.display = 'none';
+                    document.body.appendChild(input);
+                }
+                input.value = '';
+                input.onchange = (e) => {
+                    const files = Array.from(e.target.files || []);
+                    resolve(files);
+                };
+                input.oncancel = () => resolve([]);
+                input.click();
+            });
+        }
+
+        async function processAndAddCourseFiles(files) {
+            if (!files || files.length === 0) {
+                if (typeof showToast === 'function') showToast('Selected folder is empty or could not be read.', true);
+                return false;
             }
-        });
+            const firstPath = files[0].webkitRelativePath || files[0].name || 'Imported Course';
+            const folderName = firstPath.split('/')[0] || 'Imported Course';
+
+            const videoRegex = /\.(mp4|mkv|webm|mov|avi|m4v|ts|flv|wmv|3gp|ogv|mp3|m4a|aac)$/i;
+            const chapters = {};
+            const lectures = [];
+
+            for (const file of files) {
+                if (!videoRegex.test(file.name)) continue;
+                const rel = file.webkitRelativePath ? file.webkitRelativePath.substring(folderName.length + 1) : file.name;
+                const chapterName = rel.includes('/') ? rel.substring(0, rel.lastIndexOf('/')) : 'Main Content';
+                
+                if (!chapters[chapterName]) {
+                    chapters[chapterName] = { name: chapterName, lectures: [] };
+                }
+                
+                const id = `${file.name}_${file.size}_${file.lastModified}`;
+                const lectureData = {
+                    id: id,
+                    name: file.name.replace(/\.[^/.]+$/, ""),
+                    displayName: file.name.replace(/\.[^/.]+$/, ""),
+                    file: file,
+                    duration: 0,
+                    chapter: chapterName
+                };
+                chapters[chapterName].lectures.push(lectureData);
+                lectures.push(lectureData);
+            }
+
+            const sortedChapters = Object.values(chapters).sort((a, b) => naturalSort(a, b));
+            const newCourse = {
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                title: folderName,
+                isLinked: true,
+                videoCount: lectures.length,
+                lectures: lectures,
+                totalDuration: 0,
+                chapters: sortedChapters
+            };
+
+            await new Promise((resolve, reject) => {
+                const req = getStore(STORE_NAME, 'readwrite').add(newCourse);
+                req.onsuccess = resolve;
+                req.onerror = reject;
+            });
+
+            await loadCoursesFromDB();
+            if (lectures.length === 0) {
+                showToast(`Course folder "${folderName}" added successfully (0 videos).`, false);
+            } else {
+                showToast(`Course "${folderName}" added successfully (${lectures.length} videos)!`, false);
+            }
+            return true;
+        }
+
+        window.triggerAddCourseFolder = async function() {
+            try {
+                let dirHandle = null;
+                if (typeof window.showDirectoryPicker === 'function') {
+                    try {
+                        dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
+                    } catch (err) {
+                        if (err.name === 'AbortError') return;
+                        try {
+                            dirHandle = await window.showDirectoryPicker();
+                        } catch (err2) {
+                            if (err2.name === 'AbortError') return;
+                        }
+                    }
+                }
+
+                if (dirHandle) {
+                    await processAndAddCourseFolder(dirHandle);
+                } else {
+                    const files = await pickFolderViaFileInput();
+                    if (files && files.length > 0) {
+                        await processAndAddCourseFiles(files);
+                    }
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    console.error(e);
+                    if (typeof showToast === 'function') showToast('Error adding course folder: ' + (e.message || e), true);
+                }
+            } finally {
+                const modal = document.getElementById('modal-overlay');
+                if (modal) modal.classList.add('hidden');
+            }
+        };
+
+        // Event listeners removed as React ModalOverlayModal handles clicks natively
 
         // --- Drag & Drop Course Import (Dashboard Only) ---
         let dashDragCounter = 0;
@@ -5005,6 +5587,74 @@ window.initCourseFlix = async function() {
                 }
             }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
+
+        document.getElementById('add-custom-lectures-btn')?.addEventListener('click', () => {
+            if (!currentCourse || !currentCourse.isCustomCourse) return;
+            const fileInput = document.getElementById('custom-html-file-input');
+            if (fileInput) fileInput.click();
+        });
+
+        document.getElementById('custom-html-file-input')?.addEventListener('change', async (e) => {
+            if (!currentCourse || !currentCourse.isCustomCourse) return;
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const text = await file.text();
+            
+            const urlRegex = /https:\/\/unacademy-player\.netlify\.app\/[A-Za-z0-9]+/g;
+            const matches = text.match(urlRegex) || [];
+            const uniqueUrls = [...new Set(matches)];
+
+            if (uniqueUrls.length === 0) {
+                showToast("No valid Unacademy links found in this file.", true);
+                e.target.value = '';
+                return;
+            }
+
+            const startIndex = currentCourse.lectures ? currentCourse.lectures.length + 1 : 1;
+            const newLectures = uniqueUrls.map((url, i) => ({
+                id: 'lec_' + Date.now() + '_' + i,
+                displayName: 'Lecture ' + (startIndex + i),
+                url: url,
+                chapter: 'Lectures',
+                duration: 0
+            }));
+
+            currentCourse.lectures = [...(currentCourse.lectures || []), ...newLectures];
+            currentCourse.videoCount = currentCourse.lectures.length;
+            
+            if (!currentCourse.chapters || currentCourse.chapters.length === 0) {
+                currentCourse.chapters = [{
+                    name: 'Lectures',
+                    lectures: newLectures
+                }];
+            } else {
+                let defaultChapter = currentCourse.chapters.find(c => c.name === 'Lectures');
+                if (!defaultChapter) {
+                    defaultChapter = { name: 'Lectures', lectures: [] };
+                    currentCourse.chapters.push(defaultChapter);
+                }
+                defaultChapter.lectures = [...defaultChapter.lectures, ...newLectures];
+            }
+
+            await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(currentCourse).onsuccess = resolve);
+            
+            e.target.value = '';
+            
+            renderPlayer(currentCourse.id);
+            showToast(`${newLectures.length} lectures imported successfully!`);
+        });
+
+        document.getElementById('cancel-custom-course-urls-btn')?.addEventListener('click', () => {
+            const input = document.getElementById('custom-course-url-input');
+            if (input) input.value = '';
+            if (currentCourse && currentCourse.lectures && currentCourse.lectures.length > 0) {
+                document.getElementById('custom-course-input-container').classList.add('hidden');
+                document.getElementById('video-wrapper').classList.remove('hidden');
+            } else {
+                switchView('dashboard-view');
+            }
+        });
         
         // --- Import / Export ---
         const exportBtn = document.getElementById('export-btn');
@@ -5553,13 +6203,15 @@ window.initCourseFlix = async function() {
 
             // 3. Courses JSON + Thumbnails (Deduplicated base64)
             let coursesSize = 0;
+            const customCoursesData = { subjects: [] };
             try {
                 const cleanCoursesForCalc = [];
                 for (const c of courses) {
                     const cleanC = { ...c };
+                    let thumbSize = 0;
                     if (cleanC.thumbnail && typeof cleanC.thumbnail === 'string' && cleanC.thumbnail.startsWith('data:')) {
                         try {
-                            coursesSize += base64ToBlob(cleanC.thumbnail).size;
+                            thumbSize = base64ToBlob(cleanC.thumbnail).size;
                         } catch (e) {}
                         delete cleanC.thumbnail;
                     }
@@ -5573,11 +6225,42 @@ window.initCourseFlix = async function() {
                                 } catch (e) {}
                                 delete subObj.thumbnail;
                             }
+                            if (!cleanC.isCustomCourse) {
+                                coursesSize += thumbSize;
+                            }
                             newSub[sub] = subObj;
                         }
                         cleanC.subCourseData = newSub;
                     }
-                    cleanCoursesForCalc.push(cleanC);
+                    
+                    if (cleanC.isCustomCourse) {
+                        const jsonSize = new Blob([JSON.stringify(cleanC)]).size;
+                        customCoursesData.subjects.push({
+                            courseId: cleanC.id,
+                            title: cleanC.title || 'Untitled Custom Course',
+                            size: jsonSize + thumbSize,
+                            count: (cleanC.lectures ? cleanC.lectures.length : 0)
+                        });
+                    } else {
+                        if (cleanC.subCourseData) {
+                            for (const sub in cleanC.subCourseData) {
+                                const subcourseLectures = cleanC.lectures ? cleanC.lectures.filter(l => l.chapter === sub) : [];
+                                const isCustom = cleanC.subCourseData[sub].isCustom || subcourseLectures.some(l => l.customUrl);
+                                
+                                if (isCustom) {
+                                    const approxSize = new Blob([JSON.stringify(subcourseLectures)]).size;
+                                    customCoursesData.subjects.push({
+                                        courseId: `${cleanC.id}||${sub}`,
+                                        title: `${cleanC.title} - ${sub}`,
+                                        size: approxSize,
+                                        count: subcourseLectures.length
+                                    });
+                                }
+                            }
+                        }
+                        coursesSize += thumbSize;
+                        cleanCoursesForCalc.push(cleanC);
+                    }
                 }
                 coursesSize += new Blob([JSON.stringify(cleanCoursesForCalc)]).size;
             } catch (e) {}
@@ -5644,6 +6327,7 @@ window.initCourseFlix = async function() {
                     history: historySize,
                     settings: settingsSize
                 },
+                customCoursesData,
                 raw: {
                     allProgress,
                     allDpps,
@@ -5660,9 +6344,8 @@ window.initCourseFlix = async function() {
             let modal = document.getElementById('export-backup-modal');
             if (modal) modal.remove();
 
-            const { notesData, dppsData, categorySizes } = analysis;
+            const { notesData, dppsData, categorySizes, customCoursesData } = analysis;
 
-            // Generate Subject Rows HTML for DPPs / Assignments
             const dppSubjectRowsHtml = dppsData.subjects.length === 0
                 ? `<div style="padding: 8px 12px; font-size: 0.82rem; color: #94a3b8; font-style: italic;">No DPP or Assignment PDFs found</div>`
                 : dppsData.subjects.map(s => `
@@ -5672,7 +6355,7 @@ window.initCourseFlix = async function() {
                             <span style="font-size: 0.88rem; font-weight: 600; color: #f1f5f9;">${s.title}</span>
                         </label>
                         <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 600; background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px;">
-                            ${s.totalCount} item${s.totalCount > 1 ? 's' : ''} (${formatBytes(s.size)})
+                            ${s.dppCount} DPP${s.dppCount > 1 ? 's' : ''} (${formatBytes(s.size)})
                         </span>
                     </div>
                 `).join('');
@@ -5688,6 +6371,21 @@ window.initCourseFlix = async function() {
                         </label>
                         <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 600; background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px;">
                             ${s.count} PDF${s.count > 1 ? 's' : ''} (${formatBytes(s.size)})
+                        </span>
+                    </div>
+                `).join('');
+
+            const customCoursesTotalSize = customCoursesData.subjects.reduce((sum, s) => sum + s.size, 0);
+            const customCourseRowsHtml = customCoursesData.subjects.length === 0
+                ? `<div style="padding: 8px 12px; font-size: 0.82rem; color: #94a3b8; font-style: italic;">No Custom Courses found</div>`
+                : customCoursesData.subjects.map(s => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.25); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                            <input type="checkbox" class="export-custom-course-cb" data-course-id="${s.courseId}" checked style="width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;" />
+                            <span style="font-size: 0.88rem; font-weight: 600; color: #f1f5f9;">${s.title}</span>
+                        </label>
+                        <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 600; background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px;">
+                            ${s.count} lecture${s.count !== 1 ? 's' : ''} (${formatBytes(s.size)})
                         </span>
                     </div>
                 `).join('');
@@ -5781,6 +6479,33 @@ window.initCourseFlix = async function() {
                             <!-- Subject Breakdown Container -->
                             <div id="notes-subject-container" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.1); flex-direction: column; gap: 8px;">
                                 ${notesSubjectRowsHtml}
+                            </div>
+                        </div>
+
+                        <!-- 2.5 Custom Courses (Root) -->
+                        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; transition: border-color 0.2s;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1; margin: 0; user-select: none;">
+                                    <input type="checkbox" id="export-cat-custom-courses-cb" checked style="width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.98rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                                            <i class="fas fa-link" style="color: #10b981;"></i> Custom Courses
+                                        </div>
+                                        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Your web-linked custom root courses</div>
+                                    </div>
+                                </label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span id="export-cat-custom-courses-size" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700;">
+                                        ${formatBytes(customCoursesTotalSize)}
+                                    </span>
+                                    <button id="toggle-custom-courses-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #e2e8f0; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" title="Show Subject Wise Custom Courses">
+                                        <i class="fas fa-chevron-down" id="custom-courses-chevron-icon" style="transition: transform 0.2s ease;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Subject Breakdown Container -->
+                            <div id="custom-courses-container" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.1); flex-direction: column; gap: 8px;">
+                                ${customCourseRowsHtml}
                             </div>
                         </div>
 
@@ -5882,6 +6607,7 @@ window.initCourseFlix = async function() {
             // Element references
             const catDppsCb = modal.querySelector('#export-cat-dpps-cb');
             const catNotesCb = modal.querySelector('#export-cat-notes-cb');
+            const catCustomCoursesCb = modal.querySelector('#export-cat-custom-courses-cb');
             const catCoursesCb = modal.querySelector('#export-cat-courses-cb');
             const catDoubtsCb = modal.querySelector('#export-cat-doubts-cb');
             const catHistoryCb = modal.querySelector('#export-cat-history-cb');
@@ -5889,13 +6615,19 @@ window.initCourseFlix = async function() {
 
             const dppSubjCbs = modal.querySelectorAll('.export-dpp-subj-cb');
             const notesSubjCbs = modal.querySelectorAll('.export-notes-subj-cb');
+            const customCoursesSubjCbs = modal.querySelectorAll('.export-custom-course-cb');
 
             const toggleDppsBtn = modal.querySelector('#toggle-dpps-subject-btn');
             const toggleNotesBtn = modal.querySelector('#toggle-notes-subject-btn');
+            const toggleCustomCoursesBtn = modal.querySelector('#toggle-custom-courses-btn');
+            
             const dppsSubjContainer = modal.querySelector('#dpps-subject-container');
             const notesSubjContainer = modal.querySelector('#notes-subject-container');
+            const customCoursesContainer = modal.querySelector('#custom-courses-container');
+            
             const dppsChevronIcon = modal.querySelector('#dpps-chevron-icon');
             const notesChevronIcon = modal.querySelector('#notes-chevron-icon');
+            const customCoursesChevronIcon = modal.querySelector('#custom-courses-chevron-icon');
 
             const totalSizeDisplay = modal.querySelector('#export-total-size-display');
             const btnSizeSpan = modal.querySelector('#export-btn-size-span');
@@ -5919,6 +6651,15 @@ window.initCourseFlix = async function() {
                     const isHidden = notesSubjContainer.style.display === 'none';
                     notesSubjContainer.style.display = isHidden ? 'flex' : 'none';
                     if (notesChevronIcon) notesChevronIcon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+                });
+            }
+
+            if (toggleCustomCoursesBtn && customCoursesContainer) {
+                toggleCustomCoursesBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const isHidden = customCoursesContainer.style.display === 'none';
+                    customCoursesContainer.style.display = isHidden ? 'flex' : 'none';
+                    if (customCoursesChevronIcon) customCoursesChevronIcon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
                 });
             }
 
@@ -5949,6 +6690,15 @@ window.initCourseFlix = async function() {
                     }
                 });
 
+                // Sum Custom Courses selected sizes
+                customCoursesSubjCbs.forEach(cb => {
+                    if (cb.checked) {
+                        const cId = cb.dataset.courseId;
+                        const subj = customCoursesData.subjects.find(s => String(s.courseId) === String(cId));
+                        if (subj) bytes += subj.size;
+                    }
+                });
+
                 const formatted = formatBytes(bytes);
                 if (totalSizeDisplay) totalSizeDisplay.textContent = formatted;
                 if (btnSizeSpan) btnSizeSpan.textContent = formatted;
@@ -5970,6 +6720,13 @@ window.initCourseFlix = async function() {
                 });
             }
 
+            if (catCustomCoursesCb) {
+                catCustomCoursesCb.addEventListener('change', () => {
+                    customCoursesSubjCbs.forEach(cb => cb.checked = catCustomCoursesCb.checked);
+                    updateSelectionSizes();
+                });
+            }
+
             // Subject checkbox listeners
             dppSubjCbs.forEach(cb => {
                 cb.addEventListener('change', () => {
@@ -5983,6 +6740,14 @@ window.initCourseFlix = async function() {
                 cb.addEventListener('change', () => {
                     const checkedCount = Array.from(notesSubjCbs).filter(c => c.checked).length;
                     if (catNotesCb) catNotesCb.checked = (checkedCount > 0);
+                    updateSelectionSizes();
+                });
+            });
+
+            customCoursesSubjCbs.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const checkedCount = Array.from(customCoursesSubjCbs).filter(c => c.checked).length;
+                    if (catCustomCoursesCb) catCustomCoursesCb.checked = (checkedCount > 0);
                     updateSelectionSizes();
                 });
             });
@@ -6002,6 +6767,7 @@ window.initCourseFlix = async function() {
             confirmBtn?.addEventListener('click', async () => {
                 const selectedDppSubjectIds = new Set(Array.from(dppSubjCbs).filter(cb => cb.checked).map(cb => String(cb.dataset.courseId)));
                 const selectedNotesSubjectIds = new Set(Array.from(notesSubjCbs).filter(cb => cb.checked).map(cb => String(cb.dataset.courseId)));
+                const selectedCustomCourseIds = new Set(Array.from(customCoursesSubjCbs).filter(cb => cb.checked).map(cb => String(cb.dataset.courseId)));
 
                 const options = {
                     exportCourses: catCoursesCb ? catCoursesCb.checked : true,
@@ -6011,7 +6777,8 @@ window.initCourseFlix = async function() {
                     exportDppPdf: catDppsCb ? catDppsCb.checked : true,
                     selectedDppSubjectIds,
                     exportNotesPdf: catNotesCb ? catNotesCb.checked : true,
-                    selectedNotesSubjectIds
+                    selectedNotesSubjectIds,
+                    selectedCustomCourseIds
                 };
 
                 await executeSelectiveExport(analysis, options);
@@ -6031,9 +6798,31 @@ window.initCourseFlix = async function() {
 
                 // 1. Courses
                 const serializableCourses = [];
-                if (options.exportCourses) {
-                    for (const course of raw.courses) {
-                        const cleanCourse = { ...course };
+                for (const course of raw.courses) {
+                    // Decide if we should export this course
+                    let shouldExport = false;
+                    if (course.isCustomCourse) {
+                        shouldExport = options.selectedCustomCourseIds.has(String(course.id));
+                    } else {
+                        shouldExport = options.exportCourses;
+                        
+                        // If standard courses are unchecked, but a contained custom subcourse IS checked, we must export the parent.
+                        if (!shouldExport && course.subCourseData) {
+                            for (const sub in course.subCourseData) {
+                                const subcourseLectures = course.lectures ? course.lectures.filter(l => l.chapter === sub) : [];
+                                const isCustom = course.subCourseData[sub].isCustom || subcourseLectures.some(l => l.customUrl);
+                                
+                                if (isCustom && options.selectedCustomCourseIds.has(`${course.id}||${sub}`)) {
+                                    shouldExport = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!shouldExport) continue;
+
+                    const cleanCourse = { ...course };
                         delete cleanCourse.handle;
                         if (cleanCourse.lectures) {
                             cleanCourse.lectures = cleanCourse.lectures.map(l => {
@@ -6085,7 +6874,6 @@ window.initCourseFlix = async function() {
                         }
                         delete cleanCourse.thumbnail;
                         serializableCourses.push(cleanCourse);
-                    }
                 }
 
                 // 2. Progress & Lecture Notes / Lecture Assignments
@@ -6444,10 +7232,31 @@ window.initCourseFlix = async function() {
                         if (!newCourse.handle) throw new Error(`Folder for ${course.title} was not linked.`);
                         try {
                             const courseData = await scanDirectoryHandle(newCourse.handle, '', newCourse.lectures || [], true);
+                            
+                            // Preserve custom lectures and chapters from backup that don't have disk handles
+                            if (newCourse.lectures) {
+                                const customLectures = newCourse.lectures.filter(l => l.customUrl);
+                                if (customLectures.length > 0) {
+                                    courseData.lectures.push(...customLectures);
+                                    
+                                    const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
+                                    customChapterNames.forEach(chapterName => {
+                                        if (!courseData.chapters.find(ch => ch.name === chapterName)) {
+                                            const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                                            courseData.chapters.push({ name: chapterName, lectures: chapterLectures });
+                                        } else {
+                                            const existingChapter = courseData.chapters.find(ch => ch.name === chapterName);
+                                            const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                                            existingChapter.lectures.push(...chapterLectures);
+                                        }
+                                    });
+                                }
+                            }
+
                             newCourse.lectures = courseData.lectures;
-                            newCourse.totalDuration = courseData.totalDuration;
-                            newCourse.chapters = courseData.chapters;
-                            newCourse.videoCount = courseData.videoCount;
+                            newCourse.totalDuration = courseData.lectures.reduce((sum, l) => sum + (l.duration||0), 0);
+                            newCourse.chapters = courseData.chapters.sort((a,b)=>naturalSort(a,b));
+                            newCourse.videoCount = courseData.lectures.length;
                             enrichCourseDurationsInBackground(newCourse.id, newCourse.handle);
                         } catch (e) {
                             console.error(`Error scanning imported course "${course.title}":`, e);
@@ -6617,22 +7426,32 @@ window.initCourseFlix = async function() {
             unmuteBtn.classList.add('hidden');
         });
         const showSeekIcon = (overlay) => { overlay.classList.add('show-icon'); setTimeout(() => overlay.classList.remove('show-icon'), 500); };
-        playPauseBtn.addEventListener('click', () => videoPlayer.paused ? videoPlayer.play() : videoPlayer.pause());
+        playPauseBtn.addEventListener('click', () => {
+            if (videoPlayer.paused) {
+                const playPromise = videoPlayer.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        if (error.name !== 'AbortError') console.error("Playback failed:", error);
+                    });
+                }
+            } else {
+                videoPlayer.pause();
+            }
+        });
+
+
+        // Heuristic tracker removed
+
         videoPlayer.addEventListener('play', () => playPauseBtn.innerHTML = `<i class="fas fa-pause"></i>`);
         videoPlayer.addEventListener('pause', () => {
             playPauseBtn.innerHTML = `<i class="fas fa-play"></i>`;
         });
         videoPlayer.addEventListener('ended', () => {
-            if (brownNoiseAudio && !brownNoiseAudio.paused) {
-                brownNoiseAudio.pause();
+            const bna = document.getElementById('brown-noise-audio');
+            if (bna && !bna.paused) {
+                bna.pause();
             }
         });
-        if (brownNoiseAudio) {
-            brownNoiseAudio.addEventListener('ended', () => {
-                brownNoiseAudio.currentTime = 20;
-                brownNoiseAudio.play();
-            });
-        }
         let controlsTimeout = null;
         function resetControlsTimeout() {
             if (!videoWrapper) return;
@@ -6785,7 +7604,7 @@ window.initCourseFlix = async function() {
             }
             timeline.blur();
         });
-        fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => showToast(`Error: ${err.message}`, true)); else document.exitFullscreen(); });
+        fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) { const wrapper = document.getElementById('player-view'); if(wrapper) wrapper.requestFullscreen().catch(err => showToast(`Error: ${err.message}`, true)); } else document.exitFullscreen(); });
         
         const speeds = [1, 1.25, 1.5, 1.6, 1.75, 1.85, 2, 2.25, 2.5, 3]; let currentSpeedIndex = 4; // Default 1.75x
         const savedPlaybackSpeed = parseFloat(localStorage.getItem('defaultPlaybackSpeed') || '1.75');
@@ -6981,7 +7800,7 @@ window.initCourseFlix = async function() {
                 case 'n': 
                     if (e.shiftKey) {
                         e.preventDefault();
-                        if (view.id === 'player-view') window.togglePlayerNotesPanel();
+                        if (view.id === 'player-view') window.togglePdfViewer();
                     } else {
                         if (view.id === 'player-view' && currentLectureLi) {
                             const nextLi = getNextLectureLi(currentLectureLi);
@@ -7009,13 +7828,28 @@ window.initCourseFlix = async function() {
                     }
                     break;
                 case 'z':
+                case 'Z':
                     if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
                         if (e.ctrlKey || e.metaKey) {
-                            e.preventDefault();
                             cycleBookmarks();
                         } else {
                             addBookmark();
                         }
+                    }
+                    break;
+                case 't':
+                case 'T':
+                    if (view.id === 'player-view' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        jumpToPresentTimeline();
+                    }
+                    break;
+                case 'Enter':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        window.dispatchEvent(new CustomEvent('toggle-floating-timer'));
                     }
                     break;
                 case 'q':
@@ -7075,55 +7909,46 @@ window.initCourseFlix = async function() {
                     if (view.id === 'player-view') {
                         const isMuted = !videoPlayer.muted;
                         videoPlayer.muted = isMuted;
-                        if (brownNoiseAudio) brownNoiseAudio.muted = isMuted;
+                        const bna = document.getElementById('brown-noise-audio');
+                        if (bna) bna.muted = isMuted;
                         unmuteBtn.classList.toggle('hidden', !isMuted);
                     }
                     break;
                 case 'b':
-                    if (view.id === 'player-view' && brownNoiseAudio) {
-                        const playAudio = () => {
-                            if (brownNoiseAudio.paused) {
-                                brownNoiseAudio.currentTime = 20;
+                    if (view.id === 'player-view') {
+                        const bna = document.getElementById('brown-noise-audio');
+                        if (bna) {
+                            if (bna.paused) {
+                                bna.currentTime = 20;
                                 const savedVol = localStorage.getItem('brownNoiseVolume');
-                                brownNoiseAudio.volume = savedVol !== null ? parseFloat(savedVol) : 0.2;
-                                brownNoiseAudio.play();
+                                bna.volume = savedVol !== null ? parseFloat(savedVol) : 0.2;
+                                bna.play().catch(e => console.error("Playback failed", e));
                                 showToast("Brown Noise Mode: ON");
                             } else {
-                                brownNoiseAudio.pause();
+                                bna.pause();
                                 showToast("Brown Noise Mode: OFF");
                             }
-                        };
-                        
-                        if (!brownNoiseAudio.dataset.blobLoaded) {
-                            showToast("Loading Brown Noise...");
-                            fetch('brown.mp3')
-                                .then(res => res.blob())
-                                .then(blob => {
-                                    brownNoiseAudio.src = URL.createObjectURL(blob);
-                                    brownNoiseAudio.dataset.blobLoaded = 'true';
-                                    playAudio();
-                                })
-                                .catch(err => {
-                                    console.error("Failed to fetch brown noise:", err);
-                                    showToast("Error loading brown noise");
-                                });
-                        } else {
-                            playAudio();
                         }
                     }
                     break;
                 case 'PageUp':
-                    if (view.id === 'player-view' && brownNoiseAudio) {
-                        brownNoiseAudio.volume = Math.min(1, brownNoiseAudio.volume + 0.01);
-                        localStorage.setItem('brownNoiseVolume', brownNoiseAudio.volume);
-                        showToast(`Brown Noise Vol: ${Math.round(brownNoiseAudio.volume * 100)}%`);
+                    if (view.id === 'player-view') {
+                        const bna = document.getElementById('brown-noise-audio');
+                        if (bna) {
+                            bna.volume = Math.min(1, bna.volume + 0.01);
+                            localStorage.setItem('brownNoiseVolume', bna.volume);
+                            showToast(`Brown Noise Vol: ${Math.round(bna.volume * 100)}%`);
+                        }
                     }
                     break;
                 case 'PageDown':
-                    if (view.id === 'player-view' && brownNoiseAudio) {
-                        brownNoiseAudio.volume = Math.max(0, brownNoiseAudio.volume - 0.01);
-                        localStorage.setItem('brownNoiseVolume', brownNoiseAudio.volume);
-                        showToast(`Brown Noise Vol: ${Math.round(brownNoiseAudio.volume * 100)}%`);
+                    if (view.id === 'player-view') {
+                        const bna = document.getElementById('brown-noise-audio');
+                        if (bna) {
+                            bna.volume = Math.max(0, bna.volume - 0.01);
+                            localStorage.setItem('brownNoiseVolume', bna.volume);
+                            showToast(`Brown Noise Vol: ${Math.round(bna.volume * 100)}%`);
+                        }
                     }
                     break;
                 case '/':
@@ -7202,12 +8027,34 @@ window.initCourseFlix = async function() {
         });
 
         // --- Bookmark Functions ---
+        function getActiveLectureId() {
+            if (typeof window !== 'undefined') {
+                if (window.currentActiveLectureId) return window.currentActiveLectureId;
+                if (window.currentLectureId) return window.currentLectureId;
+            }
+            if (typeof currentLectureLi !== 'undefined' && currentLectureLi && currentLectureLi.dataset && currentLectureLi.dataset.lectureId) {
+                return currentLectureLi.dataset.lectureId;
+            }
+            if (typeof document !== 'undefined') {
+                const activeLi = document.querySelector('#chapter-list li.active, .lecture-item.active');
+                if (activeLi && activeLi.dataset && activeLi.dataset.lectureId) {
+                    return activeLi.dataset.lectureId;
+                }
+            }
+            const course = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            if (course && course.lastPlayedLecture && course.lastPlayedLecture.lectureId) {
+                return course.lastPlayedLecture.lectureId;
+            }
+            return null;
+        }
+
         function renderBookmarks() {
             bookmarksContainer.innerHTML = '';
-            if (!currentCourse || !currentLectureLi || isNaN(videoPlayer.duration)) return;
+            const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            const lectureId = getActiveLectureId();
+            if (!activeCourse || !lectureId || !videoPlayer || isNaN(videoPlayer.duration) || !videoPlayer.duration) return;
 
-            const lectureId = currentLectureLi.dataset.lectureId;
-            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const progress = getLectureProgress(activeCourse.id, lectureId);
             const bookmarks = progress.bookmarks || [];
 
             bookmarks.forEach(time => {
@@ -7234,30 +8081,70 @@ window.initCourseFlix = async function() {
                     e.stopPropagation();
                     if (dot.dataset.deletable === 'true') {
                         const newBookmarks = bookmarks.filter(b => b !== time);
-                        await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks: newBookmarks });
+                        await saveLectureProgress({ ...progress, courseId: activeCourse.id, lectureId, bookmarks: newBookmarks });
                         renderBookmarks();
                         showToast('Bookmark removed');
                     } else {
                         videoPlayer.currentTime = time;
+                        showToast(`Jumped to bookmark: ${formatTime(time)}`);
                     }
                 };
                 bookmarksContainer.appendChild(dot);
             });
+
+            // Populate Bookmarks Popover List
+            const popoverList = document.getElementById('bookmarks-popover-list');
+            if (popoverList) {
+                popoverList.innerHTML = '';
+                if (bookmarks.length === 0) {
+                    popoverList.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);text-align:center;padding:10px 0;">No bookmarks saved yet. Press Z to add!</div>';
+                } else {
+                    bookmarks.forEach(time => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:0.82rem;border:1px solid var(--border-secondary);';
+                        item.innerHTML = `
+                            <span class="bookmark-time-link" style="color:var(--accent-primary);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:6px;">
+                                <i class="fas fa-play" style="font-size:0.7rem;"></i> ${formatTime(time)}
+                            </span>
+                            <button class="delete-bookmark-item-btn" style="background:none;border:none;color:var(--accent-danger);cursor:pointer;font-size:0.85rem;padding:2px 4px;" title="Remove bookmark"><i class="fas fa-trash"></i></button>
+                        `;
+                        item.querySelector('.bookmark-time-link').onclick = (e) => {
+                            e.stopPropagation();
+                            videoPlayer.currentTime = time;
+                            showToast(`Jumped to bookmark: ${formatTime(time)}`);
+                        };
+                        item.querySelector('.delete-bookmark-item-btn').onclick = async (e) => {
+                            e.stopPropagation();
+                            const newBookmarks = bookmarks.filter(b => b !== time);
+                            await saveLectureProgress({ ...progress, courseId: activeCourse.id, lectureId, bookmarks: newBookmarks });
+                            renderBookmarks();
+                            showToast('Bookmark removed');
+                        };
+                        popoverList.appendChild(item);
+                    });
+                }
+            }
         }
 
+        videoPlayer?.addEventListener('loadedmetadata', renderBookmarks);
+        videoPlayer?.addEventListener('durationchange', renderBookmarks);
+
         async function addBookmark() {
-            if (!currentCourse || !currentLectureLi || videoPlayer.seeking) return;
-            const lectureId = currentLectureLi.dataset.lectureId;
-            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            const lectureId = getActiveLectureId();
+            if (!activeCourse || !lectureId || !videoPlayer) return;
+            const progress = getLectureProgress(activeCourse.id, lectureId);
             const bookmarks = progress.bookmarks || [];
             const currentTime = videoPlayer.currentTime;
 
             if (!bookmarks.some(b => Math.abs(b - currentTime) < 1)) { // Avoid duplicate bookmarks
                 bookmarks.push(currentTime);
                 bookmarks.sort((a, b) => a - b);
-                await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks });
+                await saveLectureProgress({ ...progress, courseId: activeCourse.id, lectureId, bookmarks });
                 renderBookmarks();
                 showToast(`Bookmark added at ${formatTime(currentTime)}`);
+            } else {
+                showToast(`Bookmark already exists at ${formatTime(currentTime)}`);
             }
         }
 
@@ -7265,9 +8152,10 @@ window.initCourseFlix = async function() {
         window.isBookmarkCyclingSession = false;
 
         function cycleBookmarks() {
-            if (!currentCourse || !currentLectureLi || !videoPlayer) return;
-            const lectureId = currentLectureLi.dataset.lectureId;
-            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            const lectureId = getActiveLectureId();
+            if (!activeCourse || !lectureId || !videoPlayer) return;
+            const progress = getLectureProgress(activeCourse.id, lectureId);
             const bookmarks = progress.bookmarks || [];
 
             if (bookmarks.length === 0) {
@@ -7306,17 +8194,18 @@ window.initCourseFlix = async function() {
         }
 
         async function clearCurrentVideoBookmarks() {
-            if (!currentCourse || !currentLectureLi) return;
+            const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            const lectureId = getActiveLectureId();
+            if (!activeCourse || !lectureId) return;
              if (confirm('Are you sure you want to clear all bookmarks for this video?')) {
-                const lectureId = currentLectureLi.dataset.lectureId;
-                const progress = getLectureProgress(currentCourse.id, lectureId);
-                await saveLectureProgress({ ...progress, courseId: currentCourse.id, lectureId, bookmarks: [] });
+                const progress = getLectureProgress(activeCourse.id, lectureId);
+                await saveLectureProgress({ ...progress, courseId: activeCourse.id, lectureId, bookmarks: [] });
                 renderBookmarks();
                 showToast('Bookmarks cleared for this video.');
             }
         }
         
-        clearBookmarksBtn.addEventListener('click', async () => {
+        clearBookmarksBtn?.addEventListener('click', async () => {
              if (!currentCourse) return;
              if (confirm(`Are you sure you want to clear ALL bookmarks for the course "${currentCourse.title}"? This cannot be undone.`)) {
                  for (const lecture of currentCourse.lectures) {
@@ -8411,30 +9300,43 @@ window.initCourseFlix = async function() {
                     }
                 }
 
-                // Sort files chronologically / numerically by the number extracted from their name
-                fileList.sort((a, b) => {
-                    const numA = extractNumberFromText(a.name);
-                    const numB = extractNumberFromText(b.name);
-                    if (numA !== null && numB !== null) {
-                        return numA - numB;
+                // Sort files in natural filename order (e.g. 1.pdf, 2.pdf, ..., 10.pdf)
+                fileList.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+                // Determine starting lecture index:
+                // 1. If a lecture is currently selected, start from that selected lecture.
+                // 2. Otherwise, find the first lecture in the list that does not have a file of this type attached yet.
+                let startIdx = -1;
+                const selectedLectureEl = document.querySelector('#upload-lecture-list .lecture-item.selected');
+                if (selectedLectureEl) {
+                    startIdx = lectureEls.indexOf(selectedLectureEl);
+                }
+
+                if (startIdx === -1) {
+                    startIdx = lectureEls.findIndex(el => {
+                        const lId = el.dataset.lectureId;
+                        const prog = getLectureProgress(courseId, lId);
+                        return type === 'pdf' ? (!prog.pdfHandle && !prog.pdfName) : (!prog.assignmentHandle && !prog.assignmentName);
+                    });
+
+                    if (startIdx === -1) {
+                        startIdx = lectureEls.length;
                     }
-                    if (numA !== null) return -1;
-                    if (numB !== null) return 1;
-                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-                });
+                }
 
                 let assignedCount = 0;
-                let failedFiles = [];
+                let unattachedCount = 0;
 
-                for (const file of fileList) {
-                    const num = extractNumberFromText(file.name);
+                for (let i = 0; i < fileList.length; i++) {
+                    const file = fileList[i];
+                    const targetIdx = startIdx + i;
 
-                    if (num !== null && num >= 1 && num <= lectureEls.length) {
-                        const targetEl = lectureEls[num - 1]; // 1-indexed position in current stack
+                    if (targetIdx < lectureEls.length) {
+                        const targetEl = lectureEls[targetIdx];
                         const lectureId = targetEl.dataset.lectureId;
                         const progressData = getLectureProgress(courseId, lectureId);
 
-                        const autoName = `${folderDisplayName} ${num}`;
+                        const autoName = file.name || `${folderDisplayName} ${targetIdx + 1}`;
 
                         if (type === 'pdf') {
                             await saveLectureProgress({
@@ -8469,22 +9371,21 @@ window.initCourseFlix = async function() {
 
                         assignedCount++;
                     } else {
-                        if (num === null) {
-                            failedFiles.push(`${file.name} (No lecture number found)`);
-                        } else {
-                            failedFiles.push(`${file.name} (Lecture ${num} does not exist)`);
-                        }
+                        unattachedCount++;
                     }
                 }
 
-                if (failedFiles.length > 0) {
-                    const errorMsg = `Failed to add ${failedFiles.length} file(s): ${failedFiles.join(', ')}`;
-                    showToast(errorMsg, true);
+                if (assignedCount > 0) {
+                    if (unattachedCount > 0) {
+                        showToast(`Attached ${assignedCount} ${type === 'pdf' ? 'PDF(s)' : 'file(s)'}. ${unattachedCount} file(s) couldn't be attached as videos are simply not available.`, true);
+                    } else {
+                        showToast(`Attached ${assignedCount} ${type === 'pdf' ? 'notes PDF(s)' : 'assignment file(s)'}!`);
+                    }
+                } else if (unattachedCount > 0) {
+                    showToast(`${unattachedCount} file(s) couldn't be attached as videos are simply not available.`, true);
                 }
 
-                if (assignedCount > 0) {
-                    showToast(`Smart Add: Assigned ${assignedCount} ${type === 'pdf' ? 'notes PDF(s)' : 'assignment file(s)'}!`);
-                }
+                updateDropZonesForSelectedLecture();
                 return;
             }
 
@@ -9044,53 +9945,60 @@ window.initCourseFlix = async function() {
         }
 
         async function renderHistoryView() {
-            await ensureDB();
-            await cleanupOrphanedHistoryEntries();
-            const history = await getHistoryEntries();
-            const now = new Date();
-            
-            // Filter history for the last 30 hours and exclude deleted/ignored courses & subfolders
-            const thirtyHoursAgo = new Date(now.getTime() - (30 * 60 * 60 * 1000));
-            const recentHistory = history.filter(h => {
-                if (h.isHiddenFromHistory) return false;
-                if (new Date(h.timestamp) < thirtyHoursAgo) return false;
+            try {
+                await ensureDB();
+                await cleanupOrphanedHistoryEntries().catch(() => {});
+                const history = await getHistoryEntries().catch(() => []);
+                const now = new Date();
+                
+                // Filter history for the last 30 hours and exclude deleted/ignored courses & subfolders
+                const thirtyHoursAgo = new Date(now.getTime() - (30 * 60 * 60 * 1000));
+                const recentHistory = (history || []).filter(h => {
+                    if (h.isHiddenFromHistory) return false;
+                    if (new Date(h.timestamp) < thirtyHoursAgo) return false;
 
-                const course = (courses || []).find(c => c.id === parseInt(h.courseId));
-                if (!course) return false;
+                    const course = (courses || []).find(c => c.id === parseInt(h.courseId));
+                    if (!course) return false;
 
-                if (h.subfolder) {
-                    if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return false;
-                }
-                return true;
-            });
-            recentHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Newest first
-            
-            const tableBody = document.getElementById('history-table-body');
-            if (!tableBody) return;
-            tableBody.innerHTML = '';
-            if (recentHistory.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-secondary);">No watch history found for the last 30 hours.</td></tr>';
-            } else {
-                let htmlStr = '';
-                recentHistory.forEach(h => {
-                    htmlStr += `
-                    <tr style="border-bottom: 1px solid var(--border-secondary);">
-                        <td style="padding: 12px 16px; display: flex; align-items: center; gap: 10px;">
-                            ${h.thumbnail ? `<img src="${h.thumbnail}" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover;">` : `<div style="width: 40px; height: 40px; background: var(--bg-tertiary); border-radius: 4px; display: flex; align-items: center; justify-content: center;"><i class="fas fa-video"></i></div>`}
-                            <span>${h.courseTitle}</span>
-                        </td>
-                        <td style="padding: 12px 16px;">
-                            <a href="#" class="history-play-link" data-course="${h.courseId}" data-lecture="${h.lectureId}" data-subfolder="${h.subfolder || ''}" style="color: var(--accent-primary); text-decoration: none; font-weight: 500;">${h.lectureName}</a>
-                        </td>
-                        <td style="padding: 12px 16px; color: var(--text-secondary);">${formatDuration(h.duration || 0)}</td>
-                        <td style="padding: 12px 16px; color: var(--text-secondary);">${new Date(h.timestamp).toLocaleString(undefined, { day: 'numeric', month: 'long', weekday: 'long', hour: 'numeric', minute: 'numeric' })}</td>
-                        <td style="padding: 12px 16px; text-align: right;">
-                            <button class="delete-history-btn" data-id="${h.id}" style="background: none; border: none; color: var(--accent-danger); cursor: pointer; padding: 4px;"><i class="fas fa-times"></i></button>
-                        </td>
-                    </tr>
-                    `;
+                    if (h.subfolder) {
+                        if (course.subCourseData && course.subCourseData[h.subfolder] && course.subCourseData[h.subfolder].hidden) return false;
+                    }
+                    return true;
                 });
-                tableBody.innerHTML = htmlStr;
+                recentHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Newest first
+                
+                const tableBody = document.getElementById('history-table-body');
+                if (!tableBody) return;
+                tableBody.innerHTML = '';
+                if (recentHistory.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-secondary);">No watch history found for the last 30 hours.</td></tr>';
+                } else {
+                    let htmlStr = '';
+                    recentHistory.forEach(h => {
+                        htmlStr += `
+                        <tr style="border-bottom: 1px solid var(--border-secondary);">
+                            <td style="padding: 12px 16px; display: flex; align-items: center; gap: 10px; max-width: 300px; overflow: hidden;">
+                                ${h.thumbnail ? `<img src="${h.thumbnail}" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex-shrink: 0;">` : `<div style="width: 40px; height: 40px; background: var(--bg-tertiary); border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><i class="fas fa-video"></i></div>`}
+                                <div style="display: flex; align-items: center; overflow: hidden;">
+                                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;">${h.courseTitle}</span>
+                                    ${(h.subfolder && (courses || []).find(c => c.id === parseInt(h.courseId))) ? `<span style="color: #22c55e; font-size: 0.85rem; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1;">${getSubfolderDisplayName((courses || []).find(c => c.id === parseInt(h.courseId)), h.subfolder)}</span>` : ''}
+                                </div>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <a href="#" class="history-play-link" data-course="${h.courseId}" data-lecture="${h.lectureId}" data-subfolder="${h.subfolder || ''}" style="color: var(--accent-primary); text-decoration: none; font-weight: 500;">${h.lectureName}</a>
+                            </td>
+                            <td style="padding: 12px 16px; color: var(--text-secondary);">${formatDuration(h.duration || 0)}</td>
+                            <td style="padding: 12px 16px; color: var(--text-secondary);">${new Date(h.timestamp).toLocaleString(undefined, { day: 'numeric', month: 'long', weekday: 'long', hour: 'numeric', minute: 'numeric' })}</td>
+                            <td style="padding: 12px 16px; text-align: right;">
+                                <button class="delete-history-btn" data-id="${h.id}" style="background: none; border: none; color: var(--accent-danger); cursor: pointer; padding: 4px;"><i class="fas fa-times"></i></button>
+                            </td>
+                        </tr>
+                        `;
+                    });
+                    tableBody.innerHTML = htmlStr;
+                }
+            } catch (err) {
+                console.warn('Error in renderHistoryView:', err);
             }
         }
         window.renderHistoryView = renderHistoryView;
@@ -11975,16 +12883,40 @@ window.initCourseFlix = async function() {
         };
 
         window.togglePlayerNotesPanel = function() {
-            if (!currentCourse || !currentLectureLi) return;
-            const lectureId = currentLectureLi.dataset.lectureId;
-            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const playerView = document.getElementById('player-view');
+            const sidebar = document.getElementById('player-notes-sidebar');
+            if (!playerView || !sidebar) return;
+
+            const isActive = playerView.classList.contains('notes-active');
+            if (isActive) {
+                playerView.classList.remove('notes-active');
+                sidebar.classList.add('hidden');
+            } else {
+                hideMediaViewer();
+                playerView.classList.add('notes-active');
+                sidebar.classList.remove('hidden');
+                if (typeof window.loadPlayerNotes === 'function') window.loadPlayerNotes();
+            }
+        };
+
+        window.togglePdfViewer = function() {
+            const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            const lectureId = getActiveLectureId();
+            if (!activeCourse || !lectureId) return;
+            const progress = getLectureProgress(activeCourse.id, lectureId);
+
+            const playerNotesSidebar = document.getElementById('player-notes-sidebar');
+            if (playerNotesSidebar && playerView && playerView.classList.contains('notes-active')) {
+                playerView.classList.remove('notes-active');
+                playerNotesSidebar.classList.add('hidden');
+            }
 
             if (!mediaViewer.classList.contains('hidden') && (activeViewerFileType === 'pdf' || activeViewerFileType === 'notes')) {
                 hideMediaViewer();
                 return;
             }
 
-            if (progress.pdfHandle) {
+            if (progress && progress.pdfHandle) {
                 showMediaViewer(progress.pdfHandle, 'PDF', progress.pdfName || 'Notes.pdf', progress);
             } else {
                 window.showMediaViewerPlaceholder('pdf', lectureId);
@@ -11992,16 +12924,23 @@ window.initCourseFlix = async function() {
         };
 
         window.togglePlayerDppPanel = function() {
-            if (!currentCourse || !currentLectureLi) return;
-            const lectureId = currentLectureLi.dataset.lectureId;
-            const progress = getLectureProgress(currentCourse.id, lectureId);
+            const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
+            const lectureId = getActiveLectureId();
+            if (!activeCourse || !lectureId) return;
+            const progress = getLectureProgress(activeCourse.id, lectureId);
+
+            const playerNotesSidebar = document.getElementById('player-notes-sidebar');
+            if (playerNotesSidebar && playerView && playerView.classList.contains('notes-active')) {
+                playerView.classList.remove('notes-active');
+                playerNotesSidebar.classList.add('hidden');
+            }
 
             if (!mediaViewer.classList.contains('hidden') && (activeViewerFileType === 'assignment' || activeViewerFileType === 'dpp')) {
                 hideMediaViewer();
                 return;
             }
 
-            if (progress.assignmentHandle) {
+            if (progress && progress.assignmentHandle) {
                 showMediaViewer(progress.assignmentHandle, 'Assignment', progress.assignmentName || 'DPP.pdf', progress);
             } else {
                 window.showMediaViewerPlaceholder('assignment', lectureId);
@@ -12038,18 +12977,7 @@ window.initCourseFlix = async function() {
             }
         };
 
-        const playerNotesBtn = document.getElementById('player-notes-btn');
-        const playerDppBtn = document.getElementById('player-dpp-btn');
-        if (playerNotesBtn) {
-            playerNotesBtn.addEventListener('click', () => {
-                window.togglePlayerNotesPanel();
-            });
-        }
-        if (playerDppBtn) {
-            playerDppBtn.addEventListener('click', () => {
-                window.togglePlayerDppPanel();
-            });
-        }
+
 
         const uploadPlaceholder = document.getElementById('media-viewer-upload-placeholder');
         if (uploadPlaceholder) {

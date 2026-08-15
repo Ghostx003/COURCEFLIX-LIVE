@@ -139,13 +139,22 @@ export async function addHistoryEntry(courseId, lectureId, courseTitle, lectureN
 export async function getHistoryEntries() {
     await ensureDB();
     if (cachedHistory) return cachedHistory;
-    return new Promise((resolve, reject) => {
-        const request = getStore(HISTORY_STORE, 'readonly').getAll();
-        request.onsuccess = () => {
-            cachedHistory = request.result;
-            resolve(cachedHistory);
-        };
-        request.onerror = reject;
+    return new Promise((resolve) => {
+        try {
+            const store = getStore(HISTORY_STORE, 'readonly');
+            if (!store) return resolve([]);
+            const request = store.getAll();
+            request.onsuccess = () => {
+                cachedHistory = request.result || [];
+                resolve(cachedHistory);
+            };
+            request.onerror = (e) => {
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                resolve([]);
+            };
+        } catch (err) {
+            resolve([]);
+        }
     });
 }
 

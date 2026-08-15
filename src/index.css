@@ -424,7 +424,7 @@
         .thumbnail-placeholder.has-thumbnail > i { display: none; }
         
         /* Glass Action Floating Circle Buttons */
-        .remove-course-btn, .relocate-course-btn, .remove-thumbnail-btn, .refresh-course-btn {
+        .remove-course-btn, .relocate-course-btn, .remove-thumbnail-btn, .refresh-course-btn, .refresh-custom-course-btn {
             position: absolute; background: rgba(15, 23, 42, 0.75); 
             backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
             color: white; border: 1px solid rgba(255,255,255,0.15); 
@@ -436,17 +436,17 @@
         .remove-course-btn { top: 8px; right: 8px; }
         .relocate-course-btn { top: 8px; right: 44px; }
         .remove-thumbnail-btn { top: 8px; left: 8px; display: none; }
-        .refresh-course-btn { top: 8px; left: 50%; transform: translateX(-50%); }
-        .refresh-course-btn.loading i { animation: spin 1.5s linear infinite; }
+        .refresh-course-btn, .refresh-custom-course-btn { top: 8px; left: 50%; transform: translateX(-50%); }
+        .refresh-course-btn.loading i, .refresh-custom-course-btn.loading i { animation: spin 1.5s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         
         .remove-course-btn:hover, .remove-thumbnail-btn:hover { background: var(--accent-danger); transform: scale(1.1); border-color: transparent; }
         .relocate-course-btn:hover { background: var(--accent-primary); transform: scale(1.1); border-color: transparent; }
-        .refresh-course-btn:hover { background: var(--accent-primary); transform: translateX(-50%) scale(1.1); border-color: transparent; }
+        .refresh-course-btn:hover, .refresh-custom-course-btn:hover { background: var(--accent-primary); transform: translateX(-50%) scale(1.1); border-color: transparent; }
         
         .course-card:hover .remove-course-btn, 
         .course-card:hover .relocate-course-btn, 
-        .course-card:hover .refresh-course-btn { opacity: 1; }
+        .course-card:hover .refresh-course-btn, .course-card:hover .refresh-custom-course-btn { opacity: 1; }
         .course-card:hover .thumbnail-placeholder.has-thumbnail .remove-thumbnail-btn { opacity: 1; display: flex; }
 
         .course-info { padding: 14px 18px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; }
@@ -939,6 +939,30 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
         }
 
+        /* Clear All PDFs Button */
+        .clear-all-pdfs-btn {
+            background: var(--accent-danger, #ef4444);
+            color: #ffffff;
+            border: 1px solid var(--accent-danger, #ef4444);
+            border-radius: 8px;
+            padding: 7px 14px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .clear-all-pdfs-btn:hover {
+            background: #dc2626;
+            border-color: #dc2626;
+            transform: translateY(-1px);
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
+        }
+
         #upload-detail-view.smart-add-active #upload-lecture-list .lecture-item {
             cursor: default;
             opacity: 0.9;
@@ -1268,14 +1292,14 @@
         #sidebar-toggle-btn.collapsed { left:0; }
         #sidebar-toggle-btn i { transition:transform 0.3s; }
         #sidebar-toggle-btn.collapsed i { transform:rotate(180deg); }
-        #media-viewer-toggle-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 55; background: var(--accent-primary); color: white; border: none; width: 25px; height: 70px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s ease, right 0.3s ease; right: 0; border-radius: 8px 0 0 8px; }
+        #media-viewer-toggle-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2147483647 !important; background: var(--accent-primary); color: white; border: none; width: 25px; height: 70px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s ease, right 0.3s ease; right: 0; border-radius: 8px 0 0 8px; }
         
         /* --- BOOKMARKS --- */
         #bookmarks-container { position: absolute; top: 0; left: 0; right: 0; height: 100%; pointer-events: none; }
         .bookmark-dot {
             position: absolute; top: 50%; transform: translate(-50%, -50%);
             color: #f59e0b; font-size: 14px; cursor: pointer;
-            pointer-events: all; z-index: 10; transition: transform 0.2s; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+            pointer-events: auto !important; z-index: 10; transition: transform 0.2s; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
             display: flex; align-items: center; justify-content: center;
         }
         .bookmark-dot:hover { transform: translate(-50%, -50%) scale(1.4); }
@@ -4350,4 +4374,10 @@ select option, select optgroup {
     margin: 0;
 }
 
+/* Fullscreen Overrides for Player View */
+#player-view:fullscreen #lecture-menu,
+#player-view:-webkit-full-screen #lecture-menu { z-index: 100; position: relative; }
+
+#player-view:fullscreen .player-content-wrapper,
+#player-view:-webkit-full-screen .player-content-wrapper { flex-grow: 1; min-width: 0; width: auto !important; }
 

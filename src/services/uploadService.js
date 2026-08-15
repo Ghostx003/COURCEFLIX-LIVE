@@ -289,9 +289,75 @@ export async function renderCourseGrid() {
 
 export function extractNumberFromText(str) {
     if (!str) return null;
+    
+    // 1. Arabic numerals after a lecture prefix
+    const smartMatch = str.match(/(?:lec(?:ture)?|l|part|class|ch(?:apter)?|#|no\.?)\s*0*(\d+)/i);
+    if (smartMatch) return parseInt(smartMatch[1], 10);
+    
+    // 2. Roman numerals after a lecture prefix (I to XXX)
+    const romanMatch = str.match(/(?:lec(?:ture)?|l|part|class|ch(?:apter)?|#|no\.?)[-_ ]*(x{0,2}(?:ix|iv|v?i{0,3}))(?:[-_ ]|\b|$)/i);
+    if (romanMatch && romanMatch[1]) {
+        const r = { 'i': 1, 'v': 5, 'x': 10 };
+        let n = 0, s = romanMatch[1].toLowerCase();
+        for (let i = 0; i < s.length; i++) {
+            const curr = r[s[i]], next = r[s[i + 1]];
+            if (curr < next) n -= curr;
+            else n += curr;
+        }
+        if (n > 0) return n;
+    }
+    
+    // 3. Standalone Arabic numeral
+    const standaloneMatch = str.match(/(?:^|\b|[-_ ])0*(\d+)(?:[-_ ]|\b|$)/);
+    if (standaloneMatch) return parseInt(standaloneMatch[1], 10);
+    
+    // 4. Standalone Roman numeral (Strict to avoid matching random words like 'I', 'V')
+    const standaloneRomanMatch = str.match(/(?:^|\b|[-_ ])(x{1,2}(?:ix|iv|v?i{0,3})|ix|iv|v?i{1,3})(?:[-_ ]|\b|$)/i);
+    if (standaloneRomanMatch && standaloneRomanMatch[1]) {
+        const r = { 'i': 1, 'v': 5, 'x': 10 };
+        let n = 0, s = standaloneRomanMatch[1].toLowerCase();
+        for (let i = 0; i < s.length; i++) {
+            const curr = r[s[i]], next = r[s[i + 1]];
+            if (curr < next) n -= curr;
+            else n += curr;
+        }
+        if (n > 0) return n;
+    }
+
+    // 5. First number found
     const matches = str.match(/\d+/g);
     if (!matches) return null;
-    return parseInt(matches[matches.length - 1], 10);
+    return parseInt(matches[0], 10);
+}
+
+export async function clearAllCoursePdfs(courseId) {
+    const courses = window.courses || [];
+    const course = courses.find(c => String(c.id) === String(courseId));
+    const courseTitle = course ? course.title : 'this course';
+
+    if (!confirm(`Are you sure you want to delete all attached PDFs in ${courseTitle}? This action cannot be undone.`)) {
+        return false;
+    }
+
+    const cProgress = window.courseProgress || {};
+    let deletedCount = 0;
+    for (const key in cProgress) {
+        if (String(cProgress[key].courseId) === String(courseId) && (cProgress[key].pdfHandle || cProgress[key].pdfName)) {
+            delete cProgress[key].pdfHandle;
+            delete cProgress[key].pdfName;
+            if (typeof window.saveLectureProgress === 'function') {
+                await window.saveLectureProgress(cProgress[key]);
+            }
+            deletedCount++;
+        }
+    }
+
+    if (deletedCount > 0) {
+        if (typeof window.showToast === 'function') window.showToast(`Deleted all ${deletedCount} attached PDFs from ${courseTitle}.`);
+    } else {
+        if (typeof window.showToast === 'function') window.showToast(`No attached PDFs found in ${courseTitle}.`);
+    }
+    return true;
 }
 
 // Bind to window for backwards compatibility
@@ -302,6 +368,7 @@ if (typeof window !== 'undefined') {
     window.extractNumberFromText = extractNumberFromText;
     window.loadCoursesFromDB = loadCoursesFromDB;
     window.renderCourseGrid = renderCourseGrid;
+    window.clearAllCoursePdfs = clearAllCoursePdfs;
     window.initCourseFlix = async function() {
         await ensureDB();
         await loadCoursesFromDB();

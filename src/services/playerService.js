@@ -131,7 +131,28 @@ Object.defineProperties(globalThis, {
             document.getElementById('chapter-list').innerHTML = '<p style="text-align:center; padding: 20px;">Loading lectures...</p>';
             toggleCompletedBtn.classList.add('hidden');
             
-            if (!currentCourse.lectures || !currentCourse.chapters) {
+            if (currentCourse.isCustomCourse) {
+                if (currentCourse.lectures.length === 0) {
+                    const container = document.getElementById('custom-course-input-container');
+                    if (container) container.classList.remove('hidden');
+                    const wrapper = document.getElementById('video-wrapper');
+                    if (wrapper) wrapper.classList.add('hidden');
+                    document.getElementById('chapter-list').innerHTML = '<p id="no-content-message" style="padding:20px; text-align:center; color:var(--text-secondary);">No lectures yet. Add URLs to begin.</p>';
+                    return;
+                } else {
+                    const container = document.getElementById('custom-course-input-container');
+                    if (container) container.classList.add('hidden');
+                    const wrapper = document.getElementById('video-wrapper');
+                    if (wrapper) wrapper.classList.remove('hidden');
+                }
+            } else {
+                const urlInput = document.getElementById('custom-course-input-container');
+                if (urlInput) urlInput.classList.add('hidden');
+                const wrapper = document.getElementById('video-wrapper');
+                if (wrapper) wrapper.classList.remove('hidden');
+            }
+
+            if (!currentCourse.isCustomCourse && (!currentCourse.lectures || !currentCourse.chapters)) {
                 try {
                     await refreshCourse(currentCourse.id, null);
                 } catch (error) {
@@ -632,6 +653,34 @@ Object.defineProperties(globalThis, {
             }
 
             try {
+                if (currentCourse.isCustomCourse) {
+                    const iframePlayer = document.getElementById('custom-iframe-player');
+                    if (iframePlayer) {
+                        videoPlayer.pause();
+                        videoPlayer.removeAttribute('src');
+                        videoPlayer.load();
+                        
+                        iframePlayer.src = lecture.url;
+                        iframePlayer.classList.remove('hidden');
+                        videoPlayer.classList.add('hidden');
+                        
+                        const controlsContainer = document.querySelector('.video-controls-container');
+                        if (controlsContainer) controlsContainer.classList.add('hidden');
+                        
+                        addHistoryEntry(currentCourse.id, lectureId, currentCourse.title, lecture.displayName, lecture.duration || 0, currentSubfolder, currentCourse.thumbnail).catch(console.error);
+                    }
+                    return;
+                }
+
+                const iframePlayer = document.getElementById('custom-iframe-player');
+                if (iframePlayer) {
+                    iframePlayer.classList.add('hidden');
+                    iframePlayer.removeAttribute('src');
+                }
+                videoPlayer.classList.remove('hidden');
+                const controlsContainer = document.querySelector('.video-controls-container');
+                if (controlsContainer) controlsContainer.classList.remove('hidden');
+
                 const file = await lecture.handle.getFile();
                 if(videoPlayer.src) URL.revokeObjectURL(videoPlayer.src);
                 videoPlayer.src = URL.createObjectURL(file);
@@ -1342,6 +1391,64 @@ Object.defineProperties(globalThis, {
             const filterBtnPractice = e.target.closest('#filter-btn-practice');
             if(filterBtnPractice) showFilteredCoursesView('practice');
 
+            const clearAllBtn = e.target.closest('#clear-all-pdfs-btn');
+            if (clearAllBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+                const detailView = document.getElementById('upload-detail-view');
+                if (!detailView) return;
+                const rawId = detailView.dataset.courseId;
+                if (!rawId) return;
+                const courseId = typeof window.parseCourseId === 'function' ? window.parseCourseId(rawId) : rawId;
+
+                const courses = window.courses || [];
+                const course = courses.find(c => String(c.id) === String(courseId));
+                const courseTitle = course ? course.title : 'this course';
+
+                if (!confirm(`Are you sure you want to delete all attached PDFs in ${courseTitle}? This action cannot be undone.`)) {
+                    return;
+                }
+
+                let deletedCount = 0;
+                if (typeof window.getStore === 'function' && window.PROGRESS_STORE) {
+                    try {
+                        const allProgress = await new Promise(r => window.getStore(window.PROGRESS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result || []));
+                        for (const prog of allProgress) {
+                            if (prog && String(prog.courseId) === String(courseId) && (prog.pdfHandle || prog.pdfName)) {
+                                delete prog.pdfHandle;
+                                delete prog.pdfName;
+                                if (typeof window.saveLectureProgress === 'function') {
+                                    await window.saveLectureProgress(prog);
+                                }
+                                deletedCount++;
+                            }
+                        }
+                    } catch (err) {}
+                }
+
+                const cProgress = window.courseProgress || {};
+                for (const key in cProgress) {
+                    if (cProgress[key] && String(cProgress[key].courseId) === String(courseId) && (cProgress[key].pdfHandle || cProgress[key].pdfName)) {
+                        delete cProgress[key].pdfHandle;
+                        delete cProgress[key].pdfName;
+                        if (typeof window.saveLectureProgress === 'function') {
+                            await window.saveLectureProgress(cProgress[key]);
+                        }
+                    }
+                }
+
+                if (deletedCount > 0) {
+                    if (typeof window.showToast === 'function') window.showToast(`Deleted all ${deletedCount} attached PDFs from ${courseTitle}.`);
+                } else {
+                    if (typeof window.showToast === 'function') window.showToast(`No attached PDFs found in ${courseTitle}.`);
+                }
+
+                const subfolder = detailView.dataset.uploadSubfolder || null;
+                if (typeof window.renderLectureUploadDetail === 'function') {
+                    await window.renderLectureUploadDetail(courseId, subfolder);
+                }
+            }
+
             const uploadNotesBtn = e.target.closest('.upload-notes-btn');
             if (uploadNotesBtn) {
                 const courseId = parseInt(uploadNotesBtn.dataset.id);
@@ -1955,35 +2062,37 @@ Object.defineProperties(globalThis, {
             _modalOverlay.addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') _modalOverlay.classList.add('hidden'); });
         }
         
-        const addSubBtnEl = document.getElementById('add-subcourse-btn');
-        if (addSubBtnEl) {
-            addSubBtnEl.addEventListener('click', async () => {
-                const subContainer = document.getElementById('add-subcourse-container');
-                const courseId = parseInt(subContainer?.dataset.courseId);
-                const basePath = subContainer?.dataset.subPath || '';
+        window.triggerAddSubcourse = async function() {
+            const subContainer = document.getElementById('add-subcourse-container');
+            const courseId = parseInt(subContainer?.dataset.courseId);
+            const basePath = subContainer?.dataset.subPath || '';
+            
+            const courseList = (window.courses || []);
+            if (!courseId || !courseList.length) return;
+            const course = courseList.find(c => c.id === courseId);
+            if (!course) return;
+            
+            try {
+                const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
+                const targetSubPath = basePath ? `${basePath}/${dirHandle.name}` : dirHandle.name;
+                const courseData = await scanDirectoryHandle(dirHandle, targetSubPath, course.lectures || []);
                 
-                if (!courseId || typeof (window.courses || []) === 'undefined') return;
-                const course = (window.courses || []).find(c => c.id === courseId);
-                if (!course) return;
+                course.lectures = course.lectures || [];
+                course.chapters = course.chapters || [];
                 
-                try {
-                    const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
-                    const targetSubPath = basePath ? `${basePath}/${dirHandle.name}` : dirHandle.name;
-                    const courseData = await scanDirectoryHandle(dirHandle, targetSubPath, course.lectures || []);
-                    
-                    if (courseData.videoCount === 0) {
-                        return showToast('No videos found in this folder or its subfolders.', true);
-                    }
-                    
-                    course.lectures = course.lectures || [];
-                    course.chapters = course.chapters || [];
-                    
+                if (!course.chapters.some(c => c.name === targetSubPath)) {
+                    course.chapters.push({ name: targetSubPath, lectures: [] });
+                }
+                
+                if (courseData && courseData.lectures) {
                     courseData.lectures.forEach(newLec => {
                         if (!course.lectures.some(existing => existing.id === newLec.id)) {
                             course.lectures.push(newLec);
                         }
                     });
-                    
+                }
+                
+                if (courseData && courseData.chapters) {
                     courseData.chapters.forEach(newCh => {
                         const existingCh = course.chapters.find(c => c.name === newCh.name);
                         if (existingCh) {
@@ -1996,41 +2105,43 @@ Object.defineProperties(globalThis, {
                             course.chapters.push(newCh);
                         }
                     });
-                    
-                    course.videoCount = (course.videoCount || 0) + courseData.videoCount;
-                    course.totalDuration = (course.totalDuration || 0) + courseData.totalDuration;
-                    
-                    await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
-                    showToast(`Sub-course "${dirHandle.name}" added successfully (${courseData.videoCount} videos)!`, false);
-                    
-                    const subView = document.getElementById('subcourse-view');
-                    if (subView && subView.classList.contains('active')) {
-                        await renderSubcourseView(course.id, basePath);
-                    } else {
-                        await loadCoursesFromDB();
-                    }
-                } catch (e) {
-                    if (e.name !== 'AbortError') console.error(e);
-                } finally {
-                    document.getElementById('modal-overlay').classList.add('hidden');
                 }
-            });
-        }
+                
+                const addedVideoCount = courseData ? (courseData.videoCount || 0) : 0;
+                const addedDuration = courseData ? (courseData.totalDuration || 0) : 0;
+                course.videoCount = (course.videoCount || 0) + addedVideoCount;
+                course.totalDuration = (course.totalDuration || 0) + addedDuration;
+                
+                await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
+                showToast(`Sub-course "${dirHandle.name}" added successfully (${addedVideoCount} videos)!`, false);
+                
+                const subView = document.getElementById('subcourse-view');
+                if (subView && subView.classList.contains('active') && typeof renderSubcourseView === 'function') {
+                    await renderSubcourseView(course.id, basePath);
+                } else if (typeof loadCoursesFromDB === 'function') {
+                    await loadCoursesFromDB();
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error(e);
+            } finally {
+                const modal = document.getElementById('modal-overlay');
+                if (modal) modal.classList.add('hidden');
+            }
+        };
+
+        // Event listener removed as React ModalOverlayModal handles clicks
 
         async function processAndAddCourseFolder(dirHandle) {
             const courseData = await scanDirectoryHandle(dirHandle);
-            if (courseData.videoCount === 0) {
-                showToast(`No videos found in "${dirHandle.name || 'selected folder'}" or its subfolders.`, true);
-                return false;
-            }
+            const videoCount = courseData ? (courseData.videoCount || 0) : 0;
             const newCourse = {
                 id: Date.now() + Math.floor(Math.random() * 1000),
                 title: dirHandle.name || 'Imported Course',
                 handle: dirHandle,
-                videoCount: courseData.videoCount,
-                lectures: courseData.lectures,
-                totalDuration: courseData.totalDuration,
-                chapters: courseData.chapters
+                videoCount: videoCount,
+                lectures: courseData ? (courseData.lectures || []) : [],
+                totalDuration: courseData ? (courseData.totalDuration || 0) : 0,
+                chapters: courseData ? (courseData.chapters || []) : []
             };
             await new Promise((resolve, reject) => {
                 const req = getStore(STORE_NAME, 'readwrite').add(newCourse);
@@ -2038,6 +2149,11 @@ Object.defineProperties(globalThis, {
                 req.onerror = reject;
             });
             await loadCoursesFromDB();
+            if (videoCount === 0) {
+                showToast(`Course folder "${dirHandle.name || 'Course'}" added successfully (0 videos).`, false);
+            } else {
+                showToast(`Course "${dirHandle.name || 'Course'}" added successfully (${videoCount} videos)!`, false);
+            }
             return true;
         }
 
@@ -2070,16 +2186,126 @@ Object.defineProperties(globalThis, {
             return null;
         }
 
-        document.getElementById('add-folder-btn')?.addEventListener('click', async () => { 
-            try {
-                const dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
-                await processAndAddCourseFolder(dirHandle);
-            } catch (e) {
-                if (e.name !== 'AbortError') console.error(e);
-            } finally {
-                document.getElementById('modal-overlay').classList.add('hidden');
+        function pickFolderViaFileInput() {
+            return new Promise((resolve) => {
+                let input = document.getElementById('fallback-folder-input');
+                if (!input) {
+                    input = document.createElement('input');
+                    input.type = 'file';
+                    input.id = 'fallback-folder-input';
+                    input.webkitdirectory = true;
+                    input.directory = true;
+                    input.multiple = true;
+                    input.style.display = 'none';
+                    document.body.appendChild(input);
+                }
+                input.value = '';
+                input.onchange = (e) => {
+                    const files = Array.from(e.target.files || []);
+                    resolve(files);
+                };
+                input.oncancel = () => resolve([]);
+                input.click();
+            });
+        }
+
+        async function processAndAddCourseFiles(files) {
+            if (!files || files.length === 0) {
+                if (typeof window.showToast === 'function') window.showToast('Selected folder is empty or could not be read.', true);
+                else alert('Selected folder is empty or could not be read.');
+                return false;
             }
-        });
+            const firstPath = files[0].webkitRelativePath || files[0].name || 'Imported Course';
+            const folderName = firstPath.split('/')[0] || 'Imported Course';
+
+            const videoRegex = /\.(mp4|mkv|webm|mov|avi|m4v|ts|flv|wmv|3gp|ogv|mp3|m4a|aac)$/i;
+            const chapters = {};
+            const lectures = [];
+
+            for (const file of files) {
+                if (!videoRegex.test(file.name)) continue;
+                const rel = file.webkitRelativePath ? file.webkitRelativePath.substring(folderName.length + 1) : file.name;
+                const chapterName = rel.includes('/') ? rel.substring(0, rel.lastIndexOf('/')) : 'Main Content';
+                
+                if (!chapters[chapterName]) {
+                    chapters[chapterName] = { name: chapterName, lectures: [] };
+                }
+                
+                const id = `${file.name}_${file.size}_${file.lastModified}`;
+                const lectureData = {
+                    id: id,
+                    name: file.name.replace(/\.[^/.]+$/, ""),
+                    displayName: file.name.replace(/\.[^/.]+$/, ""),
+                    file: file,
+                    duration: 0,
+                    chapter: chapterName
+                };
+                chapters[chapterName].lectures.push(lectureData);
+                lectures.push(lectureData);
+            }
+
+            const sortedChapters = Object.values(chapters).sort((a, b) => naturalSort(a, b));
+            const newCourse = {
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                title: folderName,
+                isLinked: true,
+                videoCount: lectures.length,
+                lectures: lectures,
+                totalDuration: 0,
+                chapters: sortedChapters
+            };
+
+            await new Promise((resolve, reject) => {
+                const req = getStore(STORE_NAME, 'readwrite').add(newCourse);
+                req.onsuccess = resolve;
+                req.onerror = reject;
+            });
+
+            await loadCoursesFromDB();
+            if (lectures.length === 0) {
+                showToast(`Course folder "${folderName}" added successfully (0 videos).`, false);
+            } else {
+                showToast(`Course "${folderName}" added successfully (${lectures.length} videos)!`, false);
+            }
+            return true;
+        }
+
+        window.triggerAddCourseFolder = async function() {
+            try {
+                let dirHandle = null;
+                if (typeof window.showDirectoryPicker === 'function') {
+                    try {
+                        dirHandle = await window.showDirectoryPicker({ startIn: 'downloads' });
+                    } catch (err) {
+                        if (err.name === 'AbortError') return;
+                        try {
+                            dirHandle = await window.showDirectoryPicker();
+                        } catch (err2) {
+                            if (err2.name === 'AbortError') return;
+                        }
+                    }
+                }
+
+                if (dirHandle) {
+                    await processAndAddCourseFolder(dirHandle);
+                } else {
+                    const files = await pickFolderViaFileInput();
+                    if (files && files.length > 0) {
+                        await processAndAddCourseFiles(files);
+                    }
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    console.error(e);
+                    if (typeof showToast === 'function') showToast('Error adding course folder: ' + (e.message || e), true);
+                }
+            } finally {
+                const modal = document.getElementById('modal-overlay');
+                if (modal) modal.classList.add('hidden');
+            }
+        };
+
+        // Event listeners removed as React ModalOverlayModal handles clicks
 
         // --- Drag & Drop Course Import (Dashboard Only) ---
         let dashDragCounter = 0;
@@ -2279,6 +2505,65 @@ Object.defineProperties(globalThis, {
             }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
         
+
+        }
+        
+        document.getElementById('save-custom-course-urls-btn')?.addEventListener('click', async () => {
+            if (!currentCourse || !currentCourse.isCustomCourse) return;
+            const input = document.getElementById('custom-course-url-input');
+            if (!input) return;
+            const urls = input.value.split(/\s+/).filter(u => u.trim());
+            if (urls.length === 0) {
+                showToast("Please enter at least one URL.", true);
+                return;
+            }
+
+            const startIndex = currentCourse.lectures ? currentCourse.lectures.length + 1 : 1;
+            const newLectures = urls.map((url, i) => ({
+                id: 'lec_' + Date.now() + '_' + i,
+                displayName: 'Lecture ' + (startIndex + i),
+                url: url,
+                chapter: 'Lectures',
+                duration: 0
+            }));
+
+            currentCourse.lectures = [...(currentCourse.lectures || []), ...newLectures];
+            currentCourse.videoCount = currentCourse.lectures.length;
+            
+            if (!currentCourse.chapters || currentCourse.chapters.length === 0) {
+                currentCourse.chapters = [{
+                    name: 'Lectures',
+                    lectures: newLectures
+                }];
+            } else {
+                let defaultChapter = currentCourse.chapters.find(c => c.name === 'Lectures');
+                if (!defaultChapter) {
+                    defaultChapter = { name: 'Lectures', lectures: [] };
+                    currentCourse.chapters.push(defaultChapter);
+                }
+                defaultChapter.lectures = [...defaultChapter.lectures, ...newLectures];
+            }
+
+            await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(currentCourse).onsuccess = resolve);
+            
+            input.value = '';
+            document.getElementById('custom-course-input-container').classList.add('hidden');
+            document.getElementById('video-wrapper').classList.remove('hidden');
+            
+            renderPlayer(currentCourse.id);
+            showToast(`${newLectures.length} lectures added successfully!`);
+        });
+
+        document.getElementById('cancel-custom-course-urls-btn')?.addEventListener('click', () => {
+            const input = document.getElementById('custom-course-url-input');
+            if (input) input.value = '';
+            if (currentCourse && currentCourse.lectures && currentCourse.lectures.length > 0) {
+                document.getElementById('custom-course-input-container').classList.add('hidden');
+                document.getElementById('video-wrapper').classList.remove('hidden');
+            } else {
+                switchView('dashboard-view');
+            }
+        });
 
 // Bind window functions for backwards compatibility
 if (typeof window !== 'undefined') {

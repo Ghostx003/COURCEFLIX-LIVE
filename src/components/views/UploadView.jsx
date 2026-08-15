@@ -17,9 +17,14 @@ export default function UploadView() {
                     <a className="back-link" id="back-to-upload-grid">&larr; Back to Courses</a>
                     <div style={{"display":"flex","alignItems":"center","justify":"space-between","marginTop":"0.5rem","gap":"0.5rem"}}>
                         <h3 id="upload-course-title" style={{"margin":0,"wordBreak":"break-word","flexGrow":1}}></h3>
-                        <button id="smart-add-toggle-btn" className="smart-add-btn" title="Toggle Smart Add mode for bulk file upload">
-                            <i className="fas fa-magic"></i> <span>Smart Add</span>
-                        </button>
+                        <div style={{"display":"flex","alignItems":"center","gap":"0.5rem"}}>
+                            <button id="clear-all-pdfs-btn" className="clear-all-pdfs-btn" title="Delete all attached PDFs in this course">
+                                <i className="fas fa-trash-alt"></i> <span>Clear All</span>
+                            </button>
+                            <button id="smart-add-toggle-btn" className="smart-add-btn" title="Toggle Smart Add mode for bulk file upload">
+                                <i className="fas fa-magic"></i> <span>Smart Add</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div id="upload-lecture-list"></div>
