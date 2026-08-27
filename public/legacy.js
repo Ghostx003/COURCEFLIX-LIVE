@@ -1386,12 +1386,17 @@ window.initCourseFlix = async function() {
         
         async function loadCoursesFromDB() {
             const t0 = performance.now();
-            await ensureDB();
-            const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
-            if (storedCourses && storedCourses.length > 0) {
-                storedCourses.forEach(course => {
-                    course.isLinked = !!(course.handle || course.isCustomCourse);
-                });
+            let storedCourses = [];
+            if (typeof window !== 'undefined' && window.courseService && typeof window.courseService.getCourses === 'function') {
+                storedCourses = await window.courseService.getCourses();
+            } else {
+                await ensureDB();
+                storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
+                if (storedCourses && storedCourses.length > 0) {
+                    storedCourses.forEach(course => {
+                        course.isLinked = !!(course.handle || course.isCustomCourse);
+                    });
+                }
             }
             courses = storedCourses || [];
             window.courses = courses;
@@ -1412,7 +1417,11 @@ window.initCourseFlix = async function() {
                 const computeMissing = () => {
                     missingStatsCourses.forEach(c => {
                         calculateCourseProgress(c, true);
-                        persistCourseStats(c);
+                        if (typeof window.courseService?.persistCourseStats === 'function') {
+                            window.courseService.persistCourseStats(c);
+                        } else {
+                            persistCourseStats(c);
+                        }
                     });
                 };
                 if (window.requestIdleCallback) {

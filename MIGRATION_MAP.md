@@ -751,3 +751,48 @@ src/
 - Single database connection shared across React, services, and legacy code.
 - Build Status: `npm run build` passing cleanly.
 
+---
+
+## 8. Phase 3A Status: Course Business Logic Extraction (COMPLETED)
+
+### A. Course Service Boundary Created
+- **Module**: [`src/services/courseService.js`](file:///e:/projects/courceflix-react/src/services/courseService.js)
+  - Owns business rules, normalization, metadata mutations, star ratings, ignored state, split view toggles, thumbnails, and course sorting.
+  - Data operations strictly delegate to `src/db/coursesRepository.js`.
+  - Maintains `window.courses` memory array synchronization for legacy backward compatibility.
+  - Exposes `window.courseService` for unmigrated legacy modules.
+
+### B. Functions Extracted to `courseService.js`
+- `normalizeCourse(course)`: Sets runtime flags like `isLinked = !!(course.handle || course.isCustomCourse)`.
+- `getCourses()`: Retrieves all courses from IDB, normalizes them, and syncs `window.courses`.
+- `getCourse(id)`: Retrieves single normalized course.
+- `saveCourse(course)` / `updateCourse(id, updates)`: Saves course and synchronizes in-memory `window.courses`.
+- `deleteCourse(id)`: Deletes course from IDB and filters from `window.courses`.
+- `persistCourseStats(course)`: Persists pre-computed `course.stats` and `course.subcoursesStats`.
+- `updateCourseTitle(id, newTitle, subfolder)`: Renames course or subcourse.
+- `updateCourseFaculty(id, newFaculty, subfolder)`: Updates faculty name.
+- `toggleCourseRating(id, rating, subfolder)`: Updates star rating.
+- `toggleCourseIgnored(id, isIgnored, subfolder)`: Toggles ignored state.
+- `toggleCourseSplitView(id, isSplitView)`: Toggles folder split view.
+- `updateCourseThumbnail(id, dataUrl, subfolder)`: Sets custom thumbnail.
+- `removeCourseThumbnail(id, subfolder)`: Clears custom thumbnail.
+- `reorderCourses(orderedIds)`: Updates `.order` property on courses and batch updates IDB.
+- `sortCourses(courses, sortPref, progressMap, completionGroups)`: Pure course sorting algorithm.
+
+### C. First Safe Caller Migrated
+- **`public/legacy.js:loadCoursesFromDB()`**:
+  - Previously executed direct inline `getStore('courses', 'readonly').getAll()`.
+  - Now delegates to `window.courseService.getCourses()`, which fetches via `coursesRepository.getAllCourses()`, normalizes entities, and maintains `window.courses`.
+  - All existing events (`courseflix:courses-loaded`), cache invalidation, and UI rendering triggers preserved.
+
+### D. Functions Still in `legacy.js` (Pending Later Phases)
+- Filesystem directory scanning (`scanDirectoryHandle`, `processAndAddCourseFolder`) → Reserved for **Phase 4 (FileSystem Service)**.
+- Course progress & duration calculation formula (`calculateCourseProgress`) → Reserved for **Phase 3B (Progress Service)**.
+- Dashboard course grid DOM rendering (`renderCourseGrid`) → Reserved for **Phase 6 & 7 (React Dashboard)**.
+
+### E. Verification & State Integrity
+- `window.courses` and `window.courseProgress` are fully preserved and synchronized.
+- Zero breaking changes to database schemas or persisted object fields.
+- Build Status: `npm run build` succeeds without errors.
+
+
