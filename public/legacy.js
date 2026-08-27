@@ -426,7 +426,16 @@ window.initCourseFlix = async function() {
             const progressData = { ...existing, ...data, id: progressId };
             await new Promise(resolve => getStore(PROGRESS_STORE, 'readwrite').put(progressData).onsuccess = resolve);
             courseProgress[progressId] = progressData;
-            invalidateCourseProgressCache(data.courseId);
+            
+            // Recompute course statistics and persist to IndexedDB
+            const targetCourse = (typeof courses !== 'undefined' && Array.isArray(courses)) ? courses.find(c => String(c.id) === String(data.courseId)) : null;
+            if (targetCourse) {
+                invalidateCourseProgressCache(data.courseId);
+                calculateCourseProgress(targetCourse, true);
+                persistCourseStats(targetCourse);
+            } else {
+                invalidateCourseProgressCache(data.courseId);
+            }
             
             // --- NEW: Sync logs to localStorage for progress.html ---
             if (data.completed !== undefined) {
@@ -989,26 +998,52 @@ window.initCourseFlix = async function() {
             return course.facultyName || 'N/A Faculty';
         }
 
-        function calculateCourseProgress(course, forceRecalculate = false) {
+        async function persistCourseStats(course) {
+            if (!course || !course.id) return;
+            try {
+                await ensureDB();
+                getStore(STORE_NAME, 'readwrite').put(course);
+            } catch (err) {
+                console.warn('Failed to persist course stats:', err);
+            }
+        }
+
+        function calculateCourseProgress(course, forceRecalculate = false, targetSubfolder = null) {
             if (!course) {
                 return { completed: 0, total: 0, percentage: 0, remainingDuration: 0, totalDuration: 0 };
             }
             const cId = String(course.id);
-            if (!forceRecalculate && courseProgressCache.has(cId)) {
-                return courseProgressCache.get(cId);
+            if (targetSubfolder) {
+                if (!forceRecalculate && course.subCourseStats && course.subCourseStats[targetSubfolder]) {
+                    return course.subCourseStats[targetSubfolder];
+                }
+            } else {
+                if (!forceRecalculate && courseProgressCache.has(cId)) {
+                    return courseProgressCache.get(cId);
+                }
+                if (!forceRecalculate && course.stats) {
+                    courseProgressCache.set(cId, course.stats);
+                    return course.stats;
+                }
             }
+
             if (!course.lectures || course.lectures.length === 0) {
                 const totalDur = course.totalDuration || 0;
                 const res = { completed: 0, total: course.videoCount || 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
-                courseProgressCache.set(cId, res);
+                if (!targetSubfolder) {
+                    course.stats = res;
+                    courseProgressCache.set(cId, res);
+                }
                 return res;
             }
+
             let completed = 0;
             let timeCompleted = 0;
             let activeTotalLectures = 0;
             let activeTotalDuration = 0;
             
             const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && s.isIgnored));
+            const subCourseStatsMap = {};
 
             const lecs = course.lectures;
             const len = lecs.length;
@@ -1024,14 +1059,36 @@ window.initCourseFlix = async function() {
                     }
                 }
                 
+                const dur = lecture.duration || 0;
+                const prog = courseProgress[`${course.id}_${lecture.id}`];
+                const isLecCompleted = !!(prog && prog.completed);
+
+                // Global course tally
                 if (!isSubfolderIgnored) {
                     activeTotalLectures++;
-                    const dur = lecture.duration || 0;
                     activeTotalDuration += dur;
-                    const prog = courseProgress[`${course.id}_${lecture.id}`];
-                    if (prog && prog.completed) {
+                    if (isLecCompleted) {
                         completed++;
                         timeCompleted += dur;
+                    }
+                }
+
+                // Subfolder tally
+                if (lecture.chapter) {
+                    const ch = lecture.chapter;
+                    const parts = ch.split('/');
+                    for (let p = 1; p <= parts.length; p++) {
+                        const subPath = parts.slice(0, p).join('/');
+                        if (!subCourseStatsMap[subPath]) {
+                            subCourseStatsMap[subPath] = { total: 0, completed: 0, totalDuration: 0, timeCompleted: 0 };
+                        }
+                        const subSt = subCourseStatsMap[subPath];
+                        subSt.total++;
+                        subSt.totalDuration += dur;
+                        if (isLecCompleted) {
+                            subSt.completed++;
+                            subSt.timeCompleted += dur;
+                        }
                     }
                 }
             }
@@ -1045,15 +1102,37 @@ window.initCourseFlix = async function() {
             
             const remainingDuration = effectiveTotalDuration - timeCompleted;
 
-            const result = { 
+            const courseResult = { 
                 completed, 
                 total: activeTotalLectures, 
                 percentage, 
                 remainingDuration: Math.max(0, remainingDuration), 
                 totalDuration: effectiveTotalDuration 
             };
-            courseProgressCache.set(cId, result);
-            return result;
+
+            // Finalize subCourseStats
+            course.subCourseStats = {};
+            for (const subPath in subCourseStatsMap) {
+                const s = subCourseStatsMap[subPath];
+                const subRem = Math.max(0, s.totalDuration - s.timeCompleted);
+                const subPct = s.total > 0 ? (s.completed / s.total) * 100 : 0;
+                course.subCourseStats[subPath] = {
+                    total: s.total,
+                    completed: s.completed,
+                    percentage: subPct,
+                    totalDuration: s.totalDuration,
+                    remainingDuration: subRem
+                };
+            }
+
+            course.stats = courseResult;
+            courseProgressCache.set(cId, courseResult);
+
+            if (targetSubfolder) {
+                return course.subCourseStats[targetSubfolder] || { completed: 0, total: 0, percentage: 0, remainingDuration: 0, totalDuration: 0 };
+            }
+
+            return courseResult;
         }
         
         function renderTimePillContent(totalSecondsLeft, pct) {
@@ -1312,6 +1391,23 @@ window.initCourseFlix = async function() {
             }
             const t1 = performance.now();
             console.log(`%c[CourseFlix Perf] Dashboard ready in ${(t1 - t0).toFixed(1)}ms (${courses.length} courses, 0 filesystem blocks, cached stats)`, 'color: #10b981; font-weight: bold;');
+            
+            // Background pre-computation of stats for any courses that don't have them cached yet
+            const missingStatsCourses = courses.filter(c => !c.stats);
+            if (missingStatsCourses.length > 0) {
+                const computeMissing = () => {
+                    missingStatsCourses.forEach(c => {
+                        calculateCourseProgress(c, true);
+                        persistCourseStats(c);
+                    });
+                };
+                if (window.requestIdleCallback) {
+                    window.requestIdleCallback(computeMissing, { timeout: 5000 });
+                } else {
+                    setTimeout(computeMissing, 2000);
+                }
+            }
+
             // Background sync only if missing from localStorage
             if (!localStorage.getItem('courseflix_subjects') || !localStorage.getItem('courseflix_dpps')) {
                 if (typeof syncCourseflixSubjects === 'function') {
@@ -2169,23 +2265,12 @@ window.initCourseFlix = async function() {
                 }
                 thumb = thumb || course.thumbnail || null;
 
-                const subLectures = course.lectures.filter(l => (l.chapter || '') === fullPath || (l.chapter || '').startsWith(fullPath + '/'));
-                let completed = 0;
-                let timeCompleted = 0;
-                let subTotalDuration = 0;
-
-                subLectures.forEach(lecture => {
-                    subTotalDuration += lecture.duration || 0;
-                    const prog = getLectureProgress(course.id, lecture.id);
-                    if (prog.completed) {
-                        completed++;
-                        timeCompleted += lecture.duration || 0;
-                    }
-                });
-
-                const total = subLectures.length;
-                const percentage = total > 0 ? (completed / total) * 100 : 0;
-                const remainingDuration = Math.max(0, subTotalDuration - timeCompleted);
+                const subStats = (course.subCourseStats && course.subCourseStats[fullPath]) || calculateCourseProgress(course, false, fullPath);
+                const total = subStats.total;
+                const completed = subStats.completed;
+                const percentage = subStats.percentage;
+                const subTotalDuration = subStats.totalDuration;
+                const remainingDuration = subStats.remainingDuration;
 
                 // Does this folder have deeper folders?
                 const hasDeeper = course.chapters.some(ch => (ch.name || '').startsWith(fullPath + '/') && (ch.name || '').length > fullPath.length + 1);
@@ -3791,6 +3876,8 @@ window.initCourseFlix = async function() {
                 course.chapters = newCourseData.chapters.sort((a,b)=>naturalSort(a,b));
                 course.videoCount = course.lectures.length;
                 course.totalDuration = course.lectures.reduce((sum, l) => sum + (l.duration||0), 0);
+                invalidateCourseProgressCache(course.id);
+                calculateCourseProgress(course, true);
                 
                 await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
                 

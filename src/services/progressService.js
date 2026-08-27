@@ -55,6 +55,13 @@ export async function saveLectureProgress(data) {
         if (typeof window.invalidateCourseProgressCache === 'function') {
             window.invalidateCourseProgressCache(data.courseId);
         }
+        if (window.courses && Array.isArray(window.courses)) {
+            const targetCourse = window.courses.find(c => String(c.id) === String(data.courseId));
+            if (targetCourse && typeof window.calculateCourseProgress === 'function') {
+                window.calculateCourseProgress(targetCourse, true);
+                getStore(STORE_NAME, 'readwrite').put(targetCourse);
+            }
+        }
     }
     
     if (data.completed !== undefined) {
