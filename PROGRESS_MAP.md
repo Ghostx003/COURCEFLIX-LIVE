@@ -278,9 +278,40 @@ All 45+ occurrences across the codebase have been audited:
 
 1. Create `src/context/ProgressContext.jsx` and `src/hooks/useProgress.js`.
 2. Wrap App with `<ProgressProvider>`.
-3. Connect React Dashboard and Subcourse views to `useProgress()`.
-4. Maintain `window.courseProgress` and postMessage compatibility bridges.
+---
+
+## 18. Phase 9B Status: Progress State Foundation (COMPLETED)
+
+### A. Core Architecture Implemented
+1. **Canonical Context (`ProgressContext.jsx`)**:
+   - Implemented in [`src/context/ProgressContext.jsx`](file:///e:/projects/courceflix-react/src/context/ProgressContext.jsx).
+   - Provides reactive getters (`getLectureProgress`, `getCourseProgress`, `getAllProgress`), mutation delegates (`saveLectureProgress`, `markLectureCompleted`, `updatePlaybackPosition`, `deleteProgressForCourse`), and cache control (`invalidateCache`).
+   - Manages reactivity via `progressVersion` state triggered on `courseflix:progress-updated` and `courseflix:data-updated` events.
+2. **Custom Hook (`useProgress.js`)**:
+   - Implemented in [`src/hooks/useProgress.js`](file:///e:/projects/courceflix-react/src/hooks/useProgress.js).
+   - Exposes clean React API for current and future React views/components.
+3. **Application Provider Tree**:
+   - Mounted `<ProgressProvider>` within `<CourseProvider>` $\rightarrow$ `<RouterProvider>` $\rightarrow$ `<ProgressProvider>` in [`src/App.jsx`](file:///e:/projects/courceflix-react/src/App.jsx).
+
+### B. State Ownership & Service Relationship
+- **IndexedDB**: Handled strictly by [`src/db/progressRepository.js`](file:///e:/projects/courceflix-react/src/db/progressRepository.js).
+- **Business Logic**: Handled strictly by [`src/services/progressService.js`](file:///e:/projects/courceflix-react/src/services/progressService.js).
+- **React State**: Managed through `ProgressContext` without creating a duplicate database copy.
+- **In-Flight Deduplication**: `loadAllProgress()` uses a shared promise so concurrent calls do not generate multiple IDB `getAll()` transactions.
+
+### C. Legacy Compatibility & PostMessage Contracts
+- **`window.courseProgress`**: Kept fully in sync as an in-memory mirror on every progress mutation for unmigrated legacy consumers.
+- **`static/progress.html` & Iframe**: Untouched and 100% operational under memoized `<ProgressView />`.
+- **`postMessage` Actions**: All messages (`playLecture`, `switchView`, `playGoalsPlaylist`, `playCalendarPlaylist`) remain functional.
+- **`courseflix_logs`**: Maintained in `localStorage` by `progressService.saveLectureProgress()` ensuring external iframe charts update continuously.
+
+### D. Unresolved `progress.html` Dependencies (Future Phases)
+- Standalone Chart.js activity charts and learning time donut.
+- Heatmap streak matrix component.
+- Study schedule planner & D-Day completion calculator.
+- Doubt screenshot query tools inside `progress.html`.
 
 ---
 
 *End of Progress Subsystem & Analytics Map.*
+
