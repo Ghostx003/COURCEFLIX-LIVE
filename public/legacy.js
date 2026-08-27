@@ -402,11 +402,16 @@ window.initCourseFlix = async function() {
         window.invalidateCourseProgressCache = invalidateCourseProgressCache;
 
         async function loadAllProgress() {
+            window.__cfTimings = window.__cfTimings || {};
+            const t0 = performance.now();
             await ensureDB();
+            const tReq0 = performance.now();
             const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
+            window.__cfTimings.progressGetAll = performance.now() - tReq0;
             courseProgress = {};
             (allProgress || []).forEach(item => { courseProgress[item.id] = item; });
             courseProgressCache.clear();
+            window.__cfTimings.loadAllProgress = performance.now() - t0;
         }
         async function saveLectureProgress(data) {
             const progressId = `${data.courseId}_${data.lectureId}`;
@@ -1371,9 +1376,12 @@ window.initCourseFlix = async function() {
         }
         
         async function loadCoursesFromDB() {
+            window.__cfTimings = window.__cfTimings || {};
             const t0 = performance.now();
             await ensureDB();
+            const tReq0 = performance.now();
             const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
+            window.__cfTimings.coursesGetAll = performance.now() - tReq0;
             if (storedCourses && storedCourses.length > 0) {
                 storedCourses.forEach(course => {
                     course.isLinked = !!(course.handle || course.isCustomCourse);
@@ -1385,12 +1393,11 @@ window.initCourseFlix = async function() {
             window.dispatchEvent(new CustomEvent('courseflix:courses-loaded', { detail: courses }));
             const activeView = document.querySelector('.view.active');
             if (!activeView || activeView.id === 'dashboard-view-el' || activeView.id === 'dashboard-view') {
-                renderCourseGrid();
+                await renderCourseGrid();
             } else {
                 setTimeout(() => renderCourseGrid(), 10);
             }
-            const t1 = performance.now();
-            console.log(`%c[CourseFlix Perf] Dashboard ready in ${(t1 - t0).toFixed(1)}ms (${courses.length} courses, 0 filesystem blocks, cached stats)`, 'color: #10b981; font-weight: bold;');
+            window.__cfTimings.loadCoursesFromDB = performance.now() - t0;
             
             // Background pre-computation of stats for any courses that don't have them cached yet
             const missingStatsCourses = courses.filter(c => !c.stats);
@@ -2000,23 +2007,50 @@ window.initCourseFlix = async function() {
                     } catch (e) {
                         console.error(`Failed to scan course "${course.title}"`, e);
                     }
+            window.__cfTimings = window.__cfTimings || {};
+            const t0 = performance.now();
+            courseGrid.innerHTML = '';
+            if (courses.length === 0) { 
+                courseGrid.innerHTML = `<p id="no-content-message">No courses added. Click 'Add Course' to begin.</p>`;
+                totalTimeDisplay.style.display = 'none';
+                return;
+            }
+
+            // Pre-scan ONLY empty courses that have no lectures array yet
+            for (const course of courses) {
+                if (course.isLinked && course.handle && !course.lectures) {
+                    try {
+                        const courseData = await scanDirectoryHandle(course.handle, '', [], true);
+                        course.lectures = courseData.lectures;
+                        course.totalDuration = courseData.totalDuration;
+                        course.chapters = courseData.chapters;
+                        await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
+                        enrichCourseDurationsInBackground(course.id, course.handle);
+                    } catch (e) {
+                        console.error(`Failed to scan course "${course.title}"`, e);
+                    }
                 }
             }
 
             populateSortGroupOptions();
+            const tPill0 = performance.now();
             updateTotalTimeLeftDisplay();
+            window.__cfTimings.timePill = performance.now() - tPill0;
             
             const hideIgnored = localStorage.getItem('courseflix_hide_ignored') === 'true';
             const sortSelect = document.getElementById('course-sort-select');
             const sortVal = localStorage.getItem('courseSortPref') || 'custom';
             if (sortSelect && sortSelect.value !== sortVal) sortSelect.value = sortVal;
             
+            const tMap0 = performance.now();
             // Pre-calculate progress for all courses once before sorting and card rendering
             const progressMap = new Map();
             for (let i = 0; i < courses.length; i++) {
                 progressMap.set(courses[i].id, calculateCourseProgress(courses[i]));
             }
+            window.__cfTimings.progressMap = performance.now() - tMap0;
 
+            const tSort0 = performance.now();
             let sortedCourses = [...courses];
 
             if (sortVal.startsWith('group_')) {
@@ -2045,7 +2079,9 @@ window.initCourseFlix = async function() {
             } else {
                 sortedCourses.sort((a, b) => (a.order || 0) - (b.order || 0));
             }
+            window.__cfTimings.sort = performance.now() - tSort0;
 
+            const tCards0 = performance.now();
             const fragment = document.createDocumentFragment();
 
             for (const course of sortedCourses) {
@@ -2102,7 +2138,12 @@ window.initCourseFlix = async function() {
                 card.draggable = sortVal === 'custom';
                 fragment.appendChild(card);
             }
+            window.__cfTimings.cardCreation = performance.now() - tCards0;
+
+            const tDom0 = performance.now();
             courseGrid.appendChild(fragment);
+            window.__cfTimings.domInsertion = performance.now() - tDom0;
+            window.__cfTimings.renderCourseGrid = performance.now() - t0;
 
             if (!courseGrid._dragListenersAttached) {
                 courseGrid._dragListenersAttached = true;
@@ -11342,11 +11383,37 @@ window.initCourseFlix = async function() {
                 switchView(initialTargetView, false);
             }
 
+            window.__cfTimings = window.__cfTimings || {};
+            const tMain0 = performance.now();
             await openDB();
+            window.__cfTimings.openDB = performance.now() - tMain0;
+
+            const tStores0 = performance.now();
             await Promise.all([
                 loadAllProgress(),
                 loadCoursesFromDB()
             ]);
+            window.__cfTimings.storesLoad = performance.now() - tStores0;
+
+            const tReady = performance.now();
+            const totalStartup = tReady - (window.__cfTimings.appMount || window.__cfTimings.initCourseFlixStart || tMain0);
+            
+            console.group('%c[CourseFlix Startup Telemetry]', 'color: #3b82f6; font-weight: bold; font-size: 13px;');
+            console.table({
+                '1. Settings Init': { 'Duration': (window.__cfTimings.settings || 0).toFixed(1) + ' ms' },
+                '2. openDB()': { 'Duration': (window.__cfTimings.openDB || 0).toFixed(1) + ' ms' },
+                '3. IDB courses.getAll()': { 'Duration': (window.__cfTimings.coursesGetAll || 0).toFixed(1) + ' ms' },
+                '4. IDB progress.getAll()': { 'Duration': (window.__cfTimings.progressGetAll || 0).toFixed(1) + ' ms' },
+                '5. loadCoursesFromDB() total': { 'Duration': (window.__cfTimings.loadCoursesFromDB || 0).toFixed(1) + ' ms' },
+                '6. loadAllProgress() total': { 'Duration': (window.__cfTimings.loadAllProgress || 0).toFixed(1) + ' ms' },
+                '7. Time Pill Calculation': { 'Duration': (window.__cfTimings.timePill || 0).toFixed(1) + ' ms' },
+                '8. Progress Map Creation': { 'Duration': (window.__cfTimings.progressMap || 0).toFixed(1) + ' ms' },
+                '9. Course Sorting': { 'Duration': (window.__cfTimings.sort || 0).toFixed(1) + ' ms' },
+                '10. Card Markup Generation': { 'Duration': (window.__cfTimings.cardCreation || 0).toFixed(1) + ' ms' },
+                '11. DOM Insertion (Fragment)': { 'Duration': (window.__cfTimings.domInsertion || 0).toFixed(1) + ' ms' },
+                '12. Total Dashboard Ready': { 'Duration': totalStartup.toFixed(1) + ' ms' }
+            });
+            console.groupEnd();
             
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('playGoalsPlaylist')) {

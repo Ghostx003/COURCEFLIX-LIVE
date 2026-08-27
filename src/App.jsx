@@ -31,7 +31,12 @@ import './index.css';
 
 export default function App() {
   useEffect(() => {
+    window.__cfTimings = window.__cfTimings || {};
+    window.__cfTimings.appMount = performance.now();
+    
+    const tSettings0 = performance.now();
     initSettingsListeners();
+    window.__cfTimings.settings = performance.now() - tSettings0;
 
     if (window.initCourseFlix) {
       window.initCourseFlix();
