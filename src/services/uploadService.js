@@ -367,9 +367,11 @@ if (typeof window !== 'undefined') {
     window.loadCoursesFromDB = loadCoursesFromDB;
     window.renderCourseGrid = renderCourseGrid;
     window.clearAllCoursePdfs = clearAllCoursePdfs;
-    window.initCourseFlix = async function() {
-        await ensureDB();
-        await loadCoursesFromDB();
-        await renderCourseGrid();
-    };
+    if (!window.initCourseFlix) {
+        window.initCourseFlix = async function() {
+            await ensureDB();
+            await loadCoursesFromDB();
+            await renderCourseGrid();
+        };
+    }
 }
