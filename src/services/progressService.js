@@ -1,42 +1,251 @@
-// Progress & History Service
-// Extracted and modularized from legacy.js
+// Progress Business Logic Service
+// Owns lecture progress tracking, completion calculations, timestamp management, and cache invalidation.
+// Interacts with IndexedDB strictly via progressRepository.
 
-import { ensureDB, getStore, STORE_NAME, PROGRESS_STORE, DPP_STORE, DOUBTS_STORE, HISTORY_STORE, CALENDAR_STORE } from './db.js';
+import {
+    getAllProgress as repoGetAllProgress,
+    getProgressById as repoGetProgressById,
+    putProgress as repoPutProgress,
+    deleteProgress as repoDeleteProgress,
+    deleteProgressForCourse as repoDeleteProgressForCourse
+} from '../db/progressRepository.js';
+import { putCourse as repoPutCourse } from '../db/coursesRepository.js';
+import { parseCourseId } from '../db/database.js';
 
+// In-memory runtime map of lecture progress objects: { [progressId]: ProgressRecord }
 export let courseProgress = {};
-let cachedHistory = null;
 
-if (typeof window !== 'undefined') {
-    window.courseProgress = courseProgress;
+// In-memory cache for pre-calculated course summary statistics: Map<courseId, StatsObject>
+export const courseProgressCache = new Map();
+
+/**
+ * Invalidates the cached progress calculation for a specific course or all courses.
+ * @param {string|number|null} [courseId=null]
+ */
+export function invalidateCourseProgressCache(courseId = null) {
+    if (courseId !== undefined && courseId !== null) {
+        courseProgressCache.delete(String(courseId));
+        courseProgressCache.delete(Number(courseId));
+    } else {
+        courseProgressCache.clear();
+    }
 }
 
+/**
+ * Loads all progress records from IndexedDB into memory, clears calculation caches,
+ * and maintains backward compatibility with window.courseProgress.
+ * @returns {Promise<Object>} Map of progress records
+ */
 export async function loadAllProgress() {
-    await ensureDB();
-    const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
+    const allProgressList = await repoGetAllProgress();
     courseProgress = {};
-    (allProgress || []).forEach(item => { courseProgress[item.id] = item; });
+    (allProgressList || []).forEach(item => {
+        if (item && item.id) {
+            courseProgress[item.id] = item;
+        }
+    });
+    courseProgressCache.clear();
+
+    // Maintain window.courseProgress compatibility for legacy consumers
     if (typeof window !== 'undefined') {
         window.courseProgress = courseProgress;
-        if (typeof window.invalidateCourseProgressCache === 'function') {
-            window.invalidateCourseProgressCache();
-        }
+        window.invalidateCourseProgressCache = invalidateCourseProgressCache;
     }
+
     return courseProgress;
 }
 
+/**
+ * Retrieves all in-memory progress records.
+ * @returns {Object}
+ */
+export function getAllProgress() {
+    return courseProgress;
+}
+
+/**
+ * Retrieves progress for a specific course and lecture.
+ * Falls back to an empty progress structure if not yet recorded.
+ * @param {string|number} courseId
+ * @param {string|number} lectureId
+ * @returns {Object}
+ */
 export function getLectureProgress(courseId, lectureId) {
     const progressId = `${courseId}_${lectureId}`;
-    return courseProgress[progressId] || { courseId, lectureId, completed: false, lastPosition: 0, bookmarks: [] };
+    if (courseProgress[progressId]) {
+        return courseProgress[progressId];
+    }
+    if (typeof window !== 'undefined' && window.courseProgress && window.courseProgress[progressId]) {
+        return window.courseProgress[progressId];
+    }
+    return {
+        courseId,
+        lectureId,
+        completed: false,
+        currentTime: 0,
+        duration: 0,
+        bookmarks: []
+    };
 }
 
-if (typeof window !== 'undefined') {
-    window.getLectureProgress = getLectureProgress;
+/**
+ * Calculates progress statistics (completion %, total duration, remaining duration)
+ * for a course or a specific subfolder within a course.
+ * Uses cached course.stats / course.subCourseStats unless forceRecalculate is true.
+ * @param {Object} course
+ * @param {boolean} [forceRecalculate=false]
+ * @param {string|null} [targetSubfolder=null]
+ * @returns {Object} { completed, total, percentage, remainingDuration, totalDuration }
+ */
+export function calculateCourseProgress(course, forceRecalculate = false, targetSubfolder = null) {
+    if (!course) {
+        return { completed: 0, total: 0, percentage: 0, remainingDuration: 0, totalDuration: 0 };
+    }
+
+    const cId = String(course.id);
+
+    // Fast-path: return cached subfolder stats if valid
+    if (targetSubfolder) {
+        if (!forceRecalculate && course.subCourseStats && course.subCourseStats[targetSubfolder]) {
+            return course.subCourseStats[targetSubfolder];
+        }
+    } else {
+        // Fast-path: return memory-cached stats or course.stats
+        if (!forceRecalculate && courseProgressCache.has(cId)) {
+            return courseProgressCache.get(cId);
+        }
+        if (!forceRecalculate && course.stats) {
+            courseProgressCache.set(cId, course.stats);
+            return course.stats;
+        }
+    }
+
+    // Default structure for empty courses
+    if (!course.lectures || course.lectures.length === 0) {
+        const totalDur = course.totalDuration || 0;
+        const res = { completed: 0, total: course.videoCount || 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
+        if (!targetSubfolder) {
+            course.stats = res;
+            courseProgressCache.set(cId, res);
+        }
+        return res;
+    }
+
+    let completed = 0;
+    let timeCompleted = 0;
+    let activeTotalLectures = 0;
+    let activeTotalDuration = 0;
+
+    const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && s.isIgnored));
+    const subCourseStatsMap = {};
+
+    const lecs = course.lectures;
+    const len = lecs.length;
+
+    for (let i = 0; i < len; i++) {
+        const lecture = lecs[i];
+        let isSubfolderIgnored = false;
+
+        if (hasIgnoredSubs && lecture.chapter) {
+            for (const sub in course.subCourseData) {
+                if (course.subCourseData[sub]?.isIgnored && (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
+                    isSubfolderIgnored = true;
+                    break;
+                }
+            }
+        }
+
+        const dur = lecture.duration || 0;
+        const prog = getLectureProgress(course.id, lecture.id);
+        const isLecCompleted = !!(prog && prog.completed);
+
+        // Course-wide tally
+        if (!isSubfolderIgnored) {
+            activeTotalLectures++;
+            activeTotalDuration += dur;
+            if (isLecCompleted) {
+                completed++;
+                timeCompleted += dur;
+            }
+        }
+
+        // Subfolder tally
+        if (lecture.chapter) {
+            const ch = lecture.chapter;
+            const parts = ch.split('/');
+            for (let p = 1; p <= parts.length; p++) {
+                const subPath = parts.slice(0, p).join('/');
+                if (!subCourseStatsMap[subPath]) {
+                    subCourseStatsMap[subPath] = { total: 0, completed: 0, totalDuration: 0, timeCompleted: 0 };
+                }
+                const subSt = subCourseStatsMap[subPath];
+                subSt.total++;
+                subSt.totalDuration += dur;
+                if (isLecCompleted) {
+                    subSt.completed++;
+                    subSt.timeCompleted += dur;
+                }
+            }
+        }
+    }
+
+    const effectiveTotalDuration = activeTotalDuration > 0 ? activeTotalDuration : (course.totalDuration || 0);
+    const percentage = activeTotalLectures > 0 ? (completed / activeTotalLectures) * 100 : 0;
+
+    if (activeTotalDuration === 0 && effectiveTotalDuration > 0 && activeTotalLectures > 0) {
+        timeCompleted = (completed / activeTotalLectures) * effectiveTotalDuration;
+    }
+
+    const remainingDuration = effectiveTotalDuration - timeCompleted;
+
+    const courseResult = {
+        completed,
+        total: activeTotalLectures,
+        percentage,
+        remainingDuration: Math.max(0, remainingDuration),
+        totalDuration: effectiveTotalDuration
+    };
+
+    // Finalize subCourseStats
+    course.subCourseStats = {};
+    for (const subPath in subCourseStatsMap) {
+        const s = subCourseStatsMap[subPath];
+        const subRem = Math.max(0, s.totalDuration - s.timeCompleted);
+        const subPct = s.total > 0 ? (s.completed / s.total) * 100 : 0;
+        course.subCourseStats[subPath] = {
+            total: s.total,
+            completed: s.completed,
+            percentage: subPct,
+            totalDuration: s.totalDuration,
+            remainingDuration: subRem
+        };
+    }
+
+    course.stats = courseResult;
+    courseProgressCache.set(cId, courseResult);
+
+    if (targetSubfolder) {
+        return course.subCourseStats[targetSubfolder] || { completed: 0, total: 0, percentage: 0, remainingDuration: 0, totalDuration: 0 };
+    }
+
+    return courseResult;
 }
 
+/**
+ * Saves or updates a lecture progress record in IndexedDB and memory.
+ * Recomputes course stats and maintains legacy sync.
+ * @param {Object} data
+ * @returns {Promise<Object>} The saved progress record
+ */
 export async function saveLectureProgress(data) {
-    const progressId = `${data.courseId}_${data.lectureId}`;
-    const existing = courseProgress[progressId] || { courseId: data.courseId, lectureId: data.lectureId };
-    
+    if (!data || data.courseId === undefined || data.lectureId === undefined) {
+        throw new Error('[progressService] saveLectureProgress requires courseId and lectureId');
+    }
+
+    const progressId = data.id || `${data.courseId}_${data.lectureId}`;
+    const existing = courseProgress[progressId] || getLectureProgress(data.courseId, data.lectureId);
+
+    // Manage completion timestamps
     if (data.completed && !existing.completed) {
         data.completedAt = new Date().toISOString();
     } else if (data.completed === false) {
@@ -44,485 +253,172 @@ export async function saveLectureProgress(data) {
     } else if (data.completed && existing.completed) {
         data.completedAt = existing.completedAt || existing.lastStudiedAt || new Date().toISOString();
     }
-    
+
     data.lastStudiedAt = new Date().toISOString();
-    
-    const progressData = { ...existing, ...data, id: progressId };
-    await new Promise(resolve => getStore(PROGRESS_STORE, 'readwrite').put(progressData).onsuccess = resolve);
-    courseProgress[progressId] = progressData;
+
+    const progressRecord = { ...existing, ...data, id: progressId };
+    await repoPutProgress(progressRecord);
+
+    // Update in-memory stores
+    courseProgress[progressId] = progressRecord;
     if (typeof window !== 'undefined') {
         window.courseProgress = courseProgress;
-        if (typeof window.invalidateCourseProgressCache === 'function') {
-            window.invalidateCourseProgressCache(data.courseId);
-        }
-        if (window.courses && Array.isArray(window.courses)) {
-            const targetCourse = window.courses.find(c => String(c.id) === String(data.courseId));
-            if (targetCourse && typeof window.calculateCourseProgress === 'function') {
-                window.calculateCourseProgress(targetCourse, true);
-                getStore(STORE_NAME, 'readwrite').put(targetCourse);
+    }
+
+    // Invalidate and recompute course stats
+    invalidateCourseProgressCache(data.courseId);
+
+    if (typeof window !== 'undefined' && Array.isArray(window.courses)) {
+        const targetCourse = window.courses.find(c => String(c.id) === String(data.courseId));
+        if (targetCourse) {
+            calculateCourseProgress(targetCourse, true);
+            try {
+                await repoPutCourse(targetCourse);
+            } catch (err) {
+                console.warn('[progressService] Error persisting course stats:', err);
             }
         }
     }
-    
+
+    // Sync study logs in localStorage for performance/progress view
     if (data.completed !== undefined) {
-        let cfLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
-        const logIndex = cfLogs.findIndex(log => log.lectureId === progressId);
-        
-        if (data.completed) {
-            if (logIndex === -1) {
-                let faculty = data.faculty || (typeof window.currentCourse !== 'undefined' && window.currentCourse && window.currentCourse.id === data.courseId ? (window.currentCourse.subCourseData && window.currentSubfolder && window.currentCourse.subCourseData[window.currentSubfolder]?.facultyName ? window.currentCourse.subCourseData[window.currentSubfolder].facultyName : window.currentCourse.facultyName) || 'Unknown' : 'Unknown');
-                let chapter = data.chapter || (typeof window.currentCourse !== 'undefined' && window.currentCourse && window.currentCourse.lectures ? (window.currentCourse.lectures.find(l => l.id === data.lectureId)?.chapter || 'Unknown') : 'Unknown');
-                
-                cfLogs.push({
-                    date: data.completedAt || new Date().toISOString(),
-                    course: data.courseTitle || 'Unknown Course',
-                    subject: data.courseTitle || 'Unknown Subject',
-                    teacher: faculty,
-                    chapter: chapter,
-                    duration: data.lectureDuration || 0,
-                    lectureId: progressId
-                });
-            }
-        } else {
-            if (logIndex !== -1) {
-                cfLogs.splice(logIndex, 1);
-            }
-        }
-        localStorage.setItem('courseflix_logs', JSON.stringify(cfLogs));
-    }
-    
-    if (typeof window.syncCourseflixSubjects === 'function') {
-        window.syncCourseflixSubjects();
-    }
-    
-    if (data.completed !== undefined && data.completed !== existing.completed) {
-        const dh = parseFloat(localStorage.getItem('calcDailyHours')) || 7;
-        const sp = parseFloat(localStorage.getItem('calcPlaybackSpeed')) || 1.5;
-        if (typeof window.updateDailyGoalDisplay === 'function') {
-            window.updateDailyGoalDisplay(dh, sp);
-        }
-    }
-    return progressData;
-}
-
-export async function syncCourseflixSubjects() {
-    await ensureDB();
-    const allCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
-    let cfSubjects = [];
-    allCourses.forEach(course => {
-        const prog = typeof window.calculateCourseProgress === 'function' ? window.calculateCourseProgress(course) : { total: 0, completed: 0, remainingDuration: 0 };
-        let totalLectures = prog.total;
-        let completedLectures = prog.completed;
-        cfSubjects.push({
-            id: course.id,
-            name: course.title,
-            faculty: course.facultyName || 'Unknown',
-            totalLectures: totalLectures,
-            completedLectures: completedLectures,
-            remainingDuration: prog.remainingDuration
-        });
-    });
-    localStorage.setItem('courseflix_subjects', JSON.stringify(cfSubjects));
-    
-    const allDpps = await new Promise(resolve => getStore(DPP_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
-    const courseIdStrs = allCourses.map(c => String(c.id));
-    let cfDpps = (allDpps || [])
-        .filter(d => !d.courseId || courseIdStrs.includes(String(d.courseId)))
-        .map(d => ({
-            id: d.id,
-            name: d.fileName || d.title || `DPP ${d.id}`,
-            courseId: d.courseId,
-            status: d.status || 'none'
-        }));
-    localStorage.setItem('courseflix_dpps', JSON.stringify(cfDpps));
-}
-
-export async function addHistoryEntry(courseId, lectureId, courseTitle, lectureName, duration, subfolder, thumbnail) {
-    cachedHistory = null;
-    const entry = {
-        courseId, lectureId, courseTitle, lectureName, duration, subfolder, thumbnail,
-        timestamp: new Date().toISOString()
-    };
-    await ensureDB();
-    return new Promise((resolve, reject) => {
-        const request = getStore(HISTORY_STORE, 'readwrite').add(entry);
-        request.onsuccess = resolve;
-        request.onerror = reject;
-    });
-}
-
-export async function getHistoryEntries() {
-    await ensureDB();
-    if (cachedHistory) return cachedHistory;
-    return new Promise((resolve) => {
-        try {
-            const store = getStore(HISTORY_STORE, 'readonly');
-            if (!store) return resolve([]);
-            const request = store.getAll();
-            request.onsuccess = () => {
-                cachedHistory = request.result || [];
-                resolve(cachedHistory);
-            };
-            request.onerror = (e) => {
-                if (e && typeof e.preventDefault === 'function') e.preventDefault();
-                resolve([]);
-            };
-        } catch (err) {
-            resolve([]);
-        }
-    });
-}
-
-export async function hideWatchHistoryEntry(id) {
-    cachedHistory = null;
-    await ensureDB();
-    return new Promise((resolve, reject) => {
-        const store = getStore(HISTORY_STORE, 'readwrite');
-        store.get(id).onsuccess = (e) => {
-            const h = e.target.result;
-            if (h) {
-                if (h.isHiddenFromContinue) {
-                    store.delete(id).onsuccess = () => resolve();
-                } else {
-                    h.isHiddenFromHistory = true;
-                    store.put(h).onsuccess = () => resolve();
-                }
-            } else resolve();
-        };
-    });
-}
-
-export async function clearWatchHistory() {
-    cachedHistory = null;
-    const history = await getHistoryEntries();
-    await ensureDB();
-    const store = getStore(HISTORY_STORE, 'readwrite');
-    return Promise.all(history.map(h => {
-        if (h.isHiddenFromHistory) return Promise.resolve();
-        if (h.isHiddenFromContinue) {
-            return new Promise(r => store.delete(h.id).onsuccess = r);
-        } else {
-            h.isHiddenFromHistory = true;
-            return new Promise(r => store.put(h).onsuccess = r);
-        }
-    }));
-}
-
-export async function clearContinueHistory() {
-    cachedHistory = null;
-    const history = await getHistoryEntries();
-    await ensureDB();
-    const store = getStore(HISTORY_STORE, 'readwrite');
-    return Promise.all(history.map(h => {
-        if (h.isHiddenFromContinue) return Promise.resolve();
-        if (h.isHiddenFromHistory) {
-            return new Promise(r => store.delete(h.id).onsuccess = r);
-        } else {
-            h.isHiddenFromContinue = true;
-            return new Promise(r => store.put(h).onsuccess = r);
-        }
-    }));
-}
-
-export async function hideContinueHistoryByCourseSubfolder(courseId, subfolder) {
-    cachedHistory = null;
-    const history = await getHistoryEntries();
-    await ensureDB();
-    const toHide = history.filter(h => h.courseId === courseId && (h.subfolder || '') === subfolder);
-    const store = getStore(HISTORY_STORE, 'readwrite');
-    return Promise.all(toHide.map(h => {
-        if (h.isHiddenFromHistory) {
-            return new Promise(r => store.delete(h.id).onsuccess = r);
-        } else {
-            h.isHiddenFromContinue = true;
-            return new Promise(r => store.put(h).onsuccess = r);
-        }
-    }));
-}
-
-export function isSubfolderPathIgnoredOrHidden(course, subfolderPath) {
-    if (!course) return false;
-    if (course.isIgnored) return true;
-    if (!course.subCourseData || !subfolderPath) return false;
-
-    const normSub = String(subfolderPath).toLowerCase().trim();
-    for (const key of Object.keys(course.subCourseData)) {
-        const item = course.subCourseData[key];
-        if (item && (item.hidden || item.isIgnored)) {
-            const normKey = String(key).toLowerCase().trim();
-            if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-export function isSubfolderPathHidden(course, subfolderPath) {
-    if (!course) return false;
-    if (!course.subCourseData || !subfolderPath) return false;
-
-    const normSub = String(subfolderPath).toLowerCase().trim();
-    for (const key of Object.keys(course.subCourseData)) {
-        const item = course.subCourseData[key];
-        if (item && item.hidden) {
-            const normKey = String(key).toLowerCase().trim();
-            if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-export async function hardDeleteHistoryForSubfolder(courseId, targetSubfolder) {
-    try {
-        await ensureDB();
-        const history = await new Promise((resolve) => {
-            const req = getStore(HISTORY_STORE, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        if (!history || history.length === 0) return;
-
-        const toDeleteIds = [];
-        const normTarget = String(targetSubfolder || '').toLowerCase().trim();
-
-        for (const h of history) {
-            if (parseInt(h.courseId) === parseInt(courseId)) {
-                const normSub = String(h.subfolder || '').toLowerCase().trim();
-                if (!normTarget || normSub === normTarget || normSub.startsWith(normTarget + '/') || normSub.endsWith('/' + normTarget) || normSub.includes('/' + normTarget + '/')) {
-                    toDeleteIds.push(h.id);
-                }
-            }
-        }
-
-        if (toDeleteIds.length > 0) {
-            cachedHistory = null;
-            const store = getStore(HISTORY_STORE, 'readwrite');
-            await Promise.all(toDeleteIds.map(id => new Promise(r => store.delete(id).onsuccess = r)));
-        }
-    } catch (err) {
-        console.warn('Error in hardDeleteHistoryForSubfolder:', err);
-    }
-}
-
-export async function cleanupOrphanedHistoryEntries() {
-    try {
-        await ensureDB();
-        const history = await new Promise((resolve) => {
-            const req = getStore(HISTORY_STORE, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        if (!history || history.length === 0) return;
-
-        const courses = typeof window.courses !== 'undefined' ? window.courses : [];
-        const toDeleteIds = [];
-        for (const h of history) {
-            if (!h.courseId) {
-                toDeleteIds.push(h.id);
-                continue;
-            }
-            const course = (courses || []).find(c => parseInt(c.id) === parseInt(h.courseId));
-            if (!course) {
-                toDeleteIds.push(h.id);
-                continue;
-            }
-            if (h.subfolder && isSubfolderPathHidden(course, h.subfolder)) {
-                toDeleteIds.push(h.id);
-                continue;
-            }
-        }
-
-        if (toDeleteIds.length > 0) {
-            cachedHistory = null;
-            const store = getStore(HISTORY_STORE, 'readwrite');
-            await Promise.all(toDeleteIds.map(id => new Promise(r => store.delete(id).onsuccess = r)));
-        }
-    } catch (err) {
-        console.warn('Error during history cleanup:', err);
-    }
-}
-
-export async function purgeAllDataForDeletedCoursesAndSubfolders(options = {}) {
-    let totalPurgedCount = 0;
-    try {
-        await ensureDB();
-        const activeCourses = await new Promise((resolve) => {
-            const req = getStore(STORE_NAME, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        const activeLectureMap = {};
-        activeCourses.forEach(c => {
-            if (c && Array.isArray(c.lectures)) {
-                activeLectureMap[c.id] = new Set(c.lectures.map(l => String(l.id)));
-            }
-        });
-
-        const isRecordValid = (courseId, subfolderPath, lectureId, itemId) => {
-            if (!courseId) return false;
-            const cId = parseInt(courseId);
-            const course = activeCourses.find(c => parseInt(c.id) === cId);
-            if (!course) return false;
-            if (subfolderPath && isSubfolderPathHidden(course, subfolderPath)) return false;
-            
-            let lecId = lectureId ? String(lectureId) : null;
-            if (!lecId && itemId && typeof itemId === 'string' && itemId.startsWith(cId + '_')) {
-                lecId = itemId.replace(cId + '_', '');
-            }
-            if (lecId && activeLectureMap[cId] && activeLectureMap[cId].size > 0) {
-                if (!activeLectureMap[cId].has(lecId)) {
-                    return false;
-                }
-            }
-            return true;
-        };
-
-        const allProgress = await new Promise((resolve) => {
-            const req = getStore(PROGRESS_STORE, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        if (allProgress && allProgress.length > 0) {
-            const progressStore = getStore(PROGRESS_STORE, 'readwrite');
-            for (const prog of allProgress) {
-                const sub = prog.subfolder || prog.chapter || '';
-                if (!isRecordValid(prog.courseId, sub, prog.lectureId, prog.id)) {
-                    progressStore.delete(prog.id);
-                    totalPurgedCount++;
-                    if (courseProgress) {
-                        delete courseProgress[prog.id];
-                    }
-                }
-            }
-        }
-
-        await cleanupOrphanedHistoryEntries();
-
-        const allDoubts = await new Promise((resolve) => {
-            const req = getStore(DOUBTS_STORE, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        if (allDoubts && allDoubts.length > 0) {
-            const doubtsStore = getStore(DOUBTS_STORE, 'readwrite');
-            for (const d of allDoubts) {
-                const sub = d.subfolder || d.chapter || '';
-                if (!isRecordValid(d.courseId, sub, d.lectureId, d.id)) {
-                    doubtsStore.delete(d.id);
-                    totalPurgedCount++;
-                }
-            }
-        }
-
-        const allDpp = await new Promise((resolve) => {
-            const req = getStore(DPP_STORE, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        if (allDpp && allDpp.length > 0) {
-            const dppStore = getStore(DPP_STORE, 'readwrite');
-            for (const dpp of allDpp) {
-                const sub = dpp.subfolder || dpp.chapter || '';
-                if (!isRecordValid(dpp.courseId, sub, dpp.lectureId, dpp.id)) {
-                    dppStore.delete(dpp.id);
-                    totalPurgedCount++;
-                }
-            }
-        }
-
-        const allCal = await new Promise((resolve) => {
-            const req = getStore(CALENDAR_STORE, 'readonly').getAll();
-            req.onsuccess = e => resolve(e.target.result || []);
-            req.onerror = () => resolve([]);
-        });
-
-        if (allCal && allCal.length > 0) {
-            const calStore = getStore(CALENDAR_STORE, 'readwrite');
-            for (const cal of allCal) {
-                const sub = cal.subfolder || cal.chapter || '';
-                if (cal.courseId && !isRecordValid(cal.courseId, sub, cal.lectureId, cal.id)) {
-                    calStore.delete(cal.id);
-                    totalPurgedCount++;
-                }
-            }
-        }
-
         try {
             let cfLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
-            if (cfLogs && cfLogs.length > 0) {
-                const initialLen = cfLogs.length;
-                const filteredLogs = cfLogs.filter(log => isRecordValid(log.courseId, log.subfolder || log.chapter, log.lectureId, log.id));
-                totalPurgedCount += (initialLen - filteredLogs.length);
-                localStorage.setItem('courseflix_logs', JSON.stringify(filteredLogs));
-            }
-        } catch (e) {}
+            const logIndex = cfLogs.findIndex(log => log.lectureId === progressId);
 
-        try {
-            const progRequest = indexedDB.open('ProgressAppDB', 1);
-            await new Promise((resolve) => {
-                progRequest.onsuccess = (e) => {
-                    const db = e.target.result;
-                    db.onversionchange = () => { try { db.close(); } catch (err) {} };
-                    const finish = () => {
-                        try { db.close(); } catch(err) {}
-                        resolve();
-                    };
-                    if (db.objectStoreNames.contains('assignmentFiles')) {
-                        const tx = db.transaction('assignmentFiles', 'readwrite');
-                        const store = tx.objectStore('assignmentFiles');
-                        const keysReq = store.getAllKeys();
-                        keysReq.onsuccess = () => {
-                            const keys = keysReq.result || [];
-                            for (const key of keys) {
-                                const keyStr = String(key);
-                                const parts = keyStr.split('_');
-                                const courseId = parts[0];
-                                const lectureId = parts.slice(1).join('_');
-                                if (!isRecordValid(courseId, null, lectureId, keyStr)) {
-                                    store.delete(key);
-                                    totalPurgedCount++;
-                                }
-                            }
-                            finish();
-                        };
-                        keysReq.onerror = () => finish();
-                    } else {
-                        finish();
+            if (data.completed) {
+                if (logIndex === -1) {
+                    let faculty = data.faculty || 'Unknown';
+                    let chapter = data.chapter || 'Unknown';
+
+                    if (typeof window !== 'undefined' && window.currentCourse && window.currentCourse.id === data.courseId) {
+                        if (window.currentCourse.subCourseData && window.currentSubfolder && window.currentCourse.subCourseData[window.currentSubfolder]?.facultyName) {
+                            faculty = window.currentCourse.subCourseData[window.currentSubfolder].facultyName;
+                        } else if (window.currentCourse.facultyName) {
+                            faculty = window.currentCourse.facultyName;
+                        }
+
+                        if (window.currentCourse.lectures) {
+                            const lec = window.currentCourse.lectures.find(l => l.id === data.lectureId);
+                            if (lec && lec.chapter) chapter = lec.chapter;
+                        }
                     }
-                };
-                progRequest.onerror = () => resolve();
-            });
-        } catch (e) {}
 
-    } catch (err) {
-        console.warn('Error in purgeAllDataForDeletedCoursesAndSubfolders:', err);
+                    cfLogs.push({
+                        date: data.completedAt || new Date().toISOString(),
+                        course: data.courseTitle || 'Unknown Course',
+                        subject: data.courseTitle || 'Unknown Subject',
+                        teacher: faculty,
+                        chapter: chapter,
+                        duration: data.lectureDuration || 0,
+                        lectureId: progressId
+                    });
+                }
+            } else {
+                if (logIndex !== -1) {
+                    cfLogs.splice(logIndex, 1);
+                }
+            }
+            localStorage.setItem('courseflix_logs', JSON.stringify(cfLogs));
+        } catch (e) {
+            console.warn('[progressService] Error updating courseflix_logs:', e);
+        }
     }
-    return totalPurgedCount;
+
+    // Dispatch progress updated custom event
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('courseflix:progress-updated', {
+            detail: {
+                courseId: data.courseId,
+                lectureId: data.lectureId,
+                progress: progressRecord
+            }
+        }));
+
+        if (typeof window.syncCourseflixSubjects === 'function') {
+            window.syncCourseflixSubjects();
+        }
+    }
+
+    return progressRecord;
 }
 
-// Bind to window for backwards compatibility
+/**
+ * Marks a lecture as completed or uncompleted.
+ * @param {string|number} courseId
+ * @param {string|number} lectureId
+ * @param {boolean} isCompleted
+ * @param {Object} [metadata={}]
+ * @returns {Promise<Object>}
+ */
+export async function markLectureCompleted(courseId, lectureId, isCompleted, metadata = {}) {
+    return saveLectureProgress({
+        courseId,
+        lectureId,
+        completed: !!isCompleted,
+        ...metadata
+    });
+}
+
+/**
+ * Updates playback position (currentTime, duration) for a lecture.
+ * @param {string|number} courseId
+ * @param {string|number} lectureId
+ * @param {number} currentTime
+ * @param {number} [duration=0]
+ * @returns {Promise<Object>}
+ */
+export async function updatePlaybackPosition(courseId, lectureId, currentTime, duration = 0) {
+    const existing = getLectureProgress(courseId, lectureId);
+    return saveLectureProgress({
+        ...existing,
+        courseId,
+        lectureId,
+        currentTime: Math.max(0, currentTime),
+        duration: duration || existing.duration || 0,
+        lastPlayed: new Date().toISOString()
+    });
+}
+
+/**
+ * Deletes all progress records belonging to a course.
+ * @param {string|number} courseId
+ * @returns {Promise<void>}
+ */
+export async function deleteProgressForCourse(courseId) {
+    const parsedId = String(parseCourseId(courseId));
+    await repoDeleteProgressForCourse(parsedId);
+
+    // Update in-memory map
+    const prefix = `${parsedId}_`;
+    for (const key in courseProgress) {
+        if (key.startsWith(prefix) || String(courseProgress[key].courseId) === parsedId) {
+            delete courseProgress[key];
+        }
+    }
+    invalidateCourseProgressCache(courseId);
+
+    if (typeof window !== 'undefined') {
+        window.courseProgress = courseProgress;
+    }
+}
+
+// Bind to window for backward compatibility with unmigrated legacy code
 if (typeof window !== 'undefined') {
+    window.progressService = {
+        loadAllProgress,
+        getAllProgress,
+        getLectureProgress,
+        saveLectureProgress,
+        markLectureCompleted,
+        updatePlaybackPosition,
+        calculateCourseProgress,
+        invalidateCourseProgressCache,
+        deleteProgressForCourse
+    };
     window.loadAllProgress = loadAllProgress;
+    window.getLectureProgress = getLectureProgress;
     window.saveLectureProgress = saveLectureProgress;
-    window.syncCourseflixSubjects = syncCourseflixSubjects;
-    window.addHistoryEntry = addHistoryEntry;
-    window.getHistoryEntries = getHistoryEntries;
-    window.hideWatchHistoryEntry = hideWatchHistoryEntry;
-    window.clearWatchHistory = clearWatchHistory;
-    window.clearContinueHistory = clearContinueHistory;
-    window.hideContinueHistoryByCourseSubfolder = hideContinueHistoryByCourseSubfolder;
-    window.isSubfolderPathIgnoredOrHidden = isSubfolderPathIgnoredOrHidden;
-    window.isSubfolderPathHidden = isSubfolderPathHidden;
-    window.hardDeleteHistoryForSubfolder = hardDeleteHistoryForSubfolder;
-    window.cleanupOrphanedHistoryEntries = cleanupOrphanedHistoryEntries;
-    window.purgeAllDataForDeletedCoursesAndSubfolders = purgeAllDataForDeletedCoursesAndSubfolders;
+    window.calculateCourseProgress = calculateCourseProgress;
+    window.invalidateCourseProgressCache = invalidateCourseProgressCache;
 }

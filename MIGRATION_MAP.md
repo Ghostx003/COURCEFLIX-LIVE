@@ -795,4 +795,43 @@ src/
 - Zero breaking changes to database schemas or persisted object fields.
 - Build Status: `npm run build` succeeds without errors.
 
+---
+
+## 9. Phase 3B Status: Progress Business Logic Extraction (COMPLETED)
+
+### A. Progress Service Boundary Created
+- **Module**: [`src/services/progressService.js`](file:///e:/projects/courceflix-react/src/services/progressService.js)
+  - Owns lecture progress tracking, completion calculations, timestamp management, `lastStudiedAt` / `completedAt` lifecycle, and cache invalidation.
+  - Data operations strictly delegate to `src/db/progressRepository.js`.
+  - Maintains `window.courseProgress` memory map synchronization for legacy backward compatibility.
+  - Exposes `window.progressService` and legacy globals (`loadAllProgress`, `getLectureProgress`, `saveLectureProgress`, `calculateCourseProgress`, `invalidateCourseProgressCache`).
+
+### B. Functions Extracted to `progressService.js`
+- `loadAllProgress()`: Reads all progress records from `progressRepository.getAllProgress()`, populates memory map, and syncs `window.courseProgress`.
+- `getAllProgress()`: Returns in-memory progress record map.
+- `getLectureProgress(courseId, lectureId)`: Returns progress for specific lecture from memory or repository fallback.
+- `calculateCourseProgress(course, forceRecalc, targetSubfolder)`: Canonical engine for calculating completed lectures, percentage, total duration, remaining duration, and subfolder statistics.
+- `invalidateCourseProgressCache(courseId)`: Clears pre-computed progress stats from calculation cache.
+- `saveLectureProgress(data)`: Manages completion timestamps, persists record via `progressRepository.putProgress()`, invalidates cache, updates course stats via `coursesRepository.putCourse()`, syncs `courseflix_logs`, and dispatches `courseflix:progress-updated`.
+- `markLectureCompleted(courseId, lectureId, isCompleted, metadata)`: Convenience method for completion toggling.
+- `updatePlaybackPosition(courseId, lectureId, currentTime, duration)`: Updates playback timestamp and duration.
+- `deleteProgressForCourse(courseId)`: Purges all progress records for a course.
+
+### C. First Safe Caller Migrated
+- **`public/legacy.js:loadAllProgress()`**:
+  - Previously executed direct inline `getStore('progress', 'readonly').getAll()`.
+  - Now delegates to `window.progressService.loadAllProgress()`, which fetches via `progressRepository.getAllProgress()`, populates runtime map, and maintains `window.courseProgress`.
+  - Cache clearing and downstream event triggers preserved.
+
+### D. Functions Still in `legacy.js` (Pending Later Phases)
+- Video element playback & controls (`playVideo`, seek overlays, shortcuts) → Reserved for **Phase 10 (Player Migration)**.
+- Filesystem directory scanning → Reserved for **Phase 4 (FileSystem Service)**.
+- Dashboard rendering & sorting → Reserved for **Phase 6 & 7 (React Dashboard)**.
+
+### E. Verification & State Integrity
+- `window.courseProgress` and `window.courses` are fully preserved and continuously synchronized.
+- Zero breaking changes to IndexedDB progress data format or `${courseId}_${lectureId}` key format.
+- Build Status: `npm run build` succeeds without errors.
+
+
 

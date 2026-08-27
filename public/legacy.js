@@ -416,6 +416,13 @@ window.initCourseFlix = async function() {
         window.invalidateCourseProgressCache = invalidateCourseProgressCache;
 
         async function loadAllProgress() {
+            if (typeof window !== 'undefined' && window.progressService && typeof window.progressService.loadAllProgress === 'function') {
+                const progMap = await window.progressService.loadAllProgress();
+                courseProgress = progMap || {};
+                window.courseProgress = courseProgress;
+                courseProgressCache.clear();
+                return;
+            }
             await ensureDB();
             const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
             courseProgress = {};
