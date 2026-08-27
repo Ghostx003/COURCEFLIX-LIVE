@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import CourseGrid from '../dashboard/CourseGrid.jsx';
 import { useCourses } from '../../hooks/useCourses.js';
+import { useRouter } from '../../hooks/useRouter.js';
 
 const SORT_OPTIONS = [
     { value: 'custom', label: 'Custom (Drag & Drop)' },
@@ -28,6 +29,8 @@ export default function DashboardViewElView() {
         updateCourseTitle,
         updateCourseFaculty
     } = useCourses();
+
+    const { currentView } = useRouter();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [sortPref, setSortPref] = useState(() => localStorage.getItem('courseSortPref') || 'custom');
@@ -213,7 +216,7 @@ export default function DashboardViewElView() {
     };
 
     return (
-        <div id="dashboard-view-el" className="view">
+        <div id="dashboard-view-el" className={`view ${currentView === 'dashboard-view' ? 'active' : ''}`}>
             <div style={{
                 padding: '12px 28px',
                 display: 'flex',

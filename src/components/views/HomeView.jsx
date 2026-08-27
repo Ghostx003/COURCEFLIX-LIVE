@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
 
 export default function HomeView() {
+  const { currentView } = useRouter();
   const [stats, setStats] = useState({
     totalCourses: 0,
     totalLectures: 0,
@@ -260,7 +262,7 @@ export default function HomeView() {
   }, []);
 
   return (
-    <div id="home-view" className="view active home-lux-container">
+    <div id="home-view" className={`view ${currentView === 'home-view' ? 'active' : ''} home-lux-container`}>
       {/* Ambient Radial Gradient Mesh Backgrounds */}
       <div className="home-glow-bg glow-1"></div>
       <div className="home-glow-bg glow-2"></div>

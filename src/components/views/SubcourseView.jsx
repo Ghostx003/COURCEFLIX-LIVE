@@ -275,7 +275,7 @@ export default function SubcourseView() {
     }, [basePath, courseId]);
 
     return (
-        <div id="subcourse-view" className="view">
+        <div id="subcourse-view" className={`view ${currentView === 'subcourse-view' ? 'active' : ''}`}>
             <SubcourseHeader
                 course={course}
                 basePath={basePath}
