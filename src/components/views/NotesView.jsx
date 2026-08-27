@@ -1,11 +1,8 @@
-import React from 'react';
-import { useRouter } from '../../hooks/useRouter.js';
+import React, { memo } from 'react';
 
-export default function NotesView() {
-  const { currentView } = useRouter();
-
+const NotesView = memo(function NotesView() {
   return (
-    <div id="notes-view" className={`view ${currentView === 'notes-view' ? 'active' : ''}`}>
+    <div id="notes-view" className="view">
       <div id="notes-grid-header" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", padding: "16px 24px 0 24px" }}>
         <button id="notes-intell-hub-btn" className="primary-btn" style={{ padding: "6px 14px", fontSize: "0.85rem", fontWeight: "600", display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
           <i className="fas fa-brain"></i> Intell Hub
@@ -29,7 +26,6 @@ export default function NotesView() {
       </div>
     </div>
   );
-}
+});
 
-
-
+export default NotesView;

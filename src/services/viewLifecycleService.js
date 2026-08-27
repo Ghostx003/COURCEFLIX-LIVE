@@ -38,7 +38,7 @@ export function handleViewTransition(targetView, previousView = null, options = 
     });
 
     // 4. Player Teardown Lifecycle
-    if (targetView !== 'player-view' && (previousView === 'player-view' || !previousView)) {
+    if (targetView !== 'player-view' && previousView === 'player-view') {
         handleLeavingPlayer({ clearSession: !!options.pushState });
     }
 

@@ -35,7 +35,8 @@ export default function App() {
   useEffect(() => {
     initSettingsListeners();
 
-    if (window.initCourseFlix) {
+    if (window.initCourseFlix && !window.courseFlixInitialized) {
+      window.courseFlixInitialized = true;
       window.initCourseFlix();
     }
 

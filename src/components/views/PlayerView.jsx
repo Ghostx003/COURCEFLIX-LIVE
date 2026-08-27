@@ -1,12 +1,9 @@
-import React from 'react';
+import React, { memo } from 'react';
 import FloatingTimer from './FloatingTimer';
-import { useRouter } from '../../hooks/useRouter.js';
 
-export default function PlayerView() {
-  const { currentView } = useRouter();
-
+const PlayerView = memo(function PlayerView() {
   return (
-    <div id="player-view" className={`view ${currentView === 'player-view' ? 'active' : ''}`}>
+    <div id="player-view" className="view">
         <FloatingTimer />
         <div id="pdf-drop-overlay" style={{"position":"absolute","top":"0","left":"0","right":"0","bottom":"0","background":"rgba(0, 0, 0, 0.85)","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center","zIndex":"9999","border":"4px dashed var(--accent-primary)","color":"white","opacity":"0","pointerEvents":"none","transition":"opacity 0.2s ease"}}>
             <i className="fas fa-file-pdf" style={{"fontSize":"5rem","color":"var(--accent-primary)","marginBottom":"20px"}}></i>
@@ -428,4 +425,6 @@ export default function PlayerView() {
         </div>
     </div>
   );
-}
+});
+
+export default PlayerView;

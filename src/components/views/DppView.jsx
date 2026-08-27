@@ -1,11 +1,8 @@
-import React from 'react';
-import { useRouter } from '../../hooks/useRouter.js';
+import React, { memo } from 'react';
 
-export default function DppView() {
-  const { currentView } = useRouter();
-
+const DppView = memo(function DppView() {
   return (
-    <div id="dpp-view" className={`view ${currentView === 'dpp-view' ? 'active' : ''}`}>
+    <div id="dpp-view" className="view">
         <main id="dpp-course-grid" className="grid-container"></main>
         <div id="dpp-detail-container" className="hidden">
             <div id="dpp-sidebar">
@@ -23,4 +20,6 @@ export default function DppView() {
         </div>
     </div>
   );
-}
+});
+
+export default DppView;

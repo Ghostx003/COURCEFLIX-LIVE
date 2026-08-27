@@ -1,11 +1,8 @@
-import React from 'react';
-import { useRouter } from '../../hooks/useRouter.js';
+import React, { memo } from 'react';
 
-export default function UploadView() {
-  const { currentView } = useRouter();
-
+const UploadView = memo(function UploadView() {
   return (
-    <div id="upload-view" className={`view ${currentView === 'upload-view' ? 'active' : ''}`}>
+    <div id="upload-view" className="view">
         <main id="upload-course-grid" className="grid-container"></main>
         <div id="upload-subfolder-view" className="hidden">
             <div className="view-header">
@@ -50,4 +47,6 @@ export default function UploadView() {
         </div>
     </div>
   );
-}
+});
+
+export default UploadView;
