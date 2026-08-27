@@ -331,6 +331,9 @@ window.initCourseFlix = async function() {
         }
 
         async function getVideoDuration(file) {
+            if (typeof window !== 'undefined' && window.fileSystemService && typeof window.fileSystemService.getVideoDuration === 'function') {
+                return await window.fileSystemService.getVideoDuration(file);
+            }
             return new Promise(resolve => {
                 let url = null;
                 try {
@@ -1451,6 +1454,9 @@ window.initCourseFlix = async function() {
         }
         
         async function scanDirectoryHandle(dirHandle, basePath = '', cachedLectures = [], fastPass = false) {
+            if (typeof window !== 'undefined' && window.fileSystemService && typeof window.fileSystemService.scanDirectoryTree === 'function') {
+                return await window.fileSystemService.scanDirectoryTree(dirHandle, { basePath, cachedLectures, fastPass });
+            }
             const chapters = {};
             const lectures = [];
             let totalDuration = 0;

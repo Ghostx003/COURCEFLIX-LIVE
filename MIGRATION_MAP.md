@@ -833,5 +833,50 @@ src/
 - Zero breaking changes to IndexedDB progress data format or `${courseId}_${lectureId}` key format.
 - Build Status: `npm run build` succeeds without errors.
 
+---
+
+## 10. Phase 4 Status: FileSystem Service Extraction (COMPLETED)
+
+### A. FileSystem Service Boundary Created
+- **Module**: [`src/services/fileSystemService.js`](file:///e:/projects/courceflix-react/src/services/fileSystemService.js)
+  - Canonical low-level abstraction around the browser's File System Access API.
+  - Zero UI/DOM manipulation; zero direct database writes.
+  - Exposes clean filesystem primitives: permission verification, directory pickers, file pickers, directory recursion/scanning, file handle resolution, duration extraction with safe cleanup, and media URL management.
+  - Exposes `window.fileSystemService` and global helpers (`getVideoDuration`, `scanDirectoryTree`, `verifyPermission`).
+
+### B. Functions Extracted to `fileSystemService.js`
+- `isFileSystemAccessSupported()`: Feature detection for File System Access API.
+- `queryReadPermission(handle)`: Non-prompting permission query.
+- `requestReadPermission(handle)`: Gesture-activated permission request.
+- `verifyPermission(handle, promptIfDenied)`: Combined query + request workflow.
+- `pickDirectory(options)`: Calls `window.showDirectoryPicker` with AbortError cancellation handling.
+- `pickFiles(options)`: Calls `window.showOpenFilePicker` with multi-file support.
+- `getFileFromHandle(fileHandle)`: Universal file resolver supporting standard handles, webkit drop entries, and File objects.
+- `createMediaUrl(fileOrBlob)` / `revokeMediaUrl(url)`: Object URL lifecycle management.
+- `getVideoDuration(file, timeoutMs)`: Measures video duration using an offscreen video element with strict timeout and URL revocation.
+- `readDirectoryEntries(dirHandle)`: Enumerates and sorts child files and directories.
+- `scanDirectoryTree(dirHandle, options)`: Recursive directory scanner discovering video lectures, organizing chapters, and extracting/reusing duration metadata.
+- `naturalSort(a, b)`: Alphanumeric sorting comparator.
+
+### C. First Safe Callers Migrated
+- **`public/legacy.js:scanDirectoryHandle()`**:
+  - Delegates directly to `window.fileSystemService.scanDirectoryTree(dirHandle, { basePath, cachedLectures, fastPass })`.
+- **`public/legacy.js:getVideoDuration()`**:
+  - Delegates directly to `window.fileSystemService.getVideoDuration(file)`.
+- **`src/services/utils.js:getVideoDuration`**:
+  - Re-exports directly from `src/services/fileSystemService.js`.
+
+### D. Direct Filesystem Callers Remaining (Temporary / Later Phases)
+- `legacy.js:playVideo()`: calls `lecture.handle.getFile()` (Player Subsystem → **Phase 10**).
+- `legacy.js:showMediaViewer()`: calls `pdfHandle.getFile()` (Media Viewer Subsystem → **Phase 10**).
+- `legacy.js:relocateCourse()` / `triggerAddSubcourse()`: calls `window.showDirectoryPicker()` (will be consumed by React modal handlers in subsequent UI phases).
+
+### E. Startup Performance & Safety Preserved
+- Zero filesystem access during dashboard startup / F5.
+- Permission prompts remain strictly on-demand.
+- FileSystemDirectoryHandle storage in IndexedDB preserved unchanged.
+- Build Status: `npm run build` succeeds without errors.
+
+
 
 

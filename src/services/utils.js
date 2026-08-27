@@ -51,57 +51,7 @@ export function getParentPath(path) {
     return parts.join('/');
 }
 
-export async function getVideoDuration(file) {
-    return new Promise(resolve => {
-        let url = null;
-        try {
-            url = URL.createObjectURL(file);
-        } catch (e) {
-            resolve(0);
-            return;
-        }
-
-        const v = document.createElement('video');
-        v.preload = 'metadata';
-        let isResolved = false;
-        let timeoutId = null;
-
-        const cleanup = () => {
-            if (isResolved) return;
-            isResolved = true;
-            if (timeoutId) clearTimeout(timeoutId);
-            v.onloadedmetadata = null;
-            v.onerror = null;
-            v.removeAttribute('src');
-            try { v.load(); } catch(e) {}
-            if (url) {
-                const urlToRevoke = url;
-                url = null;
-                setTimeout(() => {
-                    try { URL.revokeObjectURL(urlToRevoke); } catch (e) {}
-                }, 200);
-            }
-        };
-
-        timeoutId = setTimeout(() => {
-            cleanup();
-            resolve(0);
-        }, 2500);
-
-        v.onloadedmetadata = () => {
-            const duration = v.duration;
-            cleanup();
-            resolve(duration);
-        };
-
-        v.onerror = () => {
-            cleanup();
-            resolve(0);
-        };
-
-        v.src = url;
-    });
-}
+export { getVideoDuration } from './fileSystemService.js';
 
 export function showToast(message, isError = false) {
     const toast = document.createElement('div');
