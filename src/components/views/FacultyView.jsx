@@ -1,7 +1,11 @@
 import React from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
+
 export default function FacultyView() {
+  const { currentView } = useRouter();
+
   return (
-    <div id="faculty-view" className="view" style={{"position":"relative"}}>
+    <div id="faculty-view" className={`view ${currentView === 'faculty-view' ? 'active' : ''}`} style={{"position":"relative"}}>
         <div className="faculty-header" style={{"padding":"10px 24px","display":"flex","justifyContent":"flex-end","alignItems":"center","gap":"10px","borderBottom":"1px solid var(--border-primary)","background":"var(--bg-primary)"}}>
             <button id="reset-hidden-faculties-btn" title="Reset Preferences" style={{"padding":"6px 12px","borderRadius":"6px","border":"1px solid var(--border-secondary)","background":"var(--bg-tertiary)","color":"var(--text-primary)","cursor":"pointer","fontSize":"0.85rem","fontWeight":"500","display":"none","alignItems":"center","justifyContent":"center","transition":"background-color 0.2s"}}><i className="fas fa-undo"></i></button>
             <label htmlFor="faculty-sort-select" style={{"fontSize":"0.9rem","color":"var(--text-secondary)","fontWeight":"600"}}>Sort by:</label>

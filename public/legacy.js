@@ -2148,6 +2148,7 @@ window.initCourseFlix = async function() {
                 grid.appendChild(card);
             });
         }
+        window.renderUploadView = renderUploadView;
 
         async function renderUploadSubfolderView(courseId, basePath = '') {
             const course = courses.find(c => String(c.id) === String(courseId));
@@ -8435,6 +8436,7 @@ window.initCourseFlix = async function() {
                 }
             });
         }
+        window.renderDppCourseSelectionView = renderDppCourseSelectionView;
 
         function getDppDisplayName(dpp, folderName, courseTitle, fallbackIndex = 1) {
             if (!dpp) return '';
@@ -8533,6 +8535,7 @@ window.initCourseFlix = async function() {
                 }
             });
         }
+        window.renderDppDetailView = renderDppDetailView;
 
 
         function escapeRegExp(string) {
@@ -9307,6 +9310,7 @@ window.initCourseFlix = async function() {
                 }
             });
         }
+        window.renderNotesCourseSelectionView = renderNotesCourseSelectionView;
 
         async function renderNotesDetailView(courseId) {
             await ensureDB();
@@ -9402,6 +9406,7 @@ window.initCourseFlix = async function() {
                 }
             });
         }
+        window.renderNotesDetailView = renderNotesDetailView;
 
         const notesSidebarToggleBtn = document.getElementById('notes-sidebar-toggle-btn');
         notesSidebarToggleBtn.addEventListener('click', () => {
@@ -10311,7 +10316,7 @@ window.initCourseFlix = async function() {
                  metaText = `${pendingLectures} pending lectures (${daysRequired.toFixed(1)} days at ${dailyLectures} lecs/day • ${formatExactTime(dailyWatchTimeSec)}/day required at ${speed}x speed).`;
              }
              
-             const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
+const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
              const options = { day: 'numeric', month: 'long', year: 'numeric' };
              const dateString = finishDate.toLocaleDateString('en-GB', options);
              
@@ -10321,7 +10326,9 @@ window.initCourseFlix = async function() {
         
         // --- FACULTY VIEW LOGIC ---
         function renderFacultyView() {
+            const t0 = performance.now();
             const facultyGrid = document.getElementById('faculty-grid');
+            if (!facultyGrid) return;
             facultyGrid.innerHTML = '';
             
             // 1. Aggregate Faculty Data
@@ -10347,15 +10354,19 @@ window.initCourseFlix = async function() {
                 data.studiedLectures += courseStudiedLectures;
             };
 
-            const timeFilter = document.getElementById('faculty-time-filter').value;
+            const timeFilterSelect = document.getElementById('faculty-time-filter');
+            const timeFilter = timeFilterSelect ? timeFilterSelect.value : 'all';
             let timeCutoff = 0;
             const now = Date.now();
             if (timeFilter === 'weekly') timeCutoff = now - 7 * 24 * 60 * 60 * 1000;
             else if (timeFilter === 'monthly') timeCutoff = now - 30 * 24 * 60 * 60 * 1000;
 
-            courses.forEach(course => {
+            const allProgress = (typeof window.courseProgress !== 'undefined' && window.courseProgress) ? window.courseProgress : {};
+
+            (courses || []).forEach(course => {
                 if (!course.lectures) return;
                 
+                const courseProg = allProgress[course.id] || {};
                 let hasSubfolders = course.subCourseData && Object.keys(course.subCourseData).length > 0;
                 if (!hasSubfolders && course.lectures && course.lectures.some(l => l.chapter)) {
                     hasSubfolders = true;
@@ -10366,7 +10377,7 @@ window.initCourseFlix = async function() {
                     course.lectures.forEach(lecture => {
                         totalLecs++;
                         totalDur += (lecture.duration || 0);
-                        const prog = getLectureProgress(course.id, lecture.id);
+                        const prog = courseProg[lecture.id] || (typeof getLectureProgress === 'function' ? getLectureProgress(course.id, lecture.id) : null);
                         if (prog && prog.completed) {
                             if (timeCutoff > 0) {
                                 if (prog.completedAt && new Date(prog.completedAt).getTime() >= timeCutoff) {
@@ -10382,6 +10393,23 @@ window.initCourseFlix = async function() {
                     processCourseForFaculty(course.facultyName || 'Unknown', totalLecs, totalDur, watchedDur, watchedLecs);
                 } else {
                     const subfolderStats = {}; 
+                    const subCourseKeys = course.subCourseData ? Object.keys(course.subCourseData) : [];
+                    const chapterCache = new Map();
+
+                    const resolveSubfolder = (chapter) => {
+                        if (!chapter) return '';
+                        if (chapterCache.has(chapter)) return chapterCache.get(chapter);
+                        let match = null;
+                        for (let k = 0; k < subCourseKeys.length; k++) {
+                            const subName = subCourseKeys[k];
+                            if (chapter === subName || chapter.startsWith(subName + '/')) {
+                                match = subName;
+                                break;
+                            }
+                        }
+                        chapterCache.set(chapter, match);
+                        return match;
+                    };
                     
                     course.lectures.forEach(lecture => {
                         let topLevel = '';
@@ -10389,16 +10417,7 @@ window.initCourseFlix = async function() {
                             topLevel = lecture.chapter.split('/')[0];
                         }
                         
-                        let matchedSub = null;
-                        if (course.subCourseData) {
-                            for (const subName in course.subCourseData) {
-                                if (lecture.chapter === subName || lecture.chapter.startsWith(subName + '/')) {
-                                    matchedSub = subName;
-                                    break;
-                                }
-                            }
-                        }
-                        
+                        const matchedSub = resolveSubfolder(lecture.chapter);
                         const effectiveSub = matchedSub || topLevel || 'Other Videos';
                         
                         if (!subfolderStats[effectiveSub]) {
@@ -10411,7 +10430,7 @@ window.initCourseFlix = async function() {
                         
                         subfolderStats[effectiveSub].totalLecs++;
                         subfolderStats[effectiveSub].totalDur += (lecture.duration || 0);
-                        const prog = getLectureProgress(course.id, lecture.id);
+                        const prog = courseProg[lecture.id] || (typeof getLectureProgress === 'function' ? getLectureProgress(course.id, lecture.id) : null);
                         if (prog && prog.completed) {
                             if (timeCutoff > 0) {
                                 if (prog.completedAt && new Date(prog.completedAt).getTime() >= timeCutoff) {
@@ -10436,10 +10455,12 @@ window.initCourseFlix = async function() {
             const hiddenProfileCourses = JSON.parse(localStorage.getItem('courseflix_hidden_profile_courses')) || [];
             const resetBtn = document.getElementById('reset-hidden-faculties-btn');
             const hasAliases = Object.keys(aliases).length > 0;
-            if (hiddenFaculties.length > 0 || hasAliases || hiddenProfileCourses.length > 0) {
-                resetBtn.style.display = 'inline-flex';
-            } else {
-                resetBtn.style.display = 'none';
+            if (resetBtn) {
+                if (hiddenFaculties.length > 0 || hasAliases || hiddenProfileCourses.length > 0) {
+                    resetBtn.style.display = 'inline-flex';
+                } else {
+                    resetBtn.style.display = 'none';
+                }
             }
 
             const faculties = Array.from(facultyMap.values()).filter(f => !hiddenFaculties.includes(f.name));
@@ -10451,7 +10472,8 @@ window.initCourseFlix = async function() {
                 f.photo = meta.photo;
             });
             
-            const sortVal = document.getElementById('faculty-sort-select').value;
+            const sortSelect = document.getElementById('faculty-sort-select');
+            const sortVal = sortSelect ? sortSelect.value : 'most_studied';
             let chartProperty = 'studiedDurationSec';
             let chartLabel = 'Time Studied';
             let chartIsTime = true;
@@ -10466,14 +10488,16 @@ window.initCourseFlix = async function() {
             else if (sortVal === 'least_fav') { faculties.sort((a,b) => a.rating - b.rating); }
             
             const asideTitle = document.getElementById('faculty-aside-title');
-            if (sortVal === 'most_studied') asideTitle.innerText = 'Most Studied Teachers';
-            else if (sortVal === 'least_studied') asideTitle.innerText = 'Least Studied Teachers';
-            else if (sortVal === 'most_taught_hours') asideTitle.innerText = 'Most Taught Teachers';
-            else if (sortVal === 'least_taught_hours') asideTitle.innerText = 'Least Taught Teachers';
-            else if (sortVal === 'most_lectures') asideTitle.innerText = 'Most Lectures';
-            else if (sortVal === 'least_lectures') asideTitle.innerText = 'Least Lectures';
-            else if (sortVal === 'most_fav') asideTitle.innerText = 'Highest Rated Teachers';
-            else if (sortVal === 'least_fav') asideTitle.innerText = 'Lowest Rated Teachers';
+            if (asideTitle) {
+                if (sortVal === 'most_studied') asideTitle.innerText = 'Most Studied Teachers';
+                else if (sortVal === 'least_studied') asideTitle.innerText = 'Least Studied Teachers';
+                else if (sortVal === 'most_taught_hours') asideTitle.innerText = 'Most Taught Teachers';
+                else if (sortVal === 'least_taught_hours') asideTitle.innerText = 'Least Taught Teachers';
+                else if (sortVal === 'most_lectures') asideTitle.innerText = 'Most Lectures';
+                else if (sortVal === 'least_lectures') asideTitle.innerText = 'Least Lectures';
+                else if (sortVal === 'most_fav') asideTitle.innerText = 'Highest Rated Teachers';
+                else if (sortVal === 'least_fav') asideTitle.innerText = 'Lowest Rated Teachers';
+            }
             
             const pieChart = document.getElementById('faculty-pie-chart');
             const pieLegend = document.getElementById('faculty-pie-legend');
@@ -10481,18 +10505,20 @@ window.initCourseFlix = async function() {
             const totalTimeLabel = document.getElementById('faculty-total-label');
             const legendMetricLabel = document.getElementById('faculty-legend-metric');
             
-            pieLegend.innerHTML = '';
+            if (pieLegend) pieLegend.innerHTML = '';
             
             let totalAppMetric = faculties.reduce((sum, f) => sum + f[chartProperty], 0);
             
-            if (chartIsTime) {
-                totalTimeSpan.innerText = totalAppMetric > 0 ? `${Math.floor(totalAppMetric / 3600)}h ${Math.floor((totalAppMetric % 3600)/60)}m` : '0h 0m';
-                if(totalTimeLabel) totalTimeLabel.innerText = 'Total Time';
-                if(legendMetricLabel) legendMetricLabel.innerText = chartLabel;
-            } else {
-                totalTimeSpan.innerText = totalAppMetric;
-                if(totalTimeLabel) totalTimeLabel.innerText = 'Total ' + chartLabel;
-                if(legendMetricLabel) legendMetricLabel.innerText = chartLabel;
+            if (totalTimeSpan) {
+                if (chartIsTime) {
+                    totalTimeSpan.innerText = totalAppMetric > 0 ? `${Math.floor(totalAppMetric / 3600)}h ${Math.floor((totalAppMetric % 3600)/60)}m` : '0h 0m';
+                    if(totalTimeLabel) totalTimeLabel.innerText = 'Total Time';
+                    if(legendMetricLabel) legendMetricLabel.innerText = chartLabel;
+                } else {
+                    totalTimeSpan.innerText = totalAppMetric;
+                    if(totalTimeLabel) totalTimeLabel.innerText = 'Total ' + chartLabel;
+                    if(legendMetricLabel) legendMetricLabel.innerText = chartLabel;
+                }
             }
             
             const chartFaculties = [...faculties]; 
@@ -10529,25 +10555,32 @@ window.initCourseFlix = async function() {
                     metricStr = f[chartProperty].toString();
                 }
                 
-                const legendHtml = `
-                    <div class="pie-legend-item">
-                        <div style="display: flex; align-items: center;">
-                            <div class="pie-legend-color" style="background-color: ${color}"></div>
-                            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">${f.name}</span>
+                if (pieLegend) {
+                    const legendHtml = `
+                        <div class="pie-legend-item">
+                            <div style="display: flex; align-items: center;">
+                                <div class="pie-legend-color" style="background-color: ${color}"></div>
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">${f.name}</span>
+                            </div>
+                            <span>${metricStr}</span>
                         </div>
-                        <span>${metricStr}</span>
-                    </div>
-                `;
-                pieLegend.insertAdjacentHTML('beforeend', legendHtml);
+                    `;
+                    pieLegend.insertAdjacentHTML('beforeend', legendHtml);
+                }
             });
             
-            if (conicGradientStr) {
-                conicGradientStr = conicGradientStr.slice(0, -2); 
-                pieChart.style.background = `conic-gradient(${conicGradientStr})`;
-            } else {
-                pieChart.style.background = `var(--bg-tertiary)`;
-                pieLegend.innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">No data yet</div>';
+            if (pieChart) {
+                if (conicGradientStr) {
+                    conicGradientStr = conicGradientStr.slice(0, -2); 
+                    pieChart.style.background = `conic-gradient(${conicGradientStr})`;
+                } else {
+                    pieChart.style.background = `var(--bg-tertiary)`;
+                    if (pieLegend) pieLegend.innerHTML = '<div style="text-align:center; color:var(--text-secondary); padding:20px;">No data yet</div>';
+                }
             }
+
+            const tAgg = performance.now();
+            const fragment = document.createDocumentFragment();
 
             faculties.forEach(f => {
                 const totalTaughtStr = `${Math.floor(f.totalDurationSec / 3600)}h ${Math.floor((f.totalDurationSec % 3600)/60)}m`;
@@ -10558,14 +10591,12 @@ window.initCourseFlix = async function() {
                 card.innerHTML = `
                     <button class="hide-faculty-btn" data-faculty="${f.name}" title="Hide Faculty"><i class="fas fa-times"></i></button>
                     <div class="faculty-card-banner">
-                        <div class="faculty-photo" style="cursor: pointer;" title="Edit Profile Photo">
-                            ${f.photo ? `<img src="${f.photo}" alt="${f.name}">` : '<i class="fas fa-user"></i>'}
-                            <div class="edit-photo-overlay">
-                                <i class="fas fa-pencil-alt" style="color: white; font-size: 1rem;"></i>
-                            </div>
+                        <div class="faculty-photo" style="${f.photo ? `background-image: url('${f.photo}')` : ''}">
+                            ${!f.photo ? `<i class="fas fa-user-tie"></i>` : ''}
+                            <div class="edit-photo-overlay"><i class="fas fa-camera"></i></div>
                         </div>
-                        <div class="faculty-card-header-info">
-                            <h3 class="faculty-name" title="${f.name}">${f.name}</h3>
+                        <div class="faculty-card-main-info">
+                            <h3 title="${f.name}">${f.name}</h3>
                             <div class="faculty-rating-stars" data-faculty="${f.name}">
                                 ${[1,2,3,4,5].map(i => `<i class="fa-star ${i <= f.rating ? 'fas' : 'far'}" data-val="${i}"></i>`).join('')}
                             </div>
@@ -10605,41 +10636,55 @@ window.initCourseFlix = async function() {
                 });
                 
                 const viewBtn = card.querySelector('.view-faculty-profile-btn');
-                viewBtn.addEventListener('click', () => {
-                    renderFacultyProfile(f.name);
-                });
+                if (viewBtn) {
+                    viewBtn.addEventListener('click', () => {
+                        if (typeof renderFacultyProfile === 'function') renderFacultyProfile(f.name);
+                    });
+                }
                 
                 const photoDiv = card.querySelector('.faculty-photo');
-                photoDiv.addEventListener('mouseenter', () => photoDiv.querySelector('.edit-photo-overlay').style.opacity = '1');
-                photoDiv.addEventListener('mouseleave', () => photoDiv.querySelector('.edit-photo-overlay').style.opacity = '0');
-                photoDiv.addEventListener('click', () => {
-                    const fileInput = document.getElementById('faculty-photo-upload');
-                    fileInput.onchange = (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (readerEvent) => {
-                                const base64Data = readerEvent.target.result;
-                                let meta = JSON.parse(localStorage.getItem('courseflix_faculty_meta')) || {};
-                                if (!meta[f.name]) meta[f.name] = { rating: 0, photo: '' };
-                                meta[f.name].photo = base64Data;
-                                localStorage.setItem('courseflix_faculty_meta', JSON.stringify(meta));
-                                renderFacultyView();
+                if (photoDiv) {
+                    photoDiv.addEventListener('mouseenter', () => {
+                        const overlay = photoDiv.querySelector('.edit-photo-overlay');
+                        if (overlay) overlay.style.opacity = '1';
+                    });
+                    photoDiv.addEventListener('mouseleave', () => {
+                        const overlay = photoDiv.querySelector('.edit-photo-overlay');
+                        if (overlay) overlay.style.opacity = '0';
+                    });
+                    photoDiv.addEventListener('click', () => {
+                        const fileInput = document.getElementById('faculty-photo-upload');
+                        if (fileInput) {
+                            fileInput.onchange = (e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = (readerEvent) => {
+                                        const base64Data = readerEvent.target.result;
+                                        let meta = JSON.parse(localStorage.getItem('courseflix_faculty_meta')) || {};
+                                        if (!meta[f.name]) meta[f.name] = { rating: 0, photo: '' };
+                                        meta[f.name].photo = base64Data;
+                                        localStorage.setItem('courseflix_faculty_meta', JSON.stringify(meta));
+                                        renderFacultyView();
+                                    };
+                                    reader.readAsDataURL(file);
+                                }
+                                fileInput.value = ''; // reset for next use
                             };
-                            reader.readAsDataURL(file);
+                            fileInput.click();
                         }
-                        fileInput.value = ''; // reset for next use
-                    };
-                    fileInput.click();
-                });
+                    });
+                }
 
                 const hideBtn = card.querySelector('.hide-faculty-btn');
-                hideBtn.addEventListener('click', () => {
-                    let hidden = JSON.parse(localStorage.getItem('courseflix_hidden_faculties')) || [];
-                    if (!hidden.includes(f.name)) hidden.push(f.name);
-                    localStorage.setItem('courseflix_hidden_faculties', JSON.stringify(hidden));
-                    renderFacultyView();
-                });
+                if (hideBtn) {
+                    hideBtn.addEventListener('click', () => {
+                        let hidden = JSON.parse(localStorage.getItem('courseflix_hidden_faculties')) || [];
+                        if (!hidden.includes(f.name)) hidden.push(f.name);
+                        localStorage.setItem('courseflix_hidden_faculties', JSON.stringify(hidden));
+                        renderFacultyView();
+                    });
+                }
                 
                 card.draggable = true;
                 
@@ -10676,13 +10721,18 @@ window.initCourseFlix = async function() {
                     }
                 });
 
-                facultyGrid.appendChild(card);
+                fragment.appendChild(card);
             });
             
             if (faculties.length === 0) {
                 facultyGrid.innerHTML = '<div id="no-content-message" style="grid-column: 1/-1;">No faculties found or all are hidden.</div>';
+            } else {
+                facultyGrid.appendChild(fragment);
             }
+            const tEnd = performance.now();
+            console.log(`[CourseFlix View Perf] Faculty: Aggregation ${(tAgg - t0).toFixed(2)} ms | Render ${(tEnd - tAgg).toFixed(2)} ms | TOTAL ${(tEnd - t0).toFixed(2)} ms`);
         }
+        window.renderFacultyView = renderFacultyView;
         
         document.getElementById('faculty-sort-select').addEventListener('change', renderFacultyView);
         document.getElementById('faculty-time-filter').addEventListener('change', renderFacultyView);
