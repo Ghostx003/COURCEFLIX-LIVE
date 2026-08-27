@@ -1326,70 +1326,33 @@ window.initCourseFlix = async function() {
 
         // --- View Switching & Rendering ---
         function switchView(viewId, pushState = true) {
-            const navEl = document.querySelector('nav') || nav;
-            if (navEl) {
-                if (viewId === 'player-view') {
-                    navEl.classList.add('hidden');
-                } else {
-                    navEl.classList.remove('hidden');
+            const activeEl = document.querySelector('.view.active');
+            const prevView = activeEl ? (activeEl.id === 'dashboard-view-el' ? 'dashboard-view' : activeEl.id) : 'dashboard-view';
+
+            if (typeof window.viewLifecycleService !== 'undefined' && typeof window.viewLifecycleService.handleViewTransition === 'function') {
+                window.viewLifecycleService.handleViewTransition(viewId, prevView, { pushState });
+            } else {
+                // Fallback before React mounts
+                const navEl = document.querySelector('nav') || nav;
+                if (navEl) {
+                    if (viewId === 'player-view') navEl.classList.add('hidden');
+                    else navEl.classList.remove('hidden');
+                }
+                const targetId = viewId === 'dashboard-view' ? 'dashboard-view-el' : viewId;
+                document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === targetId));
+                document.querySelectorAll('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.view === viewId));
+                if (viewId !== 'player-view') {
+                    window.customLectureTracking = null;
+                    if (pushState) sessionStorage.removeItem('courseflixState');
+                    if (typeof videoPlayer !== 'undefined' && videoPlayer) videoPlayer.pause();
+                    if (typeof brownNoiseAudio !== 'undefined' && brownNoiseAudio) brownNoiseAudio.pause();
                 }
             }
-            window.switchView = switchView;
             
             if (pushState && viewId !== 'subcourse-view' && viewId !== 'player-view') {
                 const newHash = '#' + viewId;
                 if (window.location.hash !== newHash) {
                     window.history.pushState(null, '', newHash);
-                }
-            }
-
-            const targetId = viewId === 'dashboard-view' ? 'dashboard-view-el' : viewId;
-            document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === targetId));
-            document.querySelectorAll('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.view === viewId));
-            
-            setTimeout(async () => {
-                await ensureDB();
-                if (viewId === 'review-view' || viewId === 'practice-view') {
-                    showFilteredCoursesView(viewId.split('-')[0]);
-                }
-                if (viewId === 'dashboard-view') renderCourseGrid();
-                if (viewId === 'intell-view') { if (typeof renderIntellView === 'function') renderIntellView(); }
-                if (viewId === 'upload-view') {
-                     const detailView = document.getElementById('upload-detail-view');
-                     const subfolderView = document.getElementById('upload-subfolder-view');
-                     if ((!detailView || detailView.classList.contains('hidden')) && (!subfolderView || subfolderView.classList.contains('hidden'))) {
-                         document.getElementById('upload-course-grid').classList.remove('hidden');
-                         renderUploadView();
-                     }
-                }
-                if (viewId === 'dpp-view') {
-                    const detailContainer = document.getElementById('dpp-detail-container');
-                    if (!detailContainer || detailContainer.classList.contains('hidden')) {
-                        renderDppCourseSelectionView();
-                    }
-                }
-                if (viewId === 'notes-view') {
-                    const detailContainer = document.getElementById('notes-detail-container');
-                    if (!detailContainer || detailContainer.classList.contains('hidden')) {
-                        renderNotesCourseSelectionView();
-                    }
-                }
-                if (viewId === 'doubts-view' && typeof window.renderDoubtsCourseSelectionView !== 'function') renderDoubtsCourseSelectionView();
-                if (viewId === 'continue-view') renderContinueView();
-                if (viewId === 'history-view') renderHistoryView();
-                if (viewId === 'faculty-view') renderFacultyView();
-            }, 10);
-            
-            if (viewId !== 'player-view') {
-                window.customLectureTracking = null;
-                if (pushState) {
-                    sessionStorage.removeItem('courseflixState');
-                }
-                if (typeof videoPlayer !== 'undefined' && videoPlayer) {
-                    videoPlayer.pause();
-                }
-                if (typeof brownNoiseAudio !== 'undefined' && brownNoiseAudio) {
-                    brownNoiseAudio.pause();
                 }
             }
         }

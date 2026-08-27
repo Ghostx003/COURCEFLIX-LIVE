@@ -4,6 +4,7 @@ import './db/database'
 import './services/courseService'
 import './services/progressService'
 import './services/fileSystemService'
+import './services/viewLifecycleService'
 import './index.css'
 import App from './App.jsx'
 

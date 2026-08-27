@@ -973,6 +973,24 @@ src/
 - Build Status: `cmd /c npm run build` succeeds with 0 errors.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 15. Phase 7C Status: Decouple switchView Responsibilities (COMPLETED)
+
+### A. Lifecycle Architecture Decoupled
+- **Player Lifecycle Service**: [`src/services/playerService.js:handleLeavingPlayer()`](file:///e:/projects/courceflix-react/src/services/playerService.js)
+  - Pure lifecycle teardown isolating video player pause, brown noise audio pause, `window.customLectureTracking` reset, and conditional `sessionStorage:courseflixState` clearance.
+- **View Transition Service**: [`src/services/viewLifecycleService.js:handleViewTransition()`](file:///e:/projects/courceflix-react/src/services/viewLifecycleService.js)
+  - Pure transition orchestrator coordinating navigation bar visibility (`player-view` hidden/visible), DOM `.view.active` class updates, `.nav-link.active` tab highlights, player teardown invocations, `view-changed` event dispatching, and deferred unmigrated view initializers.
+- **Cleaned `RouterContext.jsx` & `switchView()`**:
+  - `RouterContext.jsx` focuses exclusively on route state (`currentView`, `params`, `navigate()`), delegating transition side effects to `viewLifecycleService`.
+  - `public/legacy.js:switchView` reduced from an inline ~70-line monolithic routine to a thin delegation wrapper.
+
+### B. Build & Safety Verification
+- Build Status: `cmd /c npm run build` compiles with 0 errors.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 

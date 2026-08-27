@@ -337,5 +337,31 @@ A zero-dependency, lightweight React Router:
 
 ---
 
+## 15. Phase 7C Status: Decouple switchView Responsibilities (COMPLETED)
+
+### A. switchView Before vs After
+* **Before Phase 7C**: `switchView()` in `public/legacy.js` was a monolithic ~70-line function directly orchestrating:
+  1. Routing (hash updates & pushState)
+  2. DOM Presentation (.view.active and .nav-link.active toggles, nav visibility)
+  3. Player Teardown (video.pause(), brownNoiseAudio.pause(), customLectureTracking reset, sessionStorage clearance)
+  4. View Initializers (10ms setTimeout calling unmigrated view renderers)
+  5. Event Dispatching (view-changed)
+* **After Phase 7C**:
+  * `public/legacy.js:switchView` is decoupled to a lightweight compatibility wrapper delegating to `viewLifecycleService.handleViewTransition()`.
+  * `src/context/RouterContext.jsx` focuses exclusively on route state (`currentView`, `params`, `historyStack`, `navigate()`), delegating transition side effects to `viewLifecycleService`.
+
+### B. Extracted Services
+1. **[`src/services/playerService.js:handleLeavingPlayer()`](file:///e:/projects/courceflix-react/src/services/playerService.js)**:
+   * Pure lifecycle function isolating video player pause, brown noise pause, `customLectureTracking` cleanup, and `sessionStorage` clearance.
+2. **[`src/services/viewLifecycleService.js:handleViewTransition()`](file:///e:/projects/courceflix-react/src/services/viewLifecycleService.js)**:
+   * Coordinates DOM class activations, top navigation bar visibility, player teardown triggers, `view-changed` event emission, and unmigrated view initializers.
+
+### C. Build & Safety Verification
+* Build Status: `cmd /c npm run build` compiles with 0 errors.
+* Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+---
+
 *End of Routing & Navigation Map.*
+
 

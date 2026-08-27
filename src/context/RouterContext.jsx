@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { handleViewTransition } from '../services/viewLifecycleService.js';
 
 const RouterContext = createContext(null);
 
@@ -133,51 +134,6 @@ function resolveInitialRoute() {
     return { view: 'dashboard-view', params: {} };
 }
 
-/**
- * Executes DOM class updates and legacy UI lifecycle side effects.
- * Non-destructive: keeps all existing DOM elements and legacy handlers synchronized.
- */
-function applyViewLifecycleSideEffects(viewId, previousViewId) {
-    if (typeof document === 'undefined') return;
-
-    // 1. Navigation bar visibility
-    const navEl = document.querySelector('nav');
-    if (navEl) {
-        if (viewId === 'player-view') {
-            navEl.classList.add('hidden');
-        } else {
-            navEl.classList.remove('hidden');
-        }
-    }
-
-    // 2. DOM view activation classes (.view.active)
-    const targetDOMId = viewId === 'dashboard-view' ? 'dashboard-view-el' : viewId;
-    document.querySelectorAll('.view').forEach(view => {
-        view.classList.toggle('active', view.id === targetDOMId);
-    });
-
-    // 3. Navbar active link classes (.nav-link.active)
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.toggle('active', link.dataset.view === viewId);
-    });
-
-    // 4. Non-player cleanup
-    if (viewId !== 'player-view') {
-        window.customLectureTracking = null;
-        if (typeof window.videoPlayer !== 'undefined' && window.videoPlayer) {
-            try { window.videoPlayer.pause(); } catch (e) {}
-        }
-        if (typeof window.brownNoiseAudio !== 'undefined' && window.brownNoiseAudio) {
-            try { window.brownNoiseAudio.pause(); } catch (e) {}
-        }
-    }
-
-    // 5. Emit legacy compatibility event 'view-changed'
-    window.dispatchEvent(new CustomEvent('view-changed', {
-        detail: { view: viewId, previousView: previousViewId }
-    }));
-}
-
 export function RouterProvider({ children }) {
     const initialRoute = resolveInitialRoute();
     const [currentView, setCurrentView] = useState(initialRoute.view);
@@ -228,7 +184,7 @@ export function RouterProvider({ children }) {
         }
 
         // Apply DOM class and audio/video lifecycle updates
-        applyViewLifecycleSideEffects(resolvedView, prevView);
+        handleViewTransition(resolvedView, prevView, { pushState });
     }, [currentView, params]);
 
     const goBack = useCallback((fallbackView = 'dashboard-view') => {
@@ -255,7 +211,7 @@ export function RouterProvider({ children }) {
             if (parsed.view !== currentView) {
                 setCurrentView(parsed.view);
                 setParams(parsed.params);
-                applyViewLifecycleSideEffects(parsed.view, currentView);
+                handleViewTransition(parsed.view, currentView, { pushState: false });
             }
         };
 
@@ -277,7 +233,7 @@ export function RouterProvider({ children }) {
 
     // Initial lifecycle side effect application
     useEffect(() => {
-        applyViewLifecycleSideEffects(currentView, null);
+        handleViewTransition(currentView, null, { pushState: false });
     }, []);
 
     const value = {
