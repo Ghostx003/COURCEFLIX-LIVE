@@ -930,6 +930,29 @@ src/
 - Build Status: `cmd /c npm run build` compiles with 0 errors.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 13. Phase 7A Status: Routing & Navigation Audit (COMPLETED)
+
+### A. Comprehensive Architecture Discovery
+- **Artifact**: Created [`ROUTING_MAP.md`](file:///e:/projects/courceflix-react/ROUTING_MAP.md) detailing:
+  - Complete inventory of all 26 views and their React/Legacy pairings.
+  - Full dissection of `switchView(viewId, pushState)` duties (nav visibility, hash push, `.view` class toggles, 10ms deferred database/view renders, non-player teardown, and session cleanup).
+  - Complete events map (`hashchange`, `popstate`, `courseflix:courses-loaded`, `courseflix:data-updated`, `open-completion-modal`, `open-settings-modal`, `open-custom-course-creator`, `doubtsUpdated`).
+  - URL hash and `sessionStorage` (`courseflixState`) contracts for page reload and deep linking.
+  - Global routing state variables (`window.switchView`, `window.lastView`, `window.currentCourse`, `window.currentActiveCourse`, `window.currentLectureId`, `window.currentActiveLectureId`, `window.lastViewedFaculty`).
+  - Analysis of Navbar navigation flows and browser back/forward mechanics.
+
+### B. Proposed React Routing Architecture (Phase 7B Ready)
+- Proposes a lightweight, zero-dependency `RouterProvider` / `useRouter` hook abstraction.
+- Maintains non-destructive backward compatibility with legacy callers via a bidirectional `window.switchView` bridge.
+
+### C. Build & Safety Verification
+- No legacy routing or view code deleted or altered during this audit.
+- Build Status: `cmd /c npm run build` verified clean.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 
