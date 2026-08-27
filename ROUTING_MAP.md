@@ -362,6 +362,36 @@ A zero-dependency, lightweight React Router:
 
 ---
 
+## 16. Phase 7D Status: Player Startup Dependency Audit & Isolation (COMPLETED)
+
+### A. Root Cause of Phase 7C Bundle Increase
+* In Phase 7C, `viewLifecycleService.js` imported `handleLeavingPlayer` directly from `src/services/playerService.js`.
+* Because `playerService.js` is a ~2,600-line service containing the entire video player engine, subtitle renderer, drag-and-drop syllabus organizer, and canvas filters, statically importing even one function dragged the entire Player subsystem into the root client bundle, increasing bundle size from `482.49 kB` to `548.94 kB` (+66.45 kB).
+
+### B. Solution & Architectural Decoupling
+* Created a dedicated, standalone **[`src/services/playerLifecycleService.js`](file:///e:/projects/courceflix-react/src/services/playerLifecycleService.js)** (<35 lines, 0 heavy dependencies).
+* Isolated the minimal player teardown operations:
+  1. `window.customLectureTracking = null`
+  2. `sessionStorage.removeItem('courseflixState')` (when pushState is true)
+  3. `videoPlayer.pause()`
+  4. `brownNoiseAudio.pause()`
+* `viewLifecycleService.js` now imports `handleLeavingPlayer` strictly from `playerLifecycleService.js`.
+* `playerService.js` re-exports `handleLeavingPlayer` from `playerLifecycleService.js` to preserve backward compatibility.
+
+### C. Performance & Bundle Metrics
+* **Phase 7C (Before Isolation)**: `548.94 kB` (gzip `136.20 kB`) — emitted Vite chunk size warning (>500 kB).
+* **Phase 7D (After Isolation)**: `484.60 kB` (gzip `121.97 kB`) — **-64.34 kB** raw JS reduction (-14.23 kB gzip savings).
+* Chunk size warning eliminated.
+* Player drag-and-drop and canvas filters are completely excluded from initial Dashboard startup evaluation.
+
+### D. Safety Verification
+* Full player teardown lifecycle behavior preserved.
+* F5 reload in player and session restoration preserved.
+* Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+---
+
 *End of Routing & Navigation Map.*
+
 
 

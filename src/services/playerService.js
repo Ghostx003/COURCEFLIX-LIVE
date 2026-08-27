@@ -2562,32 +2562,11 @@ Object.defineProperties(globalThis, {
             }
         });
 
-// Decoupled Player Lifecycle Teardown Handler
-export function handleLeavingPlayer(options = { clearSession: true }) {
-    if (typeof window === 'undefined') return;
-
-    window.customLectureTracking = null;
-
-    if (options && options.clearSession) {
-        try {
-            sessionStorage.removeItem('courseflixState');
-        } catch (e) {}
-    }
-
-    const videoEl = document.getElementById('video-player') || window.videoPlayer;
-    if (videoEl && typeof videoEl.pause === 'function') {
-        try { videoEl.pause(); } catch (e) {}
-    }
-
-    const audioEl = document.getElementById('brown-noise-audio') || window.brownNoiseAudio;
-    if (audioEl && typeof audioEl.pause === 'function') {
-        try { audioEl.pause(); } catch (e) {}
-    }
-}
+// Decoupled Player Lifecycle Teardown Handler (re-exported from lightweight lifecycle service)
+export { handleLeavingPlayer } from './playerLifecycleService.js';
 
 // Bind window functions for backwards compatibility
 if (typeof window !== 'undefined') {
-    window.handleLeavingPlayer = handleLeavingPlayer;
     if (typeof loadLecture !== 'undefined') window.loadLecture = loadLecture;
     if (typeof playNextLecture !== 'undefined') window.playNextLecture = playNextLecture;
     if (typeof triggerSmartSkipCheck !== 'undefined') window.triggerSmartSkipCheck = triggerSmartSkipCheck;

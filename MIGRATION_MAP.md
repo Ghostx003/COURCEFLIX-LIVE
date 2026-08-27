@@ -990,6 +990,24 @@ src/
 - Build Status: `cmd /c npm run build` compiles with 0 errors.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 16. Phase 7D Status: Player Startup Dependency Audit & Isolation (COMPLETED)
+
+### A. Root Cause & Dependency Decoupling
+- In Phase 7C, `viewLifecycleService.js` statically imported `handleLeavingPlayer` from `playerService.js`, dragging the entire ~2,600-line Player subsystem into the root client bundle and bloating bundle size from `482.49 kB` to `548.94 kB`.
+- Created **[`src/services/playerLifecycleService.js`](file:///e:/projects/courceflix-react/src/services/playerLifecycleService.js)** (<35 lines) to isolate minimal teardown operations (`customLectureTracking = null`, `sessionStorage` clearance, video pause, brown noise pause) without importing `playerService.js`.
+- `viewLifecycleService.js` now imports strictly from `playerLifecycleService.js`.
+
+### B. Performance & Bundle Metrics
+- Initial JS Bundle size: reduced from `548.94 kB` (gzip `136.20 kB`) back to `484.60 kB` (gzip `121.97 kB`) — saving **-64.34 kB** of unneeded eager JS execution on Dashboard startup.
+- Heavy player drag-and-drop algorithms and subtitle canvas filters are completely isolated from dashboard initial load.
+
+### C. Build & Safety Verification
+- Build Status: `cmd /c npm run build` succeeds cleanly with 0 errors.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 

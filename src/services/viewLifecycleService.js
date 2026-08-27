@@ -4,7 +4,7 @@
  * and legacy view render invocations from core routing logic.
  */
 
-import { handleLeavingPlayer } from './playerService.js';
+import { handleLeavingPlayer } from './playerLifecycleService.js';
 import { ensureDB } from './db.js';
 
 /**
