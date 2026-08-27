@@ -10742,39 +10742,39 @@ const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
         document.getElementById('reset-hidden-faculties-btn').addEventListener('click', () => {
             resetModal.style.display = 'flex';
         });
-        document.getElementById('reset-hidden-option-btn').addEventListener('click', () => {
+        document.getElementById('reset-hidden-option-btn')?.addEventListener('click', () => {
             localStorage.removeItem('courseflix_hidden_faculties');
             localStorage.removeItem('courseflix_hidden_profile_courses');
-            resetModal.style.display = 'none';
+            if (resetModal) resetModal.style.display = 'none';
             renderFacultyView();
         });
-        document.getElementById('reset-merge-option-btn').addEventListener('click', () => {
+        document.getElementById('reset-merge-option-btn')?.addEventListener('click', () => {
             localStorage.removeItem('courseflix_faculty_aliases');
-            resetModal.style.display = 'none';
+            if (resetModal) resetModal.style.display = 'none';
             renderFacultyView();
         });
-        document.getElementById('reset-both-option-btn').addEventListener('click', () => {
+        document.getElementById('reset-both-option-btn')?.addEventListener('click', () => {
             localStorage.removeItem('courseflix_hidden_faculties');
             localStorage.removeItem('courseflix_faculty_aliases');
             localStorage.removeItem('courseflix_hidden_profile_courses');
-            resetModal.style.display = 'none';
+            if (resetModal) resetModal.style.display = 'none';
             renderFacultyView();
         });
-        document.getElementById('reset-cancel-option-btn').addEventListener('click', () => {
-            resetModal.style.display = 'none';
+        document.getElementById('reset-cancel-option-btn')?.addEventListener('click', () => {
+            if (resetModal) resetModal.style.display = 'none';
         });
-        resetModal.addEventListener('click', (e) => {
+        resetModal?.addEventListener('click', (e) => {
             if (e.target === resetModal) resetModal.style.display = 'none';
         });
         
         
-        document.getElementById('toggle-faculty-aside-btn').addEventListener('click', () => {
-            document.getElementById('faculty-aside').classList.add('open');
+        document.getElementById('toggle-faculty-aside-btn')?.addEventListener('click', () => {
+            document.getElementById('faculty-aside')?.classList.add('open');
         });
-        document.getElementById('close-faculty-aside-btn').addEventListener('click', () => {
-            document.getElementById('faculty-aside').classList.remove('open');
+        document.getElementById('close-faculty-aside-btn')?.addEventListener('click', () => {
+            document.getElementById('faculty-aside')?.classList.remove('open');
         });
-        document.getElementById('close-faculty-profile-btn').addEventListener('click', () => {
+        document.getElementById('close-faculty-profile-btn')?.addEventListener('click', () => {
             const overlay = document.getElementById('faculty-profile-overlay');
             const origin = overlay ? overlay.dataset.originView : 'faculty-view';
             if (overlay) overlay.style.display = 'none';
