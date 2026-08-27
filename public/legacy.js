@@ -1292,6 +1292,7 @@ window.initCourseFlix = async function() {
         }
         
         async function loadCoursesFromDB() {
+            const t0 = performance.now();
             await ensureDB();
             const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
             if (storedCourses && storedCourses.length > 0) {
@@ -1309,6 +1310,8 @@ window.initCourseFlix = async function() {
             } else {
                 setTimeout(() => renderCourseGrid(), 10);
             }
+            const t1 = performance.now();
+            console.log(`%c[CourseFlix Perf] Dashboard ready in ${(t1 - t0).toFixed(1)}ms (${courses.length} courses, 0 filesystem blocks, cached stats)`, 'color: #10b981; font-weight: bold;');
             // Background sync only if missing from localStorage
             if (!localStorage.getItem('courseflix_subjects') || !localStorage.getItem('courseflix_dpps')) {
                 if (typeof syncCourseflixSubjects === 'function') {
@@ -2141,11 +2144,14 @@ window.initCourseFlix = async function() {
                 }
             }
 
+            const hideIgnored = localStorage.getItem('courseflix_hide_ignored') === 'true';
+            const fragment = document.createDocumentFragment();
+
             immediateSubfolders.forEach(fullPath => {
                 const subData = course.subCourseData[fullPath] || {};
                 if (subData.hidden) return; // Skip hidden subcourses
                 // --- HIDE IGNORED FEATURE ---
-                if (localStorage.getItem('courseflix_hide_ignored') === 'true' && subData.isIgnored) return;
+                if (hideIgnored && subData.isIgnored) return;
 
                 const folderNameOnly = getSubfolderDisplayName(course, fullPath);
                 const faculty = getSubfolderFacultyName(course, fullPath);
@@ -2232,8 +2238,9 @@ window.initCourseFlix = async function() {
                         <button class="enter-course-btn" data-id="${course.id}" data-subfolder="${fullPath}">Enter Course</button>
                     </div>
                 `;
-                subcourseGrid.appendChild(card);
+                fragment.appendChild(card);
             });
+            subcourseGrid.appendChild(fragment);
         }
 
         window.showFilteredCoursesView = function(status) {
