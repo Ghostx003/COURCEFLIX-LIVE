@@ -355,5 +355,40 @@ CompletionEstimator.jsx
 
 ---
 
+## 20. Phase 9C-2 Status: Completion Estimator Ownership Verification (COMPLETED)
+
+### A. Runtime Ownership Audit
+- **Authoritative Renderer**: React `<CompletionEstimator />` hosted inside `<CompletionCalculatorModalModal />` in [`src/App.jsx`](file:///e:/projects/courceflix-react/src/App.jsx).
+- **Trigger Callers**:
+  1. Navbar Completion Button (`#completion-feature-btn`): Dispatches custom event `open-completion-modal`.
+  2. Navbar Time Left Badge (`#total-time-left-display`): Click listener triggers modal open.
+  3. Legacy calls: `window.openCalculatorModal()` opens the modal shell.
+- **UI Conflict Status**: **Zero UI collisions**. The old imperative modal DOM markup in `CompletionCalculatorModalModal.jsx` has been replaced by the React component.
+
+### B. Single Ownership Model
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 React CompletionEstimator                   │
+│  - Owns local interaction state (mode, hours, lecs, speed)  │
+│  - Reacts to useCourses() & useProgress()                   │
+│  - Renders all UI cards, progress bars, goals, forecasts    │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 completionEstimator.js                      │
+│  - Single calculation engine for both React and legacy      │
+│  - Zero DOM / Zero React dependencies                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### C. Legacy Compatibility & Safety
+- **Safe Optional Chaining**: Added `?.` checks to `public/legacy.js` for `#total-time-left-display`, `#run-calculator-btn`, and modal close handlers.
+- **No Competing Renderers**: `runCompletionCalculator()` in `calculatorService.js` delegates purely to `completionEstimator.js`.
+- **`progress.html` Status**: Untouched; continues running independently inside the iframe for unmigrated analytics (heatmap, activity chart, schedule).
+
+---
+
 *End of Progress Subsystem & Analytics Map.*
+
 

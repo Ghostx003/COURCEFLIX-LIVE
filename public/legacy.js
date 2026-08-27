@@ -10113,11 +10113,13 @@ window.initCourseFlix = async function() {
         });
 
         // --- Completion Calculator Logic ---
-        document.getElementById('total-time-left-display').addEventListener('click', () => {
+        document.getElementById('total-time-left-display')?.addEventListener('click', () => {
              const modal = document.getElementById('completion-calculator-modal');
-             modal.querySelector('.close-modal-btn').onclick = () => modal.classList.add('hidden');
-             modal.classList.remove('hidden');
-             runCompletionCalculator();
+             if (modal) {
+                 modal.querySelector('.close-modal-btn')?.addEventListener('click', () => modal.classList.add('hidden'));
+                 modal.classList.remove('hidden');
+                 if (typeof window.runCompletionCalculator === 'function') window.runCompletionCalculator();
+             }
         });
 
         let currentCalcTargetMode = localStorage.getItem('calcTargetMode') || 'hours';
@@ -10188,7 +10190,7 @@ window.initCourseFlix = async function() {
             applyModeUI(currentCalcTargetMode);
         }
 
-        document.getElementById('run-calculator-btn').addEventListener('click', runCompletionCalculator);
+        document.getElementById('run-calculator-btn')?.addEventListener('click', runCompletionCalculator);
 
         // Restore calc config
         const savedHours = localStorage.getItem('calcDailyHours');
