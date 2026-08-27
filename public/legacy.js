@@ -7698,7 +7698,9 @@ window.initCourseFlix = async function() {
                                 bna.currentTime = 20;
                                 const savedVol = localStorage.getItem('brownNoiseVolume');
                                 bna.volume = savedVol !== null ? parseFloat(savedVol) : 0.2;
-                                bna.play().catch(e => console.error("Playback failed", e));
+                                bna.play().catch(e => {
+                                    if (e.name !== 'AbortError') console.error("Playback failed", e);
+                                });
                                 showToast("Brown Noise Mode: ON");
                             } else {
                                 bna.pause();
@@ -12366,7 +12368,9 @@ const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
                 const skipTimeStr = localStorage.getItem('defaultSkipTime') || "5";
                 const skipTime = parseFloat(skipTimeStr) * 60;
                 videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + skipTime);
-                videoPlayer.play().catch(e => console.error("Playback failed:", e));
+                videoPlayer.play().catch(e => {
+                    if (e.name !== 'AbortError') console.error("Playback failed:", e);
+                });
                 skipIntroBtn.blur();
                 showToast(`Skipped ${skipTimeStr} minutes`);
             });
