@@ -305,13 +305,37 @@ A zero-dependency, lightweight React Router:
 
 ---
 
-## 13. Safety & Verification Summary
+---
 
-* **Active Working Branch**: `risky-asf-bruh`
-* **Untouched Rollback Branch**: `working-fine-x03`
-* **Zero Legacy Deletions in Phase 7A**: `switchView()`, `handleRoute()`, and all global variables remain 100% operational.
-* **Build Verification**: Tested with `cmd /c npm run build` (0 errors).
+## 14. Phase 7B Status: React Routing Layer Implementation (COMPLETED)
+
+### A. Router Implementation Details
+* **Provider**: [`src/context/RouterContext.jsx`](file:///e:/projects/courceflix-react/src/context/RouterContext.jsx)
+  * Implemented pure React `RouterProvider` holding single canonical `currentView` and route `params`.
+  * `parseLocation(hash)`: Canonical parser handling standard views (`#dashboard-view`), subcourses (`#subcourse/<courseId>/<path>`), DPP routes (`#dpp/<courseId>`), and root aliases (`#home-view`).
+  * `serializeLocation(view, params)`: Serializes view state to hash string without creating duplicate history entries.
+  * `resolveInitialRoute()`: Implements strict startup precedence:
+    1. `sessionStorage:courseflixState` (for player reload restoration)
+    2. URL Hash
+    3. Fallback: `'dashboard-view'`
+* **Hook**: [`src/hooks/useRouter.js`](file:///e:/projects/courceflix-react/src/hooks/useRouter.js)
+  * Exposes `{ currentView, params, navigate, goBack, goForward, parseLocation, serializeLocation }`.
+  * Provides safe standalone fallback if used outside context.
+
+### B. Legacy Compatibility Bridge
+* `window.switchView(viewId, pushState)` is wrapped and redirected to `navigate(viewId, { pushState })`.
+* Lifecycle side effects are preserved:
+  * Top navigation bar visibility toggle (`player-view` hides `<nav>`).
+  * CSS classes `.view.active` and `.nav-link.active` toggle on DOM elements.
+  * Teardown of video and brown noise audio playback on navigating away from the player.
+  * Dispatches `view-changed` custom event for legacy event consumers.
+  * Loop prevention flag (`isInternalNavigating`) prevents circular event triggering between `navigate()` and `hashchange`.
+
+### C. Build & Safety Verification
+* `cmd /c npm run build` compiled cleanly with 0 errors.
+* Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
 ---
 
 *End of Routing & Navigation Map.*
+

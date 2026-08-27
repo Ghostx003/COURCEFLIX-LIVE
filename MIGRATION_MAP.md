@@ -952,6 +952,28 @@ src/
 - Build Status: `cmd /c npm run build` verified clean.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 14. Phase 7B Status: React Routing Layer Implementation (COMPLETED)
+
+### A. Pure React Router Layer
+- **Provider**: [`src/context/RouterContext.jsx`](file:///e:/projects/courceflix-react/src/context/RouterContext.jsx)
+  - Canonical state holder managing `currentView`, route `params`, and navigation history stack.
+  - Route parser (`parseLocation`) and serializer (`serializeLocation`) supporting `#dashboard-view`, `#goals-view`, subcourses (`#subcourse/<courseId>/<path>`), DPP shortcuts (`#dpp/<courseId>`), and root aliases (`#home-view`).
+  - Startup resolver honoring exact precedence: `sessionStorage:courseflixState` -> URL hash -> default `'dashboard-view'`.
+- **Hook**: [`src/hooks/useRouter.js`](file:///e:/projects/courceflix-react/src/hooks/useRouter.js)
+  - Exports `{ currentView, params, navigate, goBack, goForward, parseLocation, serializeLocation }`.
+
+### B. Legacy Compatibility Bridge
+- `window.switchView(viewId, pushState)` is wrapped to call `navigate(viewId, { pushState })`.
+- Preserves all UI side effects: `.view.active` class toggles, `.nav-link.active` tab highlights, navigation bar visibility, media teardown (video and audio pause), and `view-changed` event dispatch.
+- Anti-loop protection prevents circular triggers between `navigate()` and browser `hashchange`.
+
+### C. Build & Safety Verification
+- Build Status: `cmd /c npm run build` succeeds with 0 errors.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 
