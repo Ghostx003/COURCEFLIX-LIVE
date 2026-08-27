@@ -389,6 +389,46 @@ CompletionEstimator.jsx
 
 ---
 
+## 21. Phase 9C-3 Status: Daily Study Streak & Heatmap Matrix (COMPLETED)
+
+### A. Feature Overview & Architecture
+Migrated the **Daily Study Streak & Monthly Heatmap Activity Matrix** to a pure React component powered by `ProgressContext`.
+
+```
+localStorage ('courseflix_logs')
+   ↓
+progressService.js (Syncs logs on completion)
+   ↓
+ProgressContext.jsx (getStudyLogs, progressVersion reactivity)
+   ↓
+useProgress()
+   ↓
+studyStreak.js (Pure Calculation Engine)
+   ↓
+<StudyStreakHeatmap /> (React Component)
+```
+
+### B. Artifacts Created & Modified
+1. **Pure Calculation Engine**:
+   - [`src/utils/studyStreak.js`](file:///e:/projects/courceflix-react/src/utils/studyStreak.js): Zero DOM/IDB/React dependencies. Implements `buildMonthGrid`, `calculateStreakStats`, `getIntensityLevel`, `formatMinutesToHoursAndMinutes`, and `toDateKey`.
+2. **React Component**:
+   - [`src/components/progress/StudyStreakHeatmap.jsx`](file:///e:/projects/courceflix-react/src/components/progress/StudyStreakHeatmap.jsx): 7-column calendar heatmap with month navigation controls, 4 quick streak metric cards (Current Streak, Best Streak, Active Days, Total Study Hours), dynamic 5-level intensity shading with glow effects, today's highlight ring, and floating hover tooltips.
+3. **Context Layer**:
+   - [`src/context/ProgressContext.jsx`](file:///e:/projects/courceflix-react/src/context/ProgressContext.jsx): Added reactive `getStudyLogs()` getter subscribed to `progressVersion` state.
+
+### C. Parity & Validation
+- **Intensity Tiers**: Exactly matches legacy thresholds ($0\text{h} \rightarrow \text{level } 0$, $>0\text{h} \rightarrow \text{level } 1$, $\ge 2\text{h} \rightarrow \text{level } 2$, $\ge 4\text{h} \rightarrow \text{level } 3$, $\ge 6\text{h} \rightarrow \text{level } 4$, $\ge 8\text{h} \rightarrow \text{level } 5$).
+- **Consecutive Streak Logic**: Correctly tracks streaks ending today or yesterday, detects broken streaks, and accurately calculates historical max streaks.
+- **Calendar Boundaries**: Leap years (Feb 2024 = 29 days vs Feb 2023 = 28 days) and year transitions (Dec 31 to Jan 1) verified.
+- **Multi-Log Days**: Multiple study logs recorded on the same date aggregate in $O(1)$ into composite daily hours.
+
+### D. Bundle Impact
+- Bundle size: `502.30 kB` (gzip `125.98 kB`).
+- Zero player leaks; clean modular code splitting.
+
+---
+
 *End of Progress Subsystem & Analytics Map.*
+
 
 
