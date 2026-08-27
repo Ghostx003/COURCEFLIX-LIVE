@@ -907,6 +907,30 @@ src/
 - Total time pill and completion group filtering.
 - Build Status: `npm run build` succeeds without errors.
 
+---
+
+## 12. Phase 6 Status: Course State Ownership Cleanup (COMPLETED)
+
+### A. Central React Course Provider
+- **Module**: [`src/context/CourseContext.jsx`](file:///e:/projects/courceflix-react/src/context/CourseContext.jsx)
+  - Established canonical React Context `CourseContext` and `CourseProvider`.
+  - Wraps the application root in [`src/App.jsx`](file:///e:/projects/courceflix-react/src/App.jsx).
+  - Supplies shared singleton course state across the entire React component hierarchy.
+- **Hook Integration**: [`src/hooks/useCourses.js`](file:///e:/projects/courceflix-react/src/hooks/useCourses.js)
+  - Seamlessly consumes `useCoursesContext()` when rendered under `CourseProvider`, falling back to standalone state hook if used outside.
+
+### B. Direct State Mutation Cleanup
+- **[`src/components/modals/CustomCourseCreatorModal.jsx`](file:///e:/projects/courceflix-react/src/components/modals/CustomCourseCreatorModal.jsx)**:
+  - Removed direct `getStore()` IndexedDB calls and manual array pushes to `window.courses`.
+  - Channeled all course additions and custom subcourse updates through `courseService.saveCourse()` and `courseService.getCourse()`.
+- **Bidirectional Synchronization**:
+  - `courseService` remains the single point of entry for all course modifications, maintaining in-sync `window.courses` and emitting `courseflix:data-updated` and `courseflix:courses-loaded` events.
+
+### C. Build & Safety Verification
+- Build Status: `cmd /c npm run build` compiles with 0 errors.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 

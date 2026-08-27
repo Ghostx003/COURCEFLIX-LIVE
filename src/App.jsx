@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { CourseProvider } from './context/CourseContext';
 import Navbar from './components/Navbar';
 import HomeView from './components/views/HomeView';
 import DashboardViewElView from './components/views/DashboardViewElView';
@@ -65,7 +66,7 @@ export default function App() {
 
 
   return (
-    <>
+    <CourseProvider>
       <Navbar />
       <HomeView />
       <DashboardViewElView />
@@ -237,6 +238,6 @@ export default function App() {
     <input type="file" id="add-assignment-input" className="hidden" accept=".pdf,.doc,.docx,.txt,.zip" />
     <input type="file" id="import-zip-input" className="hidden" accept=".zip" />
       </div>
-    </>
+    </CourseProvider>
   );
 }

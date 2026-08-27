@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useCoursesContext } from '../context/CourseContext.jsx';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
     getCourses as serviceGetCourses,
     getCourse as serviceGetCourse,
@@ -16,19 +15,9 @@ import {
     updateCourseFaculty as serviceUpdateCourseFaculty
 } from '../services/courseService.js';
 
-/**
- * React Hook for managing CourseFlix courses.
- * Provides loaded courses, lifecycle operations, and metadata mutation handlers.
- * Maintains synchronization with CourseContext, courseService and IndexedDB.
- */
-export function useCourses() {
-    const context = useCoursesContext();
-    if (context) return context;
+const CourseContext = createContext(null);
 
-    return useStandaloneCourses();
-}
-
-function useStandaloneCourses() {
+export function CourseProvider({ children }) {
     const [courses, setCourses] = useState(() => {
         if (typeof window !== 'undefined' && Array.isArray(window.courses)) {
             return window.courses;
@@ -46,7 +35,7 @@ function useStandaloneCourses() {
             setError(null);
             return fetched;
         } catch (err) {
-            console.error('[useCourses] Error loading courses:', err);
+            console.error('[CourseProvider] Error loading courses:', err);
             setError(err);
             return [];
         } finally {
@@ -85,7 +74,7 @@ function useStandaloneCourses() {
             setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...c, ...updates } : c));
             return updated;
         } catch (err) {
-            console.error(`[useCourses] Error updating course ${courseId}:`, err);
+            console.error(`[CourseProvider] Error updating course ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -95,7 +84,7 @@ function useStandaloneCourses() {
             await serviceDeleteCourse(courseId);
             setCourses(prev => prev.filter(c => String(c.id) !== String(courseId)));
         } catch (err) {
-            console.error(`[useCourses] Error deleting course ${courseId}:`, err);
+            console.error(`[CourseProvider] Error deleting course ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -116,7 +105,7 @@ function useStandaloneCourses() {
                 return reordered;
             });
         } catch (err) {
-            console.error('[useCourses] Error reordering courses:', err);
+            console.error('[CourseProvider] Error reordering courses:', err);
             throw err;
         }
     }, []);
@@ -135,7 +124,7 @@ function useStandaloneCourses() {
             }));
             return newRating;
         } catch (err) {
-            console.error(`[useCourses] Error setting course rating for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error setting rating for ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -152,12 +141,11 @@ function useStandaloneCourses() {
                 }
                 return { ...c, isIgnored: !!isIgnored };
             }));
-            // Update time left display
             if (typeof window.updateTotalTimeLeftDisplay === 'function') {
                 window.updateTotalTimeLeftDisplay();
             }
         } catch (err) {
-            console.error(`[useCourses] Error toggling course ignored for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error toggling ignore for ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -167,7 +155,7 @@ function useStandaloneCourses() {
             await serviceToggleCourseSplitView(courseId, isSplitView);
             setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...c, isSplitView: !!isSplitView } : c));
         } catch (err) {
-            console.error(`[useCourses] Error toggling split view for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error toggling split view for ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -177,7 +165,7 @@ function useStandaloneCourses() {
             const updated = await serviceUpdateCourseThumbnail(courseId, thumbnailDataUrl, subfolder);
             setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...updated } : c));
         } catch (err) {
-            console.error(`[useCourses] Error setting thumbnail for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error updating thumbnail for ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -187,7 +175,7 @@ function useStandaloneCourses() {
             const updated = await serviceRemoveCourseThumbnail(courseId, subfolder);
             setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...updated } : c));
         } catch (err) {
-            console.error(`[useCourses] Error removing thumbnail for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error removing thumbnail for ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -197,7 +185,7 @@ function useStandaloneCourses() {
             const updated = await serviceUpdateCourseTitle(courseId, newTitle, subfolder);
             setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...updated } : c));
         } catch (err) {
-            console.error(`[useCourses] Error updating course title for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error updating title for ${courseId}:`, err);
             throw err;
         }
     }, []);
@@ -207,12 +195,12 @@ function useStandaloneCourses() {
             const updated = await serviceUpdateCourseFaculty(courseId, newFaculty, subfolder);
             setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...updated } : c));
         } catch (err) {
-            console.error(`[useCourses] Error updating course faculty for ${courseId}:`, err);
+            console.error(`[CourseProvider] Error updating faculty for ${courseId}:`, err);
             throw err;
         }
     }, []);
 
-    return {
+    const value = {
         courses,
         loading,
         error,
@@ -228,4 +216,15 @@ function useStandaloneCourses() {
         updateCourseTitle,
         updateCourseFaculty
     };
+
+    return (
+        <CourseContext.Provider value={value}>
+            {children}
+        </CourseContext.Provider>
+    );
+}
+
+export function useCoursesContext() {
+    const context = useContext(CourseContext);
+    return context;
 }

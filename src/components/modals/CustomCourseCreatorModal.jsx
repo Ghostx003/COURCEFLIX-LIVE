@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { getStore, STORE_NAME, ensureDB } from '../../services/db.js';
+import { getCourse, saveCourse, getCourses } from '../../services/courseService.js';
 import { showToast } from '../../services/utils.js';
 
 export default function CustomCourseCreatorModal() {
@@ -142,11 +142,7 @@ export default function CustomCourseCreatorModal() {
             const basePath = subcourseView.dataset.currentPath || '';
             
             try {
-                const targetCourse = await new Promise((resolve, reject) => {
-                    const req = getStore(STORE_NAME, 'readonly').get(targetCourseId);
-                    req.onsuccess = e => resolve(e.target.result);
-                    req.onerror = () => reject('Failed to load target course');
-                });
+                const targetCourse = await getCourse(targetCourseId);
                 
                 if (!targetCourse) {
                     throw new Error('Target course not found');
@@ -169,17 +165,7 @@ export default function CustomCourseCreatorModal() {
                     thumbnail: thumbnailDataUrl || null
                 };
                 
-                await new Promise((resolve, reject) => {
-                    const req = getStore(STORE_NAME, 'readwrite').put(targetCourse);
-                    req.onsuccess = resolve;
-                    req.onerror = reject;
-                });
-                
-                // Update in memory if it's the global array
-                if (window.courses) {
-                    const idx = window.courses.findIndex(c => String(c.id) === String(targetCourseId));
-                    if (idx !== -1) window.courses[idx] = targetCourse;
-                }
+                await saveCourse(targetCourse);
                 
                 showToast(`Custom course added inside ${targetCourse.title}!`, false);
                 handleClose();
@@ -193,6 +179,7 @@ export default function CustomCourseCreatorModal() {
                 showToast('Failed to add course to current folder', true);
             }
         } else {
+            const currentCourses = await getCourses();
             const newCourse = {
                 id: Date.now(),
                 title: title.trim(),
@@ -203,26 +190,16 @@ export default function CustomCourseCreatorModal() {
                 lectures: lectures,
                 chapters: lectures.length > 0 ? [{ name: "Custom Lectures", lectures: lectures }] : [],
                 videoCount: lectures.length,
-                order: (window.courses || []).length
+                order: (currentCourses || []).length
             };
 
             try {
-                await new Promise((resolve, reject) => {
-                    const request = getStore(STORE_NAME, 'readwrite').put(newCourse);
-                    request.onsuccess = resolve;
-                    request.onerror = (err) => reject(err);
-                });
-
-                if (window.courses) {
-                    window.courses.push(newCourse);
-                }
+                await saveCourse(newCourse);
                 
                 showToast('Custom course created successfully!', false);
                 handleClose();
                 const manageModal = document.getElementById('modal-overlay');
                 if (manageModal) manageModal.classList.add('hidden');
-                
-                window.dispatchEvent(new Event('courseflix:courses-loaded'));
             } catch (err) {
                 console.error('Failed to save custom course:', err);
                 showToast('Failed to create course', true);
