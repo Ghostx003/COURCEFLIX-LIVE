@@ -1,91 +1,96 @@
 window.initCourseFlix = async function() {
     
     // Inject bulletproof CSS to hide video controls for custom courses
-    const customCourseStyle = document.createElement('style');
-    customCourseStyle.textContent = `
-        #video-wrapper.custom-playing .video-controls-container,
-        #video-wrapper.custom-playing .seek-overlay,
-        #video-wrapper.custom-playing #unmute-btn {
-            display: none !important;
-        }
-    `;
-    document.head.appendChild(customCourseStyle);
+    if (!document.getElementById('courseflix-custom-course-style')) {
+        const customCourseStyle = document.createElement('style');
+        customCourseStyle.id = 'courseflix-custom-course-style';
+        customCourseStyle.textContent = `
+            #video-wrapper.custom-playing .video-controls-container,
+            #video-wrapper.custom-playing .seek-overlay,
+            #video-wrapper.custom-playing #unmute-btn {
+                display: none !important;
+            }
+        `;
+        document.head.appendChild(customCourseStyle);
+    }
 
     // Create custom bookmark UI globally (outside React)
-    const customBookmarkUI = document.createElement('div');
-    customBookmarkUI.id = 'custom-bookmark-ui-container';
-    customBookmarkUI.className = 'hidden';
-    customBookmarkUI.style.cssText = 'position: fixed; bottom: 30px; right: 30px; z-index: 99999; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; font-family: sans-serif;';
-    
-    customBookmarkUI.innerHTML = `
-        <!-- Display Notification -->
-        <div id="custom-bookmark-notification" class="hidden" style="background: white; color: black; padding: 14px 20px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 15px; transition: opacity 0.3s ease-out; display: flex; align-items: center; justify-content: space-between; gap: 20px;">
-            <div>Last time you were at <span id="custom-bookmark-time-display" style="color: #2563eb;"></span></div>
-            <i class="fas fa-times" id="custom-bookmark-close-btn" style="cursor: pointer; color: #ef4444; font-size: 18px; transition: color 0.2s;" onmouseover="this.style.color='#b91c1c'" onmouseout="this.style.color='#ef4444'" title="Dismiss"></i>
-        </div>
-
-        <!-- Save Form -->
-        <div id="custom-bookmark-form-container" class="hidden" style="background: white; color: black; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 10px;">
-            <div style="font-size: 14px; font-weight: bold; color: #374151;">Store Left Off Time</div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-                <input type="number" id="cb-hour" placeholder="Hr" min="0" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
-                <span style="color: #6b7280; font-weight: bold;">:</span>
-                <input type="number" id="cb-min" placeholder="Min" min="0" max="59" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
-                <span style="color: #6b7280; font-weight: bold;">:</span>
-                <input type="number" id="cb-sec" placeholder="Sec" min="0" max="59" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                <button id="cb-cancel-btn" style="background: #e5e7eb; color: #374151; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Cancel</button>
-                <button id="cb-save-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Save</button>
-            </div>
-        </div>
-
-        <!-- Floating Action Button -->
-        <button id="custom-bookmark-fab" style="background: #2563eb; color: white; border: none; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; transition: transform 0.2s, background 0.2s;" onmouseover="this.style.transform='scale(1.1)'; this.style.background='#1d4ed8';" onmouseout="this.style.transform='scale(1)'; this.style.background='#2563eb';" title="Store Time">
-            <i class="fas fa-bookmark"></i>
-        </button>
-    `;
-    document.body.appendChild(customBookmarkUI);
-
-    const cbNotif = document.getElementById('custom-bookmark-notification');
-    const cbFormContainer = document.getElementById('custom-bookmark-form-container');
-    const cbFab = document.getElementById('custom-bookmark-fab');
-
-    document.getElementById('custom-bookmark-close-btn').addEventListener('click', () => {
-        cbNotif.style.opacity = '0';
-        setTimeout(() => cbNotif.classList.add('hidden'), 300);
-    });
-
-    cbFab.addEventListener('click', () => {
-        cbNotif.classList.add('hidden');
-        cbFormContainer.classList.remove('hidden');
-        cbFab.classList.add('hidden');
-        document.getElementById('cb-hour').focus();
-    });
-
-    document.getElementById('cb-cancel-btn').addEventListener('click', () => {
-        cbFormContainer.classList.add('hidden');
-        cbFab.classList.remove('hidden');
-    });
-
-    document.getElementById('cb-save-btn').addEventListener('click', async () => {
-        const h = parseInt(document.getElementById('cb-hour').value) || 0;
-        const m = parseInt(document.getElementById('cb-min').value) || 0;
-        const s = parseInt(document.getElementById('cb-sec').value) || 0;
+    if (!document.getElementById('custom-bookmark-ui-container')) {
+        const customBookmarkUI = document.createElement('div');
+        customBookmarkUI.id = 'custom-bookmark-ui-container';
+        customBookmarkUI.className = 'hidden';
+        customBookmarkUI.style.cssText = 'position: fixed; bottom: 30px; right: 30px; z-index: 99999; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; font-family: sans-serif;';
         
-        let val = '';
-        if (h > 0) val += `${h}:`;
-        val += `${m.toString().padStart(h > 0 ? 2 : 1, '0')}:${s.toString().padStart(2, '0')}`;
-        
-        if (window.currentActiveCourse && window.currentActiveLectureId) {
-            const prog = getLectureProgress(window.currentActiveCourse.id, window.currentActiveLectureId) || {};
-            await saveLectureProgress({ ...prog, courseId: window.currentActiveCourse.id, lectureId: window.currentActiveLectureId, customBookmarkTime: val });
-            
+        customBookmarkUI.innerHTML = `
+            <!-- Display Notification -->
+            <div id="custom-bookmark-notification" class="hidden" style="background: white; color: black; padding: 14px 20px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 15px; transition: opacity 0.3s ease-out; display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                <div>Last time you were at <span id="custom-bookmark-time-display" style="color: #2563eb;"></span></div>
+                <i class="fas fa-times" id="custom-bookmark-close-btn" style="cursor: pointer; color: #ef4444; font-size: 18px; transition: color 0.2s;" onmouseover="this.style.color='#b91c1c'" onmouseout="this.style.color='#ef4444'" title="Dismiss"></i>
+            </div>
+
+            <!-- Save Form -->
+            <div id="custom-bookmark-form-container" class="hidden" style="background: white; color: black; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-size: 14px; font-weight: bold; color: #374151;">Store Left Off Time</div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <input type="number" id="cb-hour" placeholder="Hr" min="0" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
+                    <span style="color: #6b7280; font-weight: bold;">:</span>
+                    <input type="number" id="cb-min" placeholder="Min" min="0" max="59" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
+                    <span style="color: #6b7280; font-weight: bold;">:</span>
+                    <input type="number" id="cb-sec" placeholder="Sec" min="0" max="59" style="width: 50px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; text-align: center;" />
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button id="cb-cancel-btn" style="background: #e5e7eb; color: #374151; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Cancel</button>
+                    <button id="cb-save-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">Save</button>
+                </div>
+            </div>
+
+            <!-- Floating Action Button -->
+            <button id="custom-bookmark-fab" style="background: #2563eb; color: white; border: none; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; transition: transform 0.2s, background 0.2s;" onmouseover="this.style.transform='scale(1.1)'; this.style.background='#1d4ed8';" onmouseout="this.style.transform='scale(1)'; this.style.background='#2563eb';" title="Store Time">
+                <i class="fas fa-bookmark"></i>
+            </button>
+        `;
+        document.body.appendChild(customBookmarkUI);
+
+        const cbNotif = document.getElementById('custom-bookmark-notification');
+        const cbFormContainer = document.getElementById('custom-bookmark-form-container');
+        const cbFab = document.getElementById('custom-bookmark-fab');
+
+        document.getElementById('custom-bookmark-close-btn').addEventListener('click', () => {
+            cbNotif.style.opacity = '0';
+            setTimeout(() => cbNotif.classList.add('hidden'), 300);
+        });
+
+        cbFab.addEventListener('click', () => {
+            cbNotif.classList.add('hidden');
+            cbFormContainer.classList.remove('hidden');
+            cbFab.classList.add('hidden');
+            document.getElementById('cb-hour').focus();
+        });
+
+        document.getElementById('cb-cancel-btn').addEventListener('click', () => {
             cbFormContainer.classList.add('hidden');
             cbFab.classList.remove('hidden');
-            if (typeof showToast === 'function') showToast('Time stored successfully!');
-        }
-    });
+        });
+
+        document.getElementById('cb-save-btn').addEventListener('click', async () => {
+            const h = parseInt(document.getElementById('cb-hour').value) || 0;
+            const m = parseInt(document.getElementById('cb-min').value) || 0;
+            const s = parseInt(document.getElementById('cb-sec').value) || 0;
+            
+            let val = '';
+            if (h > 0) val += `${h}:`;
+            val += `${m.toString().padStart(h > 0 ? 2 : 1, '0')}:${s.toString().padStart(2, '0')}`;
+            
+            if (window.currentActiveCourse && window.currentActiveLectureId) {
+                const prog = getLectureProgress(window.currentActiveCourse.id, window.currentActiveLectureId) || {};
+                await saveLectureProgress({ ...prog, courseId: window.currentActiveCourse.id, lectureId: window.currentActiveLectureId, customBookmarkTime: val });
+                
+                cbFormContainer.classList.add('hidden');
+                cbFab.classList.remove('hidden');
+                if (typeof showToast === 'function') showToast('Time stored successfully!');
+            }
+        });
+    }
 
         const themeToggleBtn = document.getElementById('theme-toggle-btn');
         if (themeToggleBtn) {
@@ -385,11 +390,23 @@ window.initCourseFlix = async function() {
         }
 
         // --- Progress Management ---
+        const courseProgressCache = new Map();
+        function invalidateCourseProgressCache(courseId) {
+            if (courseId !== undefined && courseId !== null) {
+                courseProgressCache.delete(String(courseId));
+                courseProgressCache.delete(Number(courseId));
+            } else {
+                courseProgressCache.clear();
+            }
+        }
+        window.invalidateCourseProgressCache = invalidateCourseProgressCache;
+
         async function loadAllProgress() {
             await ensureDB();
-            const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
+            const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
             courseProgress = {};
-            allProgress.forEach(item => { courseProgress[item.id] = item; });
+            (allProgress || []).forEach(item => { courseProgress[item.id] = item; });
+            courseProgressCache.clear();
         }
         async function saveLectureProgress(data) {
             const progressId = `${data.courseId}_${data.lectureId}`;
@@ -409,6 +426,7 @@ window.initCourseFlix = async function() {
             const progressData = { ...existing, ...data, id: progressId };
             await new Promise(resolve => getStore(PROGRESS_STORE, 'readwrite').put(progressData).onsuccess = resolve);
             courseProgress[progressId] = progressData;
+            invalidateCourseProgressCache(data.courseId);
             
             // --- NEW: Sync logs to localStorage for progress.html ---
             if (data.completed !== undefined) {
@@ -971,21 +989,35 @@ window.initCourseFlix = async function() {
             return course.facultyName || 'N/A Faculty';
         }
 
-        function calculateCourseProgress(course) {
-            if (!course || !course.lectures || course.lectures.length === 0) {
-                const totalDur = course ? (course.totalDuration || 0) : 0;
-                return { completed: 0, total: course ? (course.videoCount || 0) : 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
+        function calculateCourseProgress(course, forceRecalculate = false) {
+            if (!course) {
+                return { completed: 0, total: 0, percentage: 0, remainingDuration: 0, totalDuration: 0 };
+            }
+            const cId = String(course.id);
+            if (!forceRecalculate && courseProgressCache.has(cId)) {
+                return courseProgressCache.get(cId);
+            }
+            if (!course.lectures || course.lectures.length === 0) {
+                const totalDur = course.totalDuration || 0;
+                const res = { completed: 0, total: course.videoCount || 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
+                courseProgressCache.set(cId, res);
+                return res;
             }
             let completed = 0;
             let timeCompleted = 0;
             let activeTotalLectures = 0;
             let activeTotalDuration = 0;
             
-            course.lectures.forEach(lecture => {
+            const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && s.isIgnored));
+
+            const lecs = course.lectures;
+            const len = lecs.length;
+            for (let i = 0; i < len; i++) {
+                const lecture = lecs[i];
                 let isSubfolderIgnored = false;
-                if (course.subCourseData) {
-                    for (const sub of Object.keys(course.subCourseData)) {
-                         if (course.subCourseData[sub].isIgnored && (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
+                if (hasIgnoredSubs && lecture.chapter) {
+                    for (const sub in course.subCourseData) {
+                         if (course.subCourseData[sub]?.isIgnored && (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
                               isSubfolderIgnored = true;
                               break;
                          }
@@ -994,14 +1026,15 @@ window.initCourseFlix = async function() {
                 
                 if (!isSubfolderIgnored) {
                     activeTotalLectures++;
-                    activeTotalDuration += (lecture.duration || 0);
-                    const progress = getLectureProgress(course.id, lecture.id);
-                    if (progress.completed) {
+                    const dur = lecture.duration || 0;
+                    activeTotalDuration += dur;
+                    const prog = courseProgress[`${course.id}_${lecture.id}`];
+                    if (prog && prog.completed) {
                         completed++;
-                        timeCompleted += (lecture.duration || 0);
+                        timeCompleted += dur;
                     }
                 }
-            });
+            }
 
             const effectiveTotalDuration = activeTotalDuration > 0 ? activeTotalDuration : (course.totalDuration || 0);
             const percentage = activeTotalLectures > 0 ? (completed / activeTotalLectures) * 100 : 0;
@@ -1012,13 +1045,15 @@ window.initCourseFlix = async function() {
             
             const remainingDuration = effectiveTotalDuration - timeCompleted;
 
-            return { 
+            const result = { 
                 completed, 
                 total: activeTotalLectures, 
                 percentage, 
                 remainingDuration: Math.max(0, remainingDuration), 
                 totalDuration: effectiveTotalDuration 
             };
+            courseProgressCache.set(cId, result);
+            return result;
         }
         
         function renderTimePillContent(totalSecondsLeft, pct) {
@@ -1043,65 +1078,22 @@ window.initCourseFlix = async function() {
             courses.forEach(course => {
                 if (course.isIgnored) return;
                 
-                let cSecondsLeft = 0;
-                let cCompletedSec = 0;
-                let cTotalSec = 0;
-                let cPendingLec = 0;
-                let cCompletedLec = 0;
-                let cTotalLec = 0;
-
-                if (!course.lectures) {
-                    totalSecondsLeft += (course.totalDuration || 0);
-                    totalSecondsCount += (course.totalDuration || 0);
-                    pendingLectures += (course.videoCount || 0);
-                    totalLecturesCount += (course.videoCount || 0);
-                    courseBreakdown.push({
-                        id: course.id,
-                        title: course.title,
-                        secondsLeft: course.totalDuration || 0,
-                        completedSeconds: 0,
-                        totalSeconds: course.totalDuration || 0,
-                        pendingLectures: course.videoCount || 0,
-                        completedLectures: 0,
-                        totalLectures: course.videoCount || 0,
-                        percentage: 0
-                    });
-                    return;
-                }
-
-                course.lectures.forEach(lecture => {
-                    let isSubfolderIgnored = false;
-                    if (course.isSplitView && course.subCourseData) {
-                        for (const sub of Object.keys(course.subCourseData)) {
-                             if (course.subCourseData[sub].isIgnored && (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
-                                  isSubfolderIgnored = true;
-                                  break;
-                             }
-                        }
-                    }
-                    if (isSubfolderIgnored) return;
-
-                    totalLecturesCount++;
-                    cTotalLec++;
-                    const dur = lecture.duration || 0;
-                    totalSecondsCount += dur;
-                    cTotalSec += dur;
-
-                    const progress = getLectureProgress(course.id, lecture.id);
-                    if (!progress.completed) {
-                        totalSecondsLeft += dur;
-                        cSecondsLeft += dur;
-                        pendingLectures++;
-                        cPendingLec++;
-                    } else {
-                        totalCompletedLectures++;
-                        cCompletedLec++;
-                        totalCompletedSeconds += dur;
-                        cCompletedSec += dur;
-                    }
-                });
-
+                const prog = calculateCourseProgress(course);
+                const cTotalSec = prog.totalDuration || 0;
+                const cSecondsLeft = prog.remainingDuration || 0;
+                const cCompletedSec = Math.max(0, cTotalSec - cSecondsLeft);
+                const cTotalLec = prog.total || (course.videoCount || 0);
+                const cCompletedLec = prog.completed || 0;
+                const cPendingLec = Math.max(0, cTotalLec - cCompletedLec);
                 const cPct = cTotalLec > 0 ? Math.round((cCompletedLec / cTotalLec) * 100) : 0;
+
+                totalSecondsLeft += cSecondsLeft;
+                totalSecondsCount += cTotalSec;
+                totalCompletedSeconds += cCompletedSec;
+                pendingLectures += cPendingLec;
+                totalCompletedLectures += cCompletedLec;
+                totalLecturesCount += cTotalLec;
+
                 courseBreakdown.push({
                     id: course.id,
                     title: course.title,
@@ -1301,42 +1293,31 @@ window.initCourseFlix = async function() {
         
         async function loadCoursesFromDB() {
             await ensureDB();
-            const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
+            const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
             if (storedCourses && storedCourses.length > 0) {
-                await Promise.all(storedCourses.map(async (course) => {
-                    const handle = course.handle;
-                    if (handle && typeof handle.queryPermission === 'function') {
-                        try {
-                            const permReq = handle.queryPermission({ mode: 'read' });
-                            const timeout = new Promise(r => setTimeout(() => r('denied'), 80));
-                            course.isLinked = (await Promise.race([permReq, timeout])) === 'granted';
-                        } catch (e) {
-                            course.isLinked = false;
-                        }
-                    } else {
-                        course.isLinked = !!course.isCustomCourse;
-                    }
-                }));
+                storedCourses.forEach(course => {
+                    course.isLinked = !!(course.handle || course.isCustomCourse);
+                });
             }
             courses = storedCourses || [];
             window.courses = courses;
+            invalidateCourseProgressCache();
             window.dispatchEvent(new CustomEvent('courseflix:courses-loaded', { detail: courses }));
             const activeView = document.querySelector('.view.active');
-            if (!activeView || activeView.id === 'dashboard-view-el') {
+            if (!activeView || activeView.id === 'dashboard-view-el' || activeView.id === 'dashboard-view') {
                 renderCourseGrid();
             } else {
                 setTimeout(() => renderCourseGrid(), 10);
             }
-            if (typeof syncCourseflixSubjects === 'function') {
-                syncCourseflixSubjects();
-            }
-            const runPurge = () => {
-                purgeAllDataForDeletedCoursesAndSubfolders().catch(err => console.warn('Background purge error:', err));
-            };
-            if (window.requestIdleCallback) {
-                window.requestIdleCallback(runPurge, { timeout: 6000 });
-            } else {
-                setTimeout(runPurge, 3500);
+            // Background sync only if missing from localStorage
+            if (!localStorage.getItem('courseflix_subjects') || !localStorage.getItem('courseflix_dpps')) {
+                if (typeof syncCourseflixSubjects === 'function') {
+                    if (window.requestIdleCallback) {
+                        window.requestIdleCallback(() => syncCourseflixSubjects(), { timeout: 4000 });
+                    } else {
+                        setTimeout(() => syncCourseflixSubjects(), 2000);
+                    }
+                }
             }
         }
         
@@ -1423,6 +1404,12 @@ window.initCourseFlix = async function() {
 
         function enrichCourseDurationsInBackground(courseId, dirHandle) {
             if (!courseId || !dirHandle) return;
+            const course = (typeof courses !== 'undefined' ? courses : []).find(c => String(c.id) === String(courseId));
+            if (course && course.lectures && course.lectures.length > 0) {
+                const hasUncached = course.lectures.some(l => !l.duration || l.duration === 0);
+                if (!hasUncached) return;
+            }
+            if (durationEnrichmentQueue.some(item => String(item.courseId) === String(courseId))) return;
             durationEnrichmentQueue.push({ courseId, dirHandle });
             processDurationEnrichmentQueue();
         }
@@ -1458,6 +1445,7 @@ window.initCourseFlix = async function() {
                         });
                     }
 
+                    invalidateCourseProgressCache(course.id);
                     await new Promise(r => {
                         const req = getStore(STORE_NAME, 'readwrite').put(course);
                         req.onsuccess = r;
@@ -1917,13 +1905,19 @@ window.initCourseFlix = async function() {
             }
 
             populateSortGroupOptions();
-
             updateTotalTimeLeftDisplay();
             
+            const hideIgnored = localStorage.getItem('courseflix_hide_ignored') === 'true';
             const sortSelect = document.getElementById('course-sort-select');
             const sortVal = localStorage.getItem('courseSortPref') || 'custom';
             if (sortSelect && sortSelect.value !== sortVal) sortSelect.value = sortVal;
             
+            // Pre-calculate progress for all courses once before sorting and card rendering
+            const progressMap = new Map();
+            for (let i = 0; i < courses.length; i++) {
+                progressMap.set(courses[i].id, calculateCourseProgress(courses[i]));
+            }
+
             let sortedCourses = [...courses];
 
             if (sortVal.startsWith('group_')) {
@@ -1939,8 +1933,8 @@ window.initCourseFlix = async function() {
                 }
             } else if (sortVal !== 'custom') {
                 sortedCourses.sort((a, b) => {
-                    const progA = calculateCourseProgress(a);
-                    const progB = calculateCourseProgress(b);
+                    const progA = progressMap.get(a.id) || { percentage: 0, totalDuration: 0, remainingDuration: 0 };
+                    const progB = progressMap.get(b.id) || { percentage: 0, totalDuration: 0, remainingDuration: 0 };
                     if (sortVal === 'completion_asc') return progA.percentage - progB.percentage;
                     if (sortVal === 'completion_desc') return progB.percentage - progA.percentage;
                     if (sortVal === 'duration_desc') return progB.totalDuration - progA.totalDuration;
@@ -1953,13 +1947,15 @@ window.initCourseFlix = async function() {
                 sortedCourses.sort((a, b) => (a.order || 0) - (b.order || 0));
             }
 
+            const fragment = document.createDocumentFragment();
+
             for (const course of sortedCourses) {
                 // --- HIDE IGNORED FEATURE ---
-                if (localStorage.getItem('courseflix_hide_ignored') === 'true' && course.isIgnored) continue;
+                if (hideIgnored && course.isIgnored) continue;
 
                 const card = document.createElement('div');
                 card.className = 'course-card';
-                const progress = calculateCourseProgress(course);
+                const progress = progressMap.get(course.id) || calculateCourseProgress(course);
 
                 const ratingStarsHTML = Array.from({length: 5}, (_, i) => 
                     `<i class="fa-star ${ (course.rating || 0) > i ? 'fas' : 'far'}" data-value="${i + 1}"></i>`
@@ -2039,8 +2035,9 @@ window.initCourseFlix = async function() {
                     });
                 }
                 
-                courseGrid.appendChild(card);
+                fragment.appendChild(card);
             }
+            courseGrid.appendChild(fragment);
         }
 
         async function renderSubcourseView(courseId, basePath = '', pushState = true) {
@@ -11228,10 +11225,8 @@ window.initCourseFlix = async function() {
             }
 
             await openDB();
-            await Promise.all([
-                loadAllProgress(),
-                loadCoursesFromDB()
-            ]);
+            await loadAllProgress();
+            await loadCoursesFromDB();
             
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('playGoalsPlaylist')) {

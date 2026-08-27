@@ -12,11 +12,14 @@ if (typeof window !== 'undefined') {
 
 export async function loadAllProgress() {
     await ensureDB();
-    const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result));
+    const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
     courseProgress = {};
-    allProgress.forEach(item => { courseProgress[item.id] = item; });
+    (allProgress || []).forEach(item => { courseProgress[item.id] = item; });
     if (typeof window !== 'undefined') {
         window.courseProgress = courseProgress;
+        if (typeof window.invalidateCourseProgressCache === 'function') {
+            window.invalidateCourseProgressCache();
+        }
     }
     return courseProgress;
 }
@@ -47,7 +50,12 @@ export async function saveLectureProgress(data) {
     const progressData = { ...existing, ...data, id: progressId };
     await new Promise(resolve => getStore(PROGRESS_STORE, 'readwrite').put(progressData).onsuccess = resolve);
     courseProgress[progressId] = progressData;
-    if (typeof window !== 'undefined') window.courseProgress = courseProgress;
+    if (typeof window !== 'undefined') {
+        window.courseProgress = courseProgress;
+        if (typeof window.invalidateCourseProgressCache === 'function') {
+            window.invalidateCourseProgressCache(data.courseId);
+        }
+    }
     
     if (data.completed !== undefined) {
         let cfLogs = JSON.parse(localStorage.getItem('courseflix_logs') || '[]');

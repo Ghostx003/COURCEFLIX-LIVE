@@ -209,23 +209,17 @@ export async function loadCoursesFromDB() {
     await ensureDB();
     const storedCourses = await new Promise(resolve => getStore(STORE_NAME, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
     if (storedCourses && storedCourses.length > 0) {
-        await Promise.all(storedCourses.map(async (course) => {
-            const handle = course.handle;
-            if (handle && typeof handle.queryPermission === 'function') {
-                try {
-                    course.isLinked = await handle.queryPermission({ mode: 'read' }) === 'granted';
-                } catch (e) {
-                    course.isLinked = false;
-                }
-            } else {
-                course.isLinked = false;
-            }
-        }));
+        storedCourses.forEach(course => {
+            course.isLinked = !!(course.handle || course.isCustomCourse);
+        });
     }
     window.courses = storedCourses || [];
+    if (typeof window.invalidateCourseProgressCache === 'function') {
+        window.invalidateCourseProgressCache();
+    }
     window.dispatchEvent(new CustomEvent('courseflix:courses-loaded', { detail: window.courses }));
     const activeView = document.querySelector('.view.active');
-    if (!activeView || activeView.id === 'dashboard-view-el') {
+    if (!activeView || activeView.id === 'dashboard-view-el' || activeView.id === 'dashboard-view') {
         renderCourseGrid();
     } else {
         setTimeout(() => renderCourseGrid(), 10);
@@ -247,8 +241,11 @@ export async function renderCourseGrid() {
     let sortedCourses = [...courses];
     sortedCourses.sort((a, b) => (a.order || 0) - (b.order || 0));
 
+    const hideIgnored = localStorage.getItem('courseflix_hide_ignored') === 'true';
+    const fragment = document.createDocumentFragment();
+
     for (const course of sortedCourses) {
-        if (localStorage.getItem('courseflix_hide_ignored') === 'true' && course.isIgnored) continue;
+        if (hideIgnored && course.isIgnored) continue;
 
         const card = document.createElement('div');
         card.className = 'course-card';
@@ -283,8 +280,9 @@ export async function renderCourseGrid() {
             }
         });
 
-        courseGrid.appendChild(card);
+        fragment.appendChild(card);
     }
+    courseGrid.appendChild(fragment);
 }
 
 export function extractNumberFromText(str) {
