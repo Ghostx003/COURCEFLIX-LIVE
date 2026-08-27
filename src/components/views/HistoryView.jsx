@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
 
 export default function HistoryView() {
+  const { currentView } = useRouter();
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'calendar'
   const [currentDateStr, setCurrentDateStr] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -116,7 +118,7 @@ export default function HistoryView() {
   const future = currentDateStr ? isFuture(currentDateStr) : false;
 
   return (
-    <div id="history-view" className="view" style={{ height: '100%', overflowY: activeTab === 'list' ? 'auto' : 'hidden' }}>
+    <div id="history-view" className={`view ${currentView === 'history-view' ? 'active' : ''}`} style={{ height: '100%', overflowY: activeTab === 'list' ? 'auto' : 'hidden' }}>
       {activeTab === 'list' ? (
         <div style={{ padding: '20px', minHeight: '100%', boxSizing: 'border-box' }}>
           {/* Main Header with Toggle */}

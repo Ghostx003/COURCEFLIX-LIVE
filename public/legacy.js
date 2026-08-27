@@ -9726,11 +9726,15 @@ window.initCourseFlix = async function() {
         window.renderContinueView = renderContinueView;
 
         async function renderHistoryView() {
+            const t0 = performance.now();
             try {
                 await ensureDB();
-                await cleanupOrphanedHistoryEntries().catch(() => {});
                 const history = await getHistoryEntries().catch(() => []);
+                const tIdb = performance.now();
                 const now = new Date();
+                
+                // Build fast O(1) course lookup map
+                const courseMap = new Map((courses || []).map(c => [String(c.id), c]));
                 
                 // Filter history for the last 30 hours and exclude deleted/ignored courses & subfolders
                 const thirtyHoursAgo = new Date(now.getTime() - (30 * 60 * 60 * 1000));
@@ -9738,7 +9742,7 @@ window.initCourseFlix = async function() {
                     if (h.isHiddenFromHistory) return false;
                     if (new Date(h.timestamp) < thirtyHoursAgo) return false;
 
-                    const course = (courses || []).find(c => c.id === parseInt(h.courseId));
+                    const course = courseMap.get(String(h.courseId));
                     if (!course) return false;
 
                     if (h.subfolder) {
@@ -9756,13 +9760,15 @@ window.initCourseFlix = async function() {
                 } else {
                     let htmlStr = '';
                     recentHistory.forEach(h => {
+                        const course = courseMap.get(String(h.courseId));
+                        const subName = (h.subfolder && course) ? getSubfolderDisplayName(course, h.subfolder) : '';
                         htmlStr += `
                         <tr style="border-bottom: 1px solid var(--border-secondary);">
                             <td style="padding: 12px 16px; display: flex; align-items: center; gap: 10px; max-width: 300px; overflow: hidden;">
                                 ${h.thumbnail ? `<img src="${h.thumbnail}" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex-shrink: 0;">` : `<div style="width: 40px; height: 40px; background: var(--bg-tertiary); border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><i class="fas fa-video"></i></div>`}
                                 <div style="display: flex; align-items: center; overflow: hidden;">
                                     <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;">${h.courseTitle}</span>
-                                    ${(h.subfolder && (courses || []).find(c => c.id === parseInt(h.courseId))) ? `<span style="color: #22c55e; font-size: 0.85rem; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1;">${getSubfolderDisplayName((courses || []).find(c => c.id === parseInt(h.courseId)), h.subfolder)}</span>` : ''}
+                                    ${subName ? `<span style="color: #22c55e; font-size: 0.85rem; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1;">${subName}</span>` : ''}
                                 </div>
                             </td>
                             <td style="padding: 12px 16px;">
@@ -9778,6 +9784,8 @@ window.initCourseFlix = async function() {
                     });
                     tableBody.innerHTML = htmlStr;
                 }
+                const tEnd = performance.now();
+                console.log(`[CourseFlix View Perf] History: IDB ${(tIdb - t0).toFixed(2)} ms | Render ${(tEnd - tIdb).toFixed(2)} ms | TOTAL ${(tEnd - t0).toFixed(2)} ms`);
             } catch (err) {
                 console.warn('Error in renderHistoryView:', err);
             }
