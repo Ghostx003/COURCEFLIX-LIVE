@@ -28,6 +28,8 @@ export default function HomeView() {
 
   const updatePill = () => {
     if (!navContainerRef.current) return;
+    const homeEl = document.getElementById('home-view');
+    if (homeEl && !homeEl.classList.contains('active')) return;
     const activeBtn = navContainerRef.current.querySelector('.sliding-nav-btn.active');
     if (activeBtn) {
       setPillStyle({

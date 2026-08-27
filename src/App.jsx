@@ -236,8 +236,6 @@ export default function App() {
     <input type="file" id="add-pdf-input" className="hidden" accept=".pdf" />
     <input type="file" id="add-assignment-input" className="hidden" accept=".pdf,.doc,.docx,.txt,.zip" />
     <input type="file" id="import-zip-input" className="hidden" accept=".zip" />
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
       </div>
     </>
   );

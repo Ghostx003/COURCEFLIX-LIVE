@@ -2100,43 +2100,52 @@ window.initCourseFlix = async function() {
                     </div>`;
                     
                 card.draggable = sortVal === 'custom';
-                if (sortVal === 'custom') {
-                    card.addEventListener('dragstart', (e) => {
-                        e.dataTransfer.setData('text/plain', course.id);
-                        card.style.opacity = '0.5';
-                        card.classList.add('dragging');
-                    });
-                    card.addEventListener('dragend', () => {
-                        card.style.opacity = '1';
-                        card.classList.remove('dragging');
-                    });
-                    card.addEventListener('dragover', (e) => {
-                        e.preventDefault();
-                        const draggingCard = document.querySelector('.course-card.dragging');
-                        if (draggingCard && draggingCard !== card) {
-                            const bounding = card.getBoundingClientRect();
-                            const offset = e.clientY - bounding.top;
-                            if (offset > bounding.height / 2) card.after(draggingCard);
-                            else card.before(draggingCard);
-                        }
-                    });
-                    card.addEventListener('drop', async (e) => {
-                        e.preventDefault();
-                        const cards = Array.from(courseGrid.querySelectorAll('.course-card'));
-                        for (let i = 0; i < cards.length; i++) {
-                            const cid = parseInt(cards[i].querySelector('.remove-course-btn').dataset.id);
-                            const c = courses.find(x => x.id === cid);
-                            if (c) {
-                                c.order = i;
-                                await new Promise(r => getStore(STORE_NAME, 'readwrite').put(c).onsuccess = r);
-                            }
-                        }
-                    });
-                }
-                
                 fragment.appendChild(card);
             }
             courseGrid.appendChild(fragment);
+
+            if (!courseGrid._dragListenersAttached) {
+                courseGrid._dragListenersAttached = true;
+                courseGrid.addEventListener('dragstart', (e) => {
+                    const card = e.target.closest('.course-card');
+                    if (!card) return;
+                    const removeBtn = card.querySelector('.remove-course-btn');
+                    if (removeBtn && removeBtn.dataset.id) {
+                        e.dataTransfer.setData('text/plain', removeBtn.dataset.id);
+                    }
+                    card.style.opacity = '0.5';
+                    card.classList.add('dragging');
+                });
+                courseGrid.addEventListener('dragend', (e) => {
+                    const card = e.target.closest('.course-card');
+                    if (!card) return;
+                    card.style.opacity = '1';
+                    card.classList.remove('dragging');
+                });
+                courseGrid.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    const card = e.target.closest('.course-card');
+                    const draggingCard = document.querySelector('.course-card.dragging');
+                    if (card && draggingCard && draggingCard !== card) {
+                        const bounding = card.getBoundingClientRect();
+                        const offset = e.clientY - bounding.top;
+                        if (offset > bounding.height / 2) card.after(draggingCard);
+                        else card.before(draggingCard);
+                    }
+                });
+                courseGrid.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    const cards = Array.from(courseGrid.querySelectorAll('.course-card'));
+                    for (let i = 0; i < cards.length; i++) {
+                        const cid = parseInt(cards[i].querySelector('.remove-course-btn')?.dataset.id);
+                        const c = courses.find(x => x.id === cid);
+                        if (c) {
+                            c.order = i;
+                            await new Promise(r => getStore(STORE_NAME, 'readwrite').put(c).onsuccess = r);
+                        }
+                    }
+                });
+            }
         }
 
         async function renderSubcourseView(courseId, basePath = '', pushState = true) {
@@ -6876,6 +6885,19 @@ window.initCourseFlix = async function() {
             });
         }
 
+        async function ensureJSZip() {
+            if (typeof window.JSZip !== 'undefined') return window.JSZip;
+            if (window._jszipLoadingPromise) return window._jszipLoadingPromise;
+            window._jszipLoadingPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                script.onload = () => resolve(window.JSZip);
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+            return window._jszipLoadingPromise;
+        }
+
         async function executeSelectiveExport(analysis, options) {
             const confirmBtn = document.getElementById('export-confirm-btn');
             if (confirmBtn) {
@@ -6884,6 +6906,7 @@ window.initCourseFlix = async function() {
             }
 
             try {
+                await ensureJSZip();
                 const zip = new JSZip();
                 const { raw } = analysis;
 
@@ -7150,6 +7173,7 @@ window.initCourseFlix = async function() {
             importModal.classList.remove('hidden');
 
             try {
+                await ensureJSZip();
                 const zip = await JSZip.loadAsync(file);
                 const backupFile = zip.file('backup.json');
                 if (!backupFile) {
@@ -11319,8 +11343,10 @@ window.initCourseFlix = async function() {
             }
 
             await openDB();
-            await loadAllProgress();
-            await loadCoursesFromDB();
+            await Promise.all([
+                loadAllProgress(),
+                loadCoursesFromDB()
+            ]);
             
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('playGoalsPlaylist')) {
