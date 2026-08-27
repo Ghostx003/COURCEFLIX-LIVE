@@ -877,6 +877,37 @@ src/
 - FileSystemDirectoryHandle storage in IndexedDB preserved unchanged.
 - Build Status: `npm run build` succeeds without errors.
 
+---
+
+## 11. Phase 5 Status: React Dashboard Ownership Migration (COMPLETED)
+
+### A. React Dashboard Architecture
+- **Hook**: [`src/hooks/useCourses.js`](file:///e:/projects/courceflix-react/src/hooks/useCourses.js)
+  - Canonical state hook providing `courses`, `loading`, `error`, `reloadCourses`, `deleteCourse`, `reorderCourses`, `setCourseRating`, `toggleCourseIgnored`, `toggleCourseSplitView`, `updateCourseThumbnail`, `removeCourseThumbnail`, `updateCourseTitle`, `updateCourseFaculty`.
+  - Backed by `src/services/courseService.js` and IndexedDB persistence.
+  - Automatically synchronizes on `courseflix:courses-loaded` and `courseflix:data-updated`.
+- **Card Component**: [`src/components/dashboard/CourseCard.jsx`](file:///e:/projects/courceflix-react/src/components/dashboard/CourseCard.jsx)
+  - Pure React course card rendering title, faculty, inline double-click editing, 5-star ratings, split view toggles, ignore checkbox, progress bar, duration strings, and action buttons.
+- **Grid Component**: [`src/components/dashboard/CourseGrid.jsx`](file:///e:/projects/courceflix-react/src/components/dashboard/CourseGrid.jsx)
+  - Manages course filtering (hide ignored, search queries), fast cached progress lookups, sort orders (`custom`, `completion_asc/desc`, `duration_asc/desc`, `duration_left_asc/desc`, `group_*`), and drag-and-drop custom ordering.
+- **Dashboard View**: [`src/components/views/DashboardViewElView.jsx`](file:///e:/projects/courceflix-react/src/components/views/DashboardViewElView.jsx)
+  - Controls header bar, search input, sort dropdown menu, settings trigger, and renders `CourseGrid`.
+
+### B. Legacy Renderer Retired
+- **`public/legacy.js:renderCourseGrid()`**:
+  - Imperative DOM manipulation and manual element construction removed.
+  - Retained as a thin notification wrapper that updates `updateTotalTimeLeftDisplay()` and dispatches `courseflix:data-updated` so React stays updated without tearing down the DOM.
+
+### C. Functionality Verified
+- Fast startup: Instant rendering using cached `course.stats` (zero lecture loop, zero filesystem activity).
+- Course entry, refresh, relocation, thumbnail upload/removal, deletion.
+- In-place title & faculty double-click editing with Enter/Escape handling.
+- 5-star rating toggles and split by folders toggles.
+- Custom drag-and-drop course reordering with IndexedDB persistence.
+- Total time pill and completion group filtering.
+- Build Status: `npm run build` succeeds without errors.
+
+
 
 
 
