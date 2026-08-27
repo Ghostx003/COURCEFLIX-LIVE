@@ -313,5 +313,47 @@ All 45+ occurrences across the codebase have been audited:
 
 ---
 
+## 19. Phase 9C-1 Status: Total Study Time & Completion Estimator (COMPLETED)
+
+### A. Feature Overview & Architecture
+Migrated the **Total Study Time / Completion & Time Intelligence Estimator** to a pure React-owned component powered by `ProgressContext` and `CourseContext`.
+
+```
+IndexedDB
+   ↓
+progressService.js
+   ↓
+ProgressContext.jsx / CourseContext.jsx
+   ↓
+useProgress() / useCourses()
+   ↓
+CompletionEstimator.jsx
+   ↓
+<CompletionCalculatorModalModal />
+```
+
+### B. Artifacts Created & Modified
+1. **Pure Calculation Engine**:
+   - [`src/utils/completionEstimator.js`](file:///e:/projects/courceflix-react/src/utils/completionEstimator.js): Zero DOM/IDB/React dependencies. Implements `calculateTotalProgressStats`, `estimateCompletion`, `calculateTodayGoal`, and `getProgressColor`.
+2. **React Component**:
+   - [`src/components/progress/CompletionEstimator.jsx`](file:///e:/projects/courceflix-react/src/components/progress/CompletionEstimator.jsx): Reactive completion UI with 4 quick stats, progress bar, course-by-course breakdown, mode toggle (Daily Study Hours vs Daily Lecture Intake), playback speed scaling, finish date forecaster, and today's goal tracker dropdown.
+3. **Modal Integration**:
+   - [`src/components/modals/CompletionCalculatorModalModal.jsx`](file:///e:/projects/courceflix-react/src/components/modals/CompletionCalculatorModalModal.jsx): Hosts `<CompletionEstimator>` with reactive open/close event listeners.
+4. **Service Synchronization**:
+   - [`src/services/calculatorService.js`](file:///e:/projects/courceflix-react/src/services/calculatorService.js): Updated to consume `completionEstimator.js` for legacy trigger calls, guaranteeing zero mathematical divergence between legacy and React.
+
+### C. Behavioral & Mathematical Parity
+- **Zero Progress**: Correctly predicts `"Already Finished!"` with `"0 pending lectures."`.
+- **Mode 1 (Daily Hours)**: Computes adjusted viewing time ($T_{\text{adj}} = T_{\text{rem}} / \text{speed}$) and predicts exact finish date based on daily hours.
+- **Mode 2 (Lecture Intake)**: Computes required daily watch time ($T_{\text{daily}} = \text{targetLectures} \times T_{\text{avg}} / \text{speed}$) and forecasts completion date.
+- **Today's Goal Tracker**: Evaluates lectures completed today from `courseProgress` records against target.
+- **Color Thresholds**: Exact match ($\ge 80\%$ green `#10b981`, $\ge 60\%$ cyan `#06b6d4`, $\ge 30\%$ amber `#f59e0b`, $< 30\%$ red `#ef4444`).
+
+### D. Bundle Impact
+- Bundle size: `502.17 kB` (gzip `125.96 kB`).
+- Zero eager player inclusion; clean modular architecture.
+
+---
+
 *End of Progress Subsystem & Analytics Map.*
 
