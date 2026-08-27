@@ -1,7 +1,11 @@
 import React from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
+
 export default function DoubtsView() {
+  const { currentView } = useRouter();
+
   return (
-    <div id="doubts-view" className="view">
+    <div id="doubts-view" className={`view ${currentView === 'doubts-view' ? 'active' : ''}`}>
         <div id="doubts-list-container" style={{"display":"flex","flexDirection":"column","width":"100%","height":"100%"}}>
             <main id="doubts-course-grid" className="grid-container"></main>
         </div>

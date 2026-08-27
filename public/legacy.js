@@ -9785,6 +9785,7 @@ window.initCourseFlix = async function() {
         window.renderHistoryView = renderHistoryView;
 
         async function renderDoubtsCourseSelectionView() {
+            const t0 = performance.now();
             nav.classList.remove('hidden');
             const doubtsDetail = document.getElementById('doubts-detail-container');
             if (doubtsDetail) doubtsDetail.classList.add('hidden');
@@ -9797,6 +9798,8 @@ window.initCourseFlix = async function() {
             const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
             if (!allDoubts || allDoubts.length === 0) {
                 grid.innerHTML = '<p id="no-content-message">No doubts captured yet. Press "s" while playing a video to take a screenshot.</p>';
+                const tEnd = performance.now();
+                console.log(`[CourseFlix View Perf] Doubts: TOTAL ${(tEnd - t0).toFixed(2)} ms (empty)`);
                 return;
             }
             
@@ -9856,7 +9859,10 @@ window.initCourseFlix = async function() {
                     </div>`;
                 grid.appendChild(card);
             }
+            const tEnd = performance.now();
+            console.log(`[CourseFlix View Perf] Doubts: TOTAL ${(tEnd - t0).toFixed(2)} ms`);
         }
+        window.renderDoubtsCourseSelectionView = renderDoubtsCourseSelectionView;
         
         async function renderDoubtsDetailView(courseId, subfolder) {
             document.getElementById('doubts-list-container').classList.add('hidden');
@@ -9864,27 +9870,25 @@ window.initCourseFlix = async function() {
             detailContainer.classList.remove('hidden');
             
             const course = courses.find(c => String(c.id) === String(courseId));
-            const targetSubfolder = (subfolder || '').trim().replace(/\/+$/, '');
-            const titleEl = document.getElementById('doubts-detail-title');
-            titleEl.innerHTML = course ? course.title + (targetSubfolder ? ` &raquo; ${getSubfolderDisplayName(course, targetSubfolder)}` : '') : 'Doubts';
+            const subTitle = (subfolder && course) ? ` &raquo; ${getSubfolderDisplayName(course, subfolder)}` : '';
+            document.getElementById('doubts-detail-title').innerHTML = `${course ? course.title : 'Course'}${subTitle}`;
             
             const grid = document.getElementById('doubts-specific-grid');
             grid.innerHTML = '';
             
             const allDoubts = await new Promise(r => getStore(DOUBTS_STORE, 'readonly').getAll().onsuccess = e => r(e.target.result));
-            const groupDoubts = (allDoubts || []).filter(d => {
-                const matchCourse = String(d.courseId) === String(courseId);
-                const matchSubfolder = (d.subfolder || '').trim().replace(/\/+$/, '') === targetSubfolder;
-                return matchCourse && matchSubfolder;
+            const normTargetSub = (subfolder || '').trim().replace(/\/+$/, '');
+            const filtered = (allDoubts || []).filter(d => {
+                const normDoubtSub = (d.subfolder || '').trim().replace(/\/+$/, '');
+                return String(d.courseId) === String(courseId) && normDoubtSub === normTargetSub;
             });
             
-            if (groupDoubts.length === 0) {
-                 grid.innerHTML = '<p id="no-content-message">No doubts found for this folder.</p>';
-                 return;
+            if (filtered.length === 0) {
+                grid.innerHTML = '<p id="no-content-message">No doubts found in this category.</p>';
+                return;
             }
             
-            grid.innerHTML = ''; // Prevent async race duplicates
-            groupDoubts.sort((a,b) => b.createdAt - a.createdAt).forEach(d => {
+            filtered.sort((a,b) => b.createdAt - a.createdAt).forEach(d => {
                 const card = document.createElement('div');
                 card.className = 'doubt-card';
                 card.dataset.id = d.id;
@@ -9899,6 +9903,7 @@ window.initCourseFlix = async function() {
                 grid.appendChild(card);
             });
         }
+        window.renderDoubtsDetailView = renderDoubtsDetailView;
         
         let activeDoubtId = null;
         async function openDoubtFullscreen(doubtId) {
