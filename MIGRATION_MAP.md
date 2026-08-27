@@ -1026,6 +1026,27 @@ src/
 - Build Status: `cmd /c npm run build` succeeds with 0 errors.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 18. Phase 8B Status: Migrate Subcourse View Ownership to React (COMPLETED)
+
+### A. Subcourse React Component Architecture
+- **Pure Helpers**: [`src/utils/subcourseUtils.js`](file:///e:/projects/courceflix-react/src/utils/subcourseUtils.js) (natural sort, subfolder extraction, parent path slicing, ancestor faculty resolution, hidden path detection).
+- **Subcomponents**:
+  - [`src/components/subcourse/SubcourseCard.jsx`](file:///e:/projects/courceflix-react/src/components/subcourse/SubcourseCard.jsx): Interactive card supporting thumbnail preview/upload/removal, double-click inline title and teacher editing, star rating widget, ignore topic toggle, split further toggle, duration and lecture completion stats, and "Enter Course".
+  - [`src/components/subcourse/SubcourseHeader.jsx`](file:///e:/projects/courceflix-react/src/components/subcourse/SubcourseHeader.jsx): Dynamic origin-aware breadcrumbs and back buttons (`dashboard-view`, `home-view`, `faculty-view`, `continue-view`, `search-results-view`, or parent folder).
+  - [`src/components/subcourse/SubcourseGrid.jsx`](file:///e:/projects/courceflix-react/src/components/subcourse/SubcourseGrid.jsx): Grid of subcourse cards with empty state handler.
+- **Canonical View**: [`src/components/views/SubcourseView.jsx`](file:///e:/projects/courceflix-react/src/components/views/SubcourseView.jsx) consuming `useRouter()` and `useCourses()`, channeling mutations directly through `courseService`.
+
+### B. Legacy Renderer Retirement
+- Replaced 184 lines of imperative DOM construction inside `public/legacy.js:renderSubcourseView()` with a non-destructive navigation delegation wrapper.
+
+### C. Build & Safety Verification
+- Build Status: `cmd /c npm run build` compiles cleanly with 0 errors.
+- Bundle size: `497.69 kB` (gzip `124.60 kB`) — zero leakage of heavy player engine into subcourse paths.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 

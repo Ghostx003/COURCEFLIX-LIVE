@@ -300,16 +300,31 @@ When player loads from subcourse:
 
 ---
 
-## 13. First Safe Implementation Step (Phase 8B Action Plan)
+---
 
-1. Create modular subcomponents:
-   - `src/components/subcourse/SubcourseCard.jsx`
-   - `src/components/subcourse/SubcourseGrid.jsx`
-   - `src/components/subcourse/SubcourseHeader.jsx`
-2. Connect `SubcourseView.jsx` to `useRouter()` and `useCourses()`.
-3. Retire legacy DOM writing in `legacy.js:renderSubcourseView()`.
-4. Maintain `window.renderSubcourseView` delegation to React `navigate()`.
+## 14. Phase 8B Status: Subcourse View React Ownership (COMPLETED)
+
+### A. React Implementation Delivered
+1. **[`src/utils/subcourseUtils.js`](file:///e:/projects/courceflix-react/src/utils/subcourseUtils.js)**:
+   - Pure utilities: `naturalSortByNameOnly`, `getParentPath`, `getSubfolderDisplayName`, `getSubfolderFacultyName`, `isSubfolderPathHidden`, `getImmediateSubfolders`, `hasDeeperSubfolders`, and `resolveSubfolderThumbnail`.
+2. **[`src/components/subcourse/SubcourseCard.jsx`](file:///e:/projects/courceflix-react/src/components/subcourse/SubcourseCard.jsx)**:
+   - Interactive subfolder card supporting thumbnail preview/upload/removal, double-click inline title and faculty editing, star ratings (1-5), ignore topic checkbox, split-further checkbox, progress bar, duration indicators, and "Enter Course" action button.
+3. **[`src/components/subcourse/SubcourseHeader.jsx`](file:///e:/projects/courceflix-react/src/components/subcourse/SubcourseHeader.jsx)**:
+   - Origin-aware dynamic back navigation (`← Back to Dashboard`, `← Back to Landing Page`, `← Back to Faculty`, `← Back to Search`, `← Back to Continue`, or `← Back to <parentFolder>`).
+4. **[`src/components/subcourse/SubcourseGrid.jsx`](file:///e:/projects/courceflix-react/src/components/subcourse/SubcourseGrid.jsx)**:
+   - Filtered subfolder grid respecting `courseflix_hide_ignored` and `.hidden` subcourse flags.
+5. **[`src/components/views/SubcourseView.jsx`](file:///e:/projects/courceflix-react/src/components/views/SubcourseView.jsx)**:
+   - Canonical container connected to `useRouter()` and `useCourses()`, managing leaf folder auto-jump, directory permissions, and mutations through `courseService`.
+
+### B. Legacy Renderer Retirement
+- Retired 184 lines of imperative DOM construction inside `public/legacy.js:renderSubcourseView()`.
+- Replaced with lightweight navigation delegation bridge: `window.renderSubcourseView(courseId, basePath)` &rarr; `window.switchView('#subcourse/' + courseId + '/' + path)`.
+
+### C. Build & Bundle Safety Verification
+- Bundle size: `497.69 kB` (gzip `124.60 kB`) — 0 errors, no large player dependencies leaked into initial bundle.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
 ---
 
 *End of Subcourse & Course Detail Architecture Map.*
+
