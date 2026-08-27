@@ -1,7 +1,11 @@
 import React from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
+
 export default function ContinueView() {
+  const { currentView } = useRouter();
+
   return (
-    <div id="continue-view" className="view" style={{"overflowY":"auto"}}>
+    <div id="continue-view" className={`view ${currentView === 'continue-view' ? 'active' : ''}`} style={{"overflowY":"auto"}}>
         <div style={{"padding":"20px"}}>
             <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"20px"}}>
                 <div>

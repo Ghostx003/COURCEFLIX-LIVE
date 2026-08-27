@@ -9565,7 +9565,9 @@ window.initCourseFlix = async function() {
         }
 
         async function renderContinueView() {
+            const t0 = performance.now();
             await cleanupOrphanedHistoryEntries();
+            const tIdb = performance.now();
             const history = await getHistoryEntries();
             const now = new Date();
             
@@ -9594,6 +9596,7 @@ window.initCourseFlix = async function() {
                 }
             }
             const continueGrid = document.getElementById('history-continue-grid');
+            if (!continueGrid) return;
             continueGrid.innerHTML = '';
             
             if (uniqueCoursesMap.size === 0) {
@@ -9608,7 +9611,7 @@ window.initCourseFlix = async function() {
                 courseList.forEach(h => {
                     const course = courses.find(c => c.id === h.courseId);
                     if (course) {
-                        h._progress = calculateCourseProgress(course, h.subfolder);
+                        h._progress = calculateCourseProgress(course, false, h.subfolder);
                         h._course = course;
                     }
                 });
@@ -9618,16 +9621,16 @@ window.initCourseFlix = async function() {
                 
                 // Apply sorting
                 if (sortVal === 'most_studied') {
-                    courseList.sort((a, b) => b._progress.percentage - a._progress.percentage);
+                    courseList.sort((a, b) => (b._progress?.percentage || 0) - (a._progress?.percentage || 0));
                 } else if (sortVal === 'least_studied') {
-                    courseList.sort((a, b) => a._progress.percentage - b._progress.percentage);
+                    courseList.sort((a, b) => (a._progress?.percentage || 0) - (b._progress?.percentage || 0));
                 }
                 // (last_studied is already the default from the earlier timestamp sort)
 
                 let htmlStr = '';
                 for (const h of courseList) {
                     const course = h._course;
-                    const progress = h._progress;
+                    const progress = h._progress || {};
                     
                     let cardThumbnail = course.thumbnail;
                     if (h.subfolder && course.subCourseData) {
@@ -9707,8 +9710,8 @@ window.initCourseFlix = async function() {
                                 <p class="course-meta" style="color: #22c55e; margin-top: 8px; font-weight: bold; font-size:0.9rem;">${timeRemainingHrs} hrs left in this course</p>
                             </div>
                             <div class="course-progress-container" style="margin-top: 12px; margin-bottom: 12px;">
-                                <div class="course-progress-bar"><div class="course-progress-fill" style="width: ${progress.percentage}%"></div></div>
-                                <div class="course-progress-text" style="font-size:0.85rem;">${progress.completed} / ${progress.total || course.videoCount || 0} lectures</div>
+                                <div class="course-progress-bar"><div class="course-progress-fill" style="width: ${progress.percentage || 0}%"></div></div>
+                                <div class="course-progress-text" style="font-size:0.85rem;">${progress.completed || 0} / ${progress.total || course.videoCount || 0} lectures</div>
                             </div>
                             <button class="primary-btn history-continue-btn" data-course="${course.id}" data-lecture="${h.lectureId}" data-subfolder="${h.subfolder || ''}" style="margin-top: auto; font-size:1rem; padding:12px;">Resume</button>
                         </div>
@@ -9717,7 +9720,10 @@ window.initCourseFlix = async function() {
                 }
                 continueGrid.innerHTML = htmlStr;
             }
+            const tEnd = performance.now();
+            console.log(`[CourseFlix View Perf] Continue: IDB ${(tIdb - t0).toFixed(2)} ms | Render ${(tEnd - tIdb).toFixed(2)} ms | TOTAL ${(tEnd - t0).toFixed(2)} ms`);
         }
+        window.renderContinueView = renderContinueView;
 
         async function renderHistoryView() {
             try {
