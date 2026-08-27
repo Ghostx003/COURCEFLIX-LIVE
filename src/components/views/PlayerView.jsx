@@ -1,9 +1,12 @@
 import React from 'react';
 import FloatingTimer from './FloatingTimer';
+import { useRouter } from '../../hooks/useRouter.js';
 
 export default function PlayerView() {
+  const { currentView } = useRouter();
+
   return (
-    <div id="player-view" className="view">
+    <div id="player-view" className={`view ${currentView === 'player-view' ? 'active' : ''}`}>
         <FloatingTimer />
         <div id="pdf-drop-overlay" style={{"position":"absolute","top":"0","left":"0","right":"0","bottom":"0","background":"rgba(0, 0, 0, 0.85)","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center","zIndex":"9999","border":"4px dashed var(--accent-primary)","color":"white","opacity":"0","pointerEvents":"none","transition":"opacity 0.2s ease"}}>
             <i className="fas fa-file-pdf" style={{"fontSize":"5rem","color":"var(--accent-primary)","marginBottom":"20px"}}></i>

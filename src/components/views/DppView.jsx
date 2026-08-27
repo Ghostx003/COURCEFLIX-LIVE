@@ -1,8 +1,11 @@
 import React from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
 
 export default function DppView() {
+  const { currentView } = useRouter();
+
   return (
-    <div id="dpp-view" className="view">
+    <div id="dpp-view" className={`view ${currentView === 'dpp-view' ? 'active' : ''}`}>
         <main id="dpp-course-grid" className="grid-container"></main>
         <div id="dpp-detail-container" className="hidden">
             <div id="dpp-sidebar">

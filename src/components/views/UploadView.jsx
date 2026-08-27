@@ -1,8 +1,11 @@
 import React from 'react';
+import { useRouter } from '../../hooks/useRouter.js';
 
 export default function UploadView() {
+  const { currentView } = useRouter();
+
   return (
-    <div id="upload-view" className="view">
+    <div id="upload-view" className={`view ${currentView === 'upload-view' ? 'active' : ''}`}>
         <main id="upload-course-grid" className="grid-container"></main>
         <div id="upload-subfolder-view" className="hidden">
             <div className="view-header">
