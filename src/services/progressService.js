@@ -31,28 +31,54 @@ export function invalidateCourseProgressCache(courseId = null) {
     }
 }
 
+let inFlightLoadPromise = null;
+let isLoaded = false;
+
+/**
+ * Checks if the full progress map has been loaded into memory.
+ * @returns {boolean}
+ */
+export function isProgressLoaded() {
+    return isLoaded || Object.keys(courseProgress).length > 0;
+}
+
 /**
  * Loads all progress records from IndexedDB into memory, clears calculation caches,
  * and maintains backward compatibility with window.courseProgress.
+ * Deduplicates simultaneous calls using a shared in-flight promise.
+ * @param {boolean} [force=false]
  * @returns {Promise<Object>} Map of progress records
  */
-export async function loadAllProgress() {
-    const allProgressList = await repoGetAllProgress();
-    courseProgress = {};
-    (allProgressList || []).forEach(item => {
-        if (item && item.id) {
-            courseProgress[item.id] = item;
-        }
-    });
-    courseProgressCache.clear();
-
-    // Maintain window.courseProgress compatibility for legacy consumers
-    if (typeof window !== 'undefined') {
-        window.courseProgress = courseProgress;
-        window.invalidateCourseProgressCache = invalidateCourseProgressCache;
+export async function loadAllProgress(force = false) {
+    if (!force && inFlightLoadPromise) {
+        return inFlightLoadPromise;
     }
 
-    return courseProgress;
+    inFlightLoadPromise = (async () => {
+        try {
+            const allProgressList = await repoGetAllProgress();
+            courseProgress = {};
+            (allProgressList || []).forEach(item => {
+                if (item && item.id) {
+                    courseProgress[item.id] = item;
+                }
+            });
+            courseProgressCache.clear();
+            isLoaded = true;
+
+            // Maintain window.courseProgress compatibility for legacy consumers
+            if (typeof window !== 'undefined') {
+                window.courseProgress = courseProgress;
+                window.invalidateCourseProgressCache = invalidateCourseProgressCache;
+            }
+
+            return courseProgress;
+        } finally {
+            inFlightLoadPromise = null;
+        }
+    })();
+
+    return inFlightLoadPromise;
 }
 
 /**
