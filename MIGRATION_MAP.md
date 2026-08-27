@@ -1007,6 +1007,26 @@ src/
 - Build Status: `cmd /c npm run build` succeeds cleanly with 0 errors.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 17. Phase 8A Status: Subcourse View Dependency Audit (COMPLETED)
+
+### A. Comprehensive Architecture Discovery
+- **Artifact**: Created [`SUBCOURSE_MAP.md`](file:///e:/projects/courceflix-react/SUBCOURSE_MAP.md) detailing:
+  - End-to-end recursive subcourse navigation flow (Dashboard -> Root Subcourse -> Nested Subcourse -> Player -> Back).
+  - Complete mapping of legacy functions (`renderSubcourseView`, `getSubfolderDisplayName`, `getSubfolderFacultyName`, `getParentPath`, `isSubfolderPathHidden`, `calculateCourseProgress`).
+  - Analysis of `#subcourse/<courseId>/<path>` URL hash parsing, percent-encoding, integer vs string IDs, and fallback behavior.
+  - Course state dependencies (`course.chapters`, `course.subCourseData`, `course.subCourseStats`, `isSplitView`, `isIgnored`).
+  - Separation of pure UI rendering from FileSystem Access API operations.
+  - Definition of the Player boundary contract.
+  - Blueprinted Phase 8B modular React subcomponents (`SubcourseView.jsx`, `SubcourseHeader.jsx`, `SubcourseGrid.jsx`, `SubcourseCard.jsx`).
+
+### B. Build & Safety Verification
+- Zero legacy runtime code deleted or modified during discovery.
+- Build Status: `cmd /c npm run build` succeeds with 0 errors.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 
