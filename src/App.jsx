@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { CourseProvider } from './context/CourseContext';
+import { RouterProvider } from './context/RouterContext';
 import Navbar from './components/Navbar';
 import HomeView from './components/views/HomeView';
 import DashboardViewElView from './components/views/DashboardViewElView';
@@ -67,7 +68,8 @@ export default function App() {
 
   return (
     <CourseProvider>
-      <Navbar />
+      <RouterProvider>
+        <Navbar />
       <HomeView />
       <DashboardViewElView />
       <GoalsView />
@@ -237,7 +239,8 @@ export default function App() {
     <input type="file" id="add-pdf-input" className="hidden" accept=".pdf" />
     <input type="file" id="add-assignment-input" className="hidden" accept=".pdf,.doc,.docx,.txt,.zip" />
     <input type="file" id="import-zip-input" className="hidden" accept=".zip" />
-      </div>
+        </div>
+      </RouterProvider>
     </CourseProvider>
   );
 }
