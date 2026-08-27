@@ -1046,6 +1046,26 @@ src/
 - Bundle size: `497.69 kB` (gzip `124.60 kB`) — zero leakage of heavy player engine into subcourse paths.
 - Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
 
+---
+
+## 19. Phase 9A Status: Progress View Dependency Audit (COMPLETED)
+
+### A. Progress Subsystem Architecture & Discovery
+- **Artifact**: Created [`PROGRESS_MAP.md`](file:///e:/projects/courceflix-react/PROGRESS_MAP.md) detailing:
+  - Hybrid iframe architecture (`<iframe id="progress-iframe" src="static/progress.html#dashboard">`).
+  - Analysis of standalone `public/static/progress.html` (4,407 lines) and its direct IndexedDB transactions (`CourseFlixDB` stores `courses`, `progress`, `dpps`, `doubts`) and LocalStorage logs (`courseflix_logs`).
+  - Audited all 45+ reads and writes of `window.courseProgress` across `legacy.js`, `progressService.js`, and views.
+  - Progress calculation and caching engine (`progressService.calculateCourseProgress`, `courseProgressCache`, `course.stats`, `course.subCourseStats`).
+  - Event map (`courseflix:progress-updated`, `courseflix:data-updated`, `courseflix-hide-ignored-changed`).
+  - Downstream consumers: Continue Watching (`#continue-view`), Watch History (`#history-view`), Notes, Doubts, and Total Time Left indicator.
+  - Phase 9B Blueprint (`ProgressContext.jsx`, `useProgress.js`, reactive completion calculator).
+
+### B. Build & Safety Verification
+- Zero legacy code deleted or modified during audit.
+- Build Status: `cmd /c npm run build` succeeds with 0 errors.
+- Active Branch: `risky-asf-bruh`. Baseline `working-fine-x03` preserved untouched.
+
+
 
 
 
