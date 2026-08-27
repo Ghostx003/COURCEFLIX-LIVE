@@ -1987,26 +1987,6 @@ window.initCourseFlix = async function() {
         }
 
         async function renderCourseGrid() {
-            courseGrid.innerHTML = '';
-            if (courses.length === 0) { 
-                courseGrid.innerHTML = `<p id="no-content-message">No courses added. Click 'Add Course' to begin.</p>`;
-                totalTimeDisplay.style.display = 'none';
-                return;
-            }
-
-            // Pre-scan ONLY empty courses that have no lectures array yet
-            for (const course of courses) {
-                if (course.isLinked && course.handle && !course.lectures) {
-                    try {
-                        const courseData = await scanDirectoryHandle(course.handle, '', [], true);
-                        course.lectures = courseData.lectures;
-                        course.totalDuration = courseData.totalDuration;
-                        course.chapters = courseData.chapters;
-                        await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
-                        enrichCourseDurationsInBackground(course.id, course.handle);
-                    } catch (e) {
-                        console.error(`Failed to scan course "${course.title}"`, e);
-                    }
             window.__cfTimings = window.__cfTimings || {};
             const t0 = performance.now();
             courseGrid.innerHTML = '';
