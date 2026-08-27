@@ -86,6 +86,15 @@ export function ProgressProvider({ children }) {
         return calculateCourseProgress(course, forceRecalculate, targetSubfolder);
     }, [progressVersion]);
 
+    // Reactive study logs getter
+    const getStudyLogs = useCallback(() => {
+        try {
+            return JSON.parse(localStorage.getItem('courseflix_logs') || '[]');
+        } catch (e) {
+            return [];
+        }
+    }, [progressVersion]);
+
     // Save lecture progress mutation
     const saveLectureProgress = useCallback(async (data) => {
         const result = await serviceSaveLectureProgress(data);
@@ -128,6 +137,7 @@ export function ProgressProvider({ children }) {
         getAllProgress,
         getLectureProgress: getLectureProgressReactive,
         getCourseProgress: getCourseProgressReactive,
+        getStudyLogs,
         saveLectureProgress,
         markLectureCompleted,
         updatePlaybackPosition,
@@ -141,6 +151,7 @@ export function ProgressProvider({ children }) {
         refreshProgress,
         getLectureProgressReactive,
         getCourseProgressReactive,
+        getStudyLogs,
         saveLectureProgress,
         markLectureCompleted,
         updatePlaybackPosition,
