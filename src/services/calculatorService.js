@@ -1,48 +1,37 @@
 // Completion Calculator Service
-// Extracted and modularized from legacy.js
+// Re-uses pure calculation engine from completionEstimator.js for legacy callers
 
 import { formatExactTime } from './utils.js';
+import {
+    calculateTotalProgressStats,
+    estimateCompletion,
+    calculateTodayGoal,
+    getProgressColor
+} from '../utils/completionEstimator.js';
 
 export function updateDailyGoalDisplay(dailyHours, speed, overrideTargetLectures = null) {
-    const targetLectures = (overrideTargetLectures !== null && overrideTargetLectures !== undefined)
-        ? Math.ceil(overrideTargetLectures)
-        : Math.ceil(dailyHours / (2 / speed));
-    
-    const todayStr = new Date().toLocaleDateString();
-    let completedToday = [];
-    
     const courseProgress = typeof window.courseProgress !== 'undefined' ? window.courseProgress : {};
-    Object.values(courseProgress).forEach(prog => {
-        if (prog.completed && prog.completedAt) {
-            const completedDate = new Date(prog.completedAt).toLocaleDateString();
-            if (completedDate === todayStr) {
-                completedToday.push(prog);
-            }
-        }
-    });
-    
-    const count = completedToday.length;
+    const mode = (overrideTargetLectures !== null && overrideTargetLectures !== undefined) ? 'lectures' : 'hours';
+    const goalData = calculateTodayGoal(courseProgress, mode, dailyHours, overrideTargetLectures, speed);
+
     const textEl = document.getElementById('daily-goal-text');
     const checkboxEl = document.getElementById('daily-goal-checkbox');
     const dropdownEl = document.getElementById('daily-goal-dropdown');
     
-    if (textEl) textEl.textContent = `Goal: ${count}/${targetLectures} lectures`;
-    if (checkboxEl) checkboxEl.checked = count >= targetLectures;
+    if (textEl) textEl.textContent = `Goal: ${goalData.completedTodayCount}/${goalData.targetLectures} lectures`;
+    if (checkboxEl) checkboxEl.checked = goalData.isGoalMet;
     
     if (dropdownEl) {
-        if (count === 0) {
+        if (goalData.completedTodayList.length === 0) {
             dropdownEl.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 10px;">No lectures completed today.</div>';
         } else {
-            completedToday.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
-            
-            dropdownEl.innerHTML = completedToday.map(prog => {
-                const timeStr = new Date(prog.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            dropdownEl.innerHTML = goalData.completedTodayList.map(prog => {
                 return `<div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-primary); padding-bottom: 4px; margin-bottom: 4px;">
                             <div style="font-size: 0.8rem; flex-grow: 1; margin-right: 10px; overflow: hidden;">
-                                <strong style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${prog.courseTitle || 'Course'}</strong>
-                                <span style="color: var(--text-secondary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${prog.lectureName || 'Lecture'}</span>
+                                <strong style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${prog.courseTitle}</strong>
+                                <span style="color: var(--text-secondary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${prog.lectureName}</span>
                             </div>
-                            <div style="font-size: 0.75rem; color: var(--accent-primary); white-space: nowrap;">${timeStr}</div>
+                            <div style="font-size: 0.75rem; color: var(--accent-primary); white-space: nowrap;">${prog.timeFormatted}</div>
                         </div>`;
             }).join('');
         }
@@ -65,7 +54,7 @@ export function setupCalcModeListeners() {
 
     const applyModeUI = (mode) => {
         currentCalcTargetMode = mode;
-        localStorage.setItem('calcTargetMode', mode);
+        try { localStorage.setItem('calcTargetMode', mode); } catch (e) {}
 
         if (mode === 'hours') {
             hoursBtn.style.background = 'var(--accent-primary)';
@@ -142,10 +131,7 @@ export function runCompletionCalculator() {
 
     const calcProgressEl = document.getElementById('calc-progress-percentage');
     const calcProgressBar = document.getElementById('calc-progress-bar');
-    let progressColor = '#ef4444';
-    if (pct >= 80) progressColor = '#10b981';
-    else if (pct >= 60) progressColor = '#06b6d4';
-    else if (pct >= 30) progressColor = '#f59e0b';
+    const progressColor = getProgressColor(pct);
 
     if (calcProgressEl) {
         calcProgressEl.innerText = `${pct}%`;
@@ -173,7 +159,7 @@ export function runCompletionCalculator() {
                         <span style="font-weight:700; font-size:0.85rem; color:var(--text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${c.title}</span>
                         <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:500;">${c.completedLectures}/${c.totalLectures} lecs done (${c.percentage}%)</span>
                     </div>
-                    <div style="font-weight:800; font-size:0.85rem; color:${c.percentage >= 80 ? '#10b981' : c.percentage >= 60 ? '#06b6d4' : c.percentage >= 30 ? '#f59e0b' : '#ef4444'}; white-space:nowrap; background:var(--bg-tertiary); padding:4px 8px; border-radius:6px; border:1px solid var(--border-primary);">
+                    <div style="font-weight:800; font-size:0.85rem; color:${getProgressColor(c.percentage)}; white-space:nowrap; background:var(--bg-tertiary); padding:4px 8px; border-radius:6px; border:1px solid var(--border-primary);">
                         ${formatExactTime(c.secondsLeft)}
                     </div>
                 </div>
@@ -184,70 +170,57 @@ export function runCompletionCalculator() {
     const resultDateEl = document.getElementById('calc-result-date');
     const resultStatsEl = document.getElementById('calc-result-stats');
 
-    if (totalSeconds === 0) {
-        if (resultDateEl) resultDateEl.innerText = "Already Finished!";
-        if (resultStatsEl) resultStatsEl.innerText = "0 pending lectures.";
-        return;
-    }
+    const dailyHoursInput = document.getElementById('calc-daily-hours');
+    const dailyLecturesInput = document.getElementById('calc-daily-lectures');
+    const speedHoursInput = document.getElementById('calc-playback-speed-hours');
+    const speedLecturesInput = document.getElementById('calc-playback-speed-lectures');
 
-    let speed = 1.5;
-    let daysRequired = 0;
-    let metaText = "";
+    const dailyHours = parseFloat(dailyHoursInput?.value) || 7;
+    const dailyLectures = parseFloat(dailyLecturesInput?.value) || 4;
+    const speed = parseFloat(currentCalcTargetMode === 'hours' ? speedHoursInput?.value : speedLecturesInput?.value) || 1.5;
 
-    if (currentCalcTargetMode === 'hours') {
-        const dailyHoursInput = document.getElementById('calc-daily-hours');
-        const speedInput = document.getElementById('calc-playback-speed-hours');
-        const dailyHours = parseFloat(dailyHoursInput?.value) || 7;
-        speed = parseFloat(speedInput?.value) || 1.5;
-
-        localStorage.setItem('calcDailyHours', dailyHours);
+    try {
+        if (currentCalcTargetMode === 'hours') {
+            localStorage.setItem('calcDailyHours', dailyHours);
+        } else {
+            localStorage.setItem('calcDailyLectures', dailyLectures);
+        }
         localStorage.setItem('calcPlaybackSpeed', speed);
-        updateDailyGoalDisplay(dailyHours, speed);
+    } catch (e) {}
 
-        const totalHours = totalSeconds / 3600;
-        const adjustedHours = totalHours / speed;
-        daysRequired = adjustedHours / dailyHours;
-        metaText = `${pendingLectures} pending lectures (${Math.ceil(adjustedHours)} hrs adjusted view time at ${speed}x speed).`;
-    } else {
-        const dailyLecturesInput = document.getElementById('calc-daily-lectures');
-        const speedInput = document.getElementById('calc-playback-speed-lectures');
-        const dailyLectures = parseFloat(dailyLecturesInput?.value) || 4;
-        speed = parseFloat(speedInput?.value) || 1.5;
+    updateDailyGoalDisplay(dailyHours, speed, currentCalcTargetMode === 'lectures' ? dailyLectures : null);
 
-        localStorage.setItem('calcDailyLectures', dailyLectures);
-        localStorage.setItem('calcPlaybackSpeed', speed);
-        updateDailyGoalDisplay(0, speed, dailyLectures);
+    const est = estimateCompletion({
+        totalSecondsLeft: totalSeconds,
+        pendingLectures,
+        mode: currentCalcTargetMode,
+        dailyHours,
+        dailyLectures,
+        speed
+    });
 
-        const avgLectureDurationSec = pendingLectures > 0 ? (totalSeconds / pendingLectures) : 0;
-        const dailyWatchTimeSec = (dailyLectures * avgLectureDurationSec) / speed;
-        daysRequired = pendingLectures > 0 ? (pendingLectures / dailyLectures) : 0;
-
+    if (currentCalcTargetMode === 'lectures') {
         const dailyTimeSpan = document.getElementById('calc-lecture-intake-daily-time');
         const countSpan = document.getElementById('calc-lecture-intake-count');
         const speedSpan = document.getElementById('calc-lecture-intake-speed');
 
-        if (dailyTimeSpan) dailyTimeSpan.innerText = formatExactTime(dailyWatchTimeSec);
+        if (dailyTimeSpan) dailyTimeSpan.innerText = formatExactTime(est.dailyWatchTimeSec);
         if (countSpan) countSpan.innerText = dailyLectures;
         if (speedSpan) speedSpan.innerText = speed;
-
-        metaText = `${pendingLectures} pending lectures (${daysRequired.toFixed(1)} days at ${dailyLectures} lecs/day • ${formatExactTime(dailyWatchTimeSec)}/day required at ${speed}x speed).`;
     }
-    
-    const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
-    const options = { day: 'numeric', month: 'long', year: 'numeric' };
-    const dateString = finishDate.toLocaleDateString('en-GB', options);
-    
-    if (resultDateEl) resultDateEl.innerText = dateString;
-    if (resultStatsEl) resultStatsEl.innerText = metaText;
+
+    if (resultDateEl) resultDateEl.innerText = est.finishDateFormatted;
+    if (resultStatsEl) resultStatsEl.innerText = est.metaText;
 }
 
 export function openCalculatorModal() {
     const modal = document.getElementById('completion-calculator-modal');
     if (!modal) return;
-    const closeBtn = modal.querySelector('.close-modal-btn');
-    if (closeBtn) closeBtn.onclick = () => modal.classList.add('hidden');
     modal.classList.remove('hidden');
-    runCompletionCalculator();
+    // If the legacy DOM fields exist, populate them as well
+    if (document.getElementById('calc-hours-studied')) {
+        runCompletionCalculator();
+    }
 }
 
 export function initCalculatorListeners() {
