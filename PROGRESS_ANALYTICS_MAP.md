@@ -1,0 +1,180 @@
+# CourseFlix — Progress Subsystem Analytics & Dependency Map (Phase 9C-4 Audit)
+
+> **Document Status**: Comprehensive Audit & Dependency Mapping for Remaining `progress.html` Features  
+> **Target Branch**: `risky-asf-bruh`  
+> **Rollback Baseline**: `working-fine-x03` (Protected)  
+> **Author**: Antigravity Assistant  
+> **Date**: August 2026  
+
+---
+
+## 1. Executive Summary
+
+Phase 9C-1 through 9C-3 successfully migrated the first two Progress features directly into React:
+1. **Completion & Time Intelligence Estimator** (`CompletionEstimator.jsx` + `completionEstimator.js`).
+2. **Daily Study Streak & Monthly Activity Heatmap** (`StudyStreakHeatmap.jsx` + `studyStreak.js`).
+
+The remaining standalone analytics application lives in `public/static/progress.html` (4,407 lines) and renders inside `<iframe id="progress-iframe">` under `<ProgressView />`.
+
+This document maps all remaining features, their underlying data stores, postMessage action channels, shared calculation pipelines, performance hotspots, and defines the incremental migration order into React without breaking iframe analytics.
+
+---
+
+## 2. Complete Remaining Feature Inventory
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        Remaining Features in static/progress.html                      │
+├────────────────────────────────┬───────────────────────────────────────────────────────┤
+│ Feature                        │ Core Responsibility                                  │
+├────────────────────────────────┼───────────────────────────────────────────────────────┤
+│ 1. Learning Time Donut Chart   │ Donut chart of study time distribution by subject     │
+│ 2. Hours Activity Bar Chart    │ Weekly/Monthly double-bar activity with delta % badge  │
+│ 3. Subject Rankings (Most/Least│ Ranked cards of most and least studied subjects       │
+│ 4. Stacked Subject Activity    │ Cumulative multi-subject study volume over time       │
+│ 5. Lecture Tracker Cards       │ Radial subject progress cards with remaining time     │
+│ 6. Daily Study Schedule        │ Target daily study task checklist                     │
+│ 7. Doubt Dashboard & Editor    │ Question snapshot tracker with 'Jump to Lecture' link │
+│ 8. Assignment / DPP Manager    │ PDF assignment viewer and completion tracker          │
+│ 9. D-Day Target Counter        │ Exam/Milestone countdown widget                       │
+└────────────────────────────────┴───────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Data Sources & Storage Matrix
+
+| Feature | Primary Data Source | Storage Location | Key Data Entities |
+| :--- | :--- | :--- | :--- |
+| **Learning Time Donut** | `courseflix_logs` | LocalStorage | `[ { date, subject, duration, lectureId } ]` |
+| **Hours Activity Chart** | `courseflix_logs` | LocalStorage | Daily completed duration (minutes / hours) |
+| **Subject Rankings** | `courseflix_logs`, `subjectRatings`, `facultyData` | LocalStorage | Aggregated minutes, lecture count, star ratings |
+| **Stacked Activity Bar** | `courseflix_logs` | LocalStorage | Subject $\times$ Date duration breakdown |
+| **Lecture Tracker Cards** | `courseflix_subjects`, `courses`, `progress` | LocalStorage & IndexedDB (`CourseFlixDB`) | `completedLectures`, `totalLectures`, `remainingDuration` |
+| **Daily Study Schedule** | `studyData` | LocalStorage | `studyData[YYYY-MM-DD] = [ { subject, duration } ]` |
+| **Doubt Dashboard** | `doubts` store, `doubtsSubjects` | IndexedDB (`CourseFlixDB`) & LocalStorage | `{ id, title, notes, image, status, metadata }` |
+| **Assignment Manager** | `dpps` store, `assignmentFiles` | IndexedDB (`CourseFlixDB`, `ProgressAppDB`) | PDF blobs, assignment metadata, status |
+| **D-Day Target** | `dDayTarget` | LocalStorage | Target date string (`YYYY-MM-DD`) |
+
+---
+
+## 4. Shared Data Pipelines & Calculation Engine
+
+Multiple remaining features share the exact same underlying raw data. Instead of each widget performing redundant JSON parsing and array iterations, these will be consolidated into pure calculation utilities:
+
+```
+                          ┌────────────────────────────┐
+                          │ localStorage:courseflix_logs│
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                          ┌────────────────────────────┐
+                          │   src/utils/studyLogs.js   │
+                          │   (Shared Pure Analytics)  │
+                          └─────────────┬──────────────┘
+                                        │
+            ┌───────────────────────────┼───────────────────────────┐
+            ▼                           ▼                           ▼
+┌────────────────────────┐  ┌────────────────────────┐  ┌────────────────────────┐
+│ LearningTimeDonut.jsx  │  │ HoursActivityChart.jsx │  │ SubjectRankings.jsx    │
+│ - Aggregate by Subject │  │ - Aggregate by Day     │  │ - Rank Most / Least    │
+│ - Percentage Share     │  │ - Period Delta %       │  │ - Star Ratings & Hours │
+└────────────────────────┘  └────────────────────────┘  └────────────────────────┘
+```
+
+### Shared Pure Analytics Functions to Extract:
+1. `aggregateLogsBySubject(logs, period)` $\rightarrow$ Used by Donut Chart & Subject Rankings.
+2. `aggregateLogsByDay(logs, period, referenceDate)` $\rightarrow$ Used by Hours Activity & Heatmap.
+3. `calculatePeriodComparison(currentPeriodLogs, previousPeriodLogs)` $\rightarrow$ Used by Hours Activity % badge.
+4. `calculateSubjectRankings(logs, mode, period)` $\rightarrow$ Used by Most/Least Studied tables.
+
+---
+
+## 5. PostMessage Action Contracts
+
+`static/progress.html` communicates with the parent window via `window.parent.postMessage`.
+
+| Action | Payload | Originator in iframe | Parent App Handler | Migration Strategy |
+| :--- | :--- | :--- | :--- | :--- |
+| `switchView` | `{ viewId: 'dashboard-view' \| 'plan-view' \| 'progress-view', hash }` | Nav links in progress header | `window.addEventListener('message')` | Retain contract until all progress navigation is React-owned |
+| `playLecture` | `{ courseId, lectureId, currentTime, lastView, subfolder }` | Doubt "Jump to Lecture" button | `public/legacy.js:4179` $\rightarrow$ launches player | Retain contract; React Doubt component will eventually call `playerService` directly |
+| `playGoalsPlaylist` | `{ courseId, lectureId }` | Goals launcher | Parent app launcher | Retain contract |
+| `playCalendarPlaylist`| `{ courseId, lectureId }` | Calendar launcher | Parent app launcher | Retain contract |
+
+> [!IMPORTANT]
+> **Safety Rule**: Never modify or delete any `postMessage` handlers in the parent app until `static/progress.html` is completely retired.
+
+---
+
+## 6. Performance Hotspots in `static/progress.html`
+
+The audit revealed the following bottlenecks inside `progress.html`:
+1. **Synchronous JSON Parsing on Every Render**: `JSON.parse(localStorage.getItem('courseflix_logs'))` is executed independently in over 6 different render functions (`renderHeatmap`, `renderLearningTimeChart`, `renderHoursActivity`, `renderDailySchedule`, `calculateCompletedMinutesForDay`, `getCourseflixStats`).
+2. **Chart.js Instance Churn**: `new Chart()` and `.destroy()` are called on every filter toggle, causing unnecessary layout reflows and memory garbage collection.
+3. **Direct Multi-Store IndexedDB Reads**: `renderAssignments` and `renderDoubtDashboard` open raw IndexedDB transactions directly instead of using cached repository singletons.
+
+*Mitigation in React*: Consolidated `ProgressContext` memory cache ensures `courseflix_logs` and progress stores are parsed **once** per mutation.
+
+---
+
+## 7. Migration Candidacy & Risk Assessment
+
+| Feature | Complexity | Dependencies | Risk | Recommended Target |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Lecture Tracker Cards** | Low | `useCourses()`, `useProgress()` | **Very Low** | **Phase 9C-5** |
+| **2. Subject Rankings (Most/Least)** | Low | `studyLogs.js`, LocalStorage ratings | **Low** | **Phase 9C-6** |
+| **3. Learning Time Donut** | Low-Medium | `studyLogs.js`, SVG Donut | **Low** | **Phase 9C-7** |
+| **4. Hours Activity Bar Chart** | Medium | `studyLogs.js`, SVG Bar Graph | **Low-Medium** | **Phase 9C-8** |
+| **5. Daily Study Schedule** | Medium | `studyData` LocalStorage | **Medium** | **Phase 9C-9** |
+| **6. Stacked Activity Bar** | Medium | `studyLogs.js` | **Medium** | **Phase 9C-10** |
+| **7. Doubt Dashboard & Editor** | High | `doubtsRepository`, Rich Editor | **Medium-High** | **Phase 9C-11** |
+| **8. Assignment / DPP Manager** | High | `ProgressAppDB`, PDF Viewer | **Medium-High** | **Phase 9C-12** |
+
+---
+
+## 8. Recommended Phased Migration Roadmap
+
+```
+Phase 9C-5 (Lecture Tracker Cards)
+       ↓
+Phase 9C-6 (Subject Rankings & Shared studyLogs.js)
+       ↓
+Phase 9C-7 (Learning Time Donut Chart)
+       ↓
+Phase 9C-8 (Hours Activity Bar Chart)
+       ↓
+Phase 9C-9 (Daily Study Schedule)
+       ↓
+Phase 9C-10 (Stacked Activity Bar)
+       ↓
+Phase 9C-11 (Doubt Resolution Dashboard)
+       ↓
+Phase 9C-12 (Assignment & DPP Manager)
+       ↓
+Phase 9D (Retire static/progress.html and remove iframe)
+```
+
+---
+
+## 9. Bundle Safety & Dependency Guidelines
+
+To prevent accidental bundle inflation:
+1. **Zero Heavy Chart Libraries in Root Bundle**: Avoid importing heavy packages (like full Chart.js, Recharts, or D3) directly into the root bundle.
+2. **Browser-Native SVG / Pure CSS**: Use lightweight, clean React SVG and CSS bars/donuts for charts.
+3. **Preserve Production Limit**: Keep production bundle size under $\le 510\text{ kB}$.
+
+---
+
+## 10. Existing React Features Status (Verified)
+
+| Feature | React Component | Pure Calculation Utility | Status |
+| :--- | :--- | :--- | :--- |
+| **Completion Estimator** | [`CompletionEstimator.jsx`](file:///e:/projects/courceflix-react/src/components/progress/CompletionEstimator.jsx) | [`completionEstimator.js`](file:///e:/projects/courceflix-react/src/utils/completionEstimator.js) | ✅ **100% React-Owned** |
+| **Study Streak & Heatmap** | [`StudyStreakHeatmap.jsx`](file:///e:/projects/courceflix-react/src/components/progress/StudyStreakHeatmap.jsx) | [`studyStreak.js`](file:///e:/projects/courceflix-react/src/utils/studyStreak.js) | ✅ **100% React-Owned** |
+
+- **Production Build**: Verified (`npm run build` — 0 errors, 502.30 kB, 516 ms).
+- **Parity Test Suites**: Passed 100% (`scratch/verify_phase9c1_parity.js`, `scratch/verify_phase9c3_streak_parity.js`, `scratch/audit_master_checkpoint.js`).
+
+---
+
+*End of Progress Subsystem Analytics & Dependency Map.*
