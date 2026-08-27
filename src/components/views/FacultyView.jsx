@@ -1,60 +1,75 @@
-import React from 'react';
-import { useRouter } from '../../hooks/useRouter.js';
+import React, { memo } from 'react';
 
-export default function FacultyView() {
-  const { currentView } = useRouter();
-
+const FacultyView = memo(function FacultyView() {
   return (
-    <div id="faculty-view" className={`view ${currentView === 'faculty-view' ? 'active' : ''}`} style={{"position":"relative"}}>
-        <div className="faculty-header" style={{"padding":"10px 24px","display":"flex","justifyContent":"flex-end","alignItems":"center","gap":"10px","borderBottom":"1px solid var(--border-primary)","background":"var(--bg-primary)"}}>
-            <button id="reset-hidden-faculties-btn" title="Reset Preferences" style={{"padding":"6px 12px","borderRadius":"6px","border":"1px solid var(--border-secondary)","background":"var(--bg-tertiary)","color":"var(--text-primary)","cursor":"pointer","fontSize":"0.85rem","fontWeight":"500","display":"none","alignItems":"center","justifyContent":"center","transition":"background-color 0.2s"}}><i className="fas fa-undo"></i></button>
-            <label htmlFor="faculty-sort-select" style={{"fontSize":"0.9rem","color":"var(--text-secondary)","fontWeight":"600"}}>Sort by:</label>
-            <select id="faculty-sort-select" style={{"padding":"6px 12px","borderRadius":"6px","border":"1px solid var(--border-secondary)","background":"var(--bg-tertiary)","color":"var(--text-primary)","fontFamily":"inherit","fontSize":"0.85rem","fontWeight":"500","cursor":"pointer"}}>
-                <option value="most_studied">Most Studied (Hours)</option>
-                <option value="least_studied">Least Studied (Hours)</option>
-                <option value="most_taught_hours">Most Taught (Hours)</option>
-                <option value="least_taught_hours">Least Taught (Hours)</option>
-                <option value="most_lectures">Most Lectures</option>
-                <option value="least_lectures">Least Lectures</option>
-                <option value="most_fav">Most Fav</option>
-                <option value="least_fav">Least Fav</option>
-            </select>
-            <select id="faculty-time-filter" style={{"padding":"6px 12px","borderRadius":"6px","border":"1px solid var(--border-secondary)","background":"var(--bg-tertiary)","color":"var(--text-primary)","fontFamily":"inherit","fontSize":"0.85rem","fontWeight":"500","cursor":"pointer","marginRight":"auto"}}>
-                <option value="all">All Time</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-            </select>
-            <input type="file" id="faculty-photo-upload" accept="image/*" style={{"display":"none"}} />
-            <button id="toggle-faculty-aside-btn" style={{"padding":"6px 12px","borderRadius":"6px","border":"1px solid var(--accent-primary)","background":"var(--accent-primary)","color":"white","cursor":"pointer","fontSize":"0.85rem","fontWeight":"600","display":"flex","alignItems":"center","gap":"6px","transition":"background-color 0.2s"}}><i className="fas fa-chart-pie"></i> Stats</button>
-        </div>
-        <div style={{"display":"flex","flexGrow":"1","overflow":"hidden","position":"relative"}}>
-            <main id="faculty-grid" className="grid-container" style={{"flex":"1","padding":"1.5rem","overflowY":"auto","display":"grid","gridTemplateColumns":"repeat(auto-fit, minmax(320px, 1fr))","gap":"1.5rem","alignContent":"start"}}></main>
-            <aside id="faculty-aside">
-                <button id="close-faculty-aside-btn" style={{"position":"absolute","top":"12px","left":"12px","background":"none","border":"none","color":"var(--text-primary)","fontSize":"1.2rem","cursor":"pointer"}}><i className="fas fa-times"></i></button>
-                <h3 id="faculty-aside-title" style={{"marginTop":"0","marginBottom":"24px","textAlign":"center","color":"var(--text-secondary)","fontWeight":"600","fontSize":"1.1rem"}}>Most Studied Teachers</h3>
-                <div id="faculty-pie-chart" style={{"width":"200px","height":"200px","borderRadius":"50%","background":"conic-gradient(var(--bg-tertiary) 0% 100%)","display":"flex","alignItems":"center","justifyContent":"center","position":"relative","marginBottom":"24px","boxShadow":"0 4px 15px rgba(0,0,0,0.2)"}}>
-                    <div style={{"width":"130px","height":"130px","backgroundColor":"var(--bg-secondary)","borderRadius":"50%","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center","position":"absolute","top":"50%","left":"50%","transform":"translate(-50%, -50%)","boxShadow":"inset 0 2px 5px rgba(0,0,0,0.2)"}}>
-                        <span id="faculty-total-time" style={{"fontSize":"1.25rem","fontWeight":"bold","color":"var(--text-primary)"}}>0h 0m</span>
-                        <span id="faculty-total-label" style={{"fontSize":"0.75rem","color":"var(--text-secondary)","textTransform":"uppercase","marginTop":"4px","fontWeight":"600"}}>Total Time</span>
-                    </div>
-                </div>
-                <div style={{"width":"100%","display":"flex","justifyContent":"space-between","borderBottom":"1px solid var(--border-primary)","paddingBottom":"8px","marginBottom":"12px","fontSize":"0.75rem","fontWeight":"700","color":"var(--text-secondary)","textTransform":"uppercase"}}>
-                    <span>Faculty</span>
-                    <span id="faculty-legend-metric">Time Studied</span>
-                </div>
-                <div id="faculty-pie-legend" style={{"width":"100%","display":"flex","flexDirection":"column","gap":"10px"}}></div>
-            </aside>
-        </div>
-        
-        <div id="faculty-profile-overlay" style={{"position":"absolute","top":"0","left":"0","right":"0","bottom":"0","background":"var(--bg-primary)","zIndex":"200","display":"none","flexDirection":"column","overflowY":"auto"}}>
-            <div style={{"padding":"24px","borderBottom":"1px solid var(--border-primary)","display":"flex","alignItems":"center","justifyContent":"space-between","position":"sticky","top":"0","background":"var(--bg-primary)","zIndex":"10"}}>
-                <button id="close-faculty-profile-btn" className="primary-btn" style={{"fontSize":"0.9rem","padding":"6px 14px","display":"flex","alignItems":"center","gap":"8px"}}>
-                    <i className="fas fa-arrow-left"></i> Go to Faculty Page
-                </button>
-                <h2 id="faculty-profile-title" style={{"margin":"0","fontSize":"1.5rem","fontWeight":"600","color":"var(--text-primary)"}}>Faculty Profile</h2>
+    <div id="faculty-view" className="view" style={{"display":"flex","flexDirection":"column","height":"100%","overflow":"hidden"}}>
+        <div className="faculty-view-header" style={{"padding":"16px 24px 0 24px","display":"flex","justifyContent":"space-between","alignItems":"center","flexShrink":0}}>
+            <h2 style={{"margin":0,"fontSize":"1.5rem","fontWeight":"700","color":"var(--text-primary)"}}>Teacher Analytics &amp; Profiles</h2>
+            <div style={{"display":"flex","gap":"12px","alignItems":"center"}}>
+                <input type="text" id="faculty-search-input" className="input-main" placeholder="Search teacher or subject..." style={{"padding":"6px 12px","minWidth":"220px"}} />
+                <select id="faculty-time-filter" className="input-main" style={{"padding":"6px 12px"}}>
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                </select>
+                <select id="faculty-sort-select" className="input-main" style={{"padding":"6px 12px"}}>
+                    <option value="most_studied">Sort by: Most Studied Time</option>
+                    <option value="least_studied">Sort by: Least Studied Time</option>
+                    <option value="most_taught_hours">Sort by: Most Total Content</option>
+                    <option value="least_taught_hours">Sort by: Least Total Content</option>
+                    <option value="most_lectures">Sort by: Most Lectures</option>
+                    <option value="alphabetical">Sort by: Alphabetical (A-Z)</option>
+                    <option value="highest_rating">Sort by: Star Rating</option>
+                </select>
+                <button id="reset-hidden-faculties-btn" className="secondary-btn" style={{"padding":"6px 12px","fontSize":"0.85rem","display":"none"}} title="Manage Aliases &amp; Unhide Teachers"><i className="fas fa-undo"></i> Reset / Unhide</button>
             </div>
-            <div id="faculty-profile-grid" className="course-grid" style={{"padding":"24px","display":"grid","gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px","alignContent":"start"}}></div>
+        </div>
+
+        <div className="faculty-view-body" style={{"display":"flex","flex":1,"overflow":"hidden","padding":"16px 24px 24px 24px","gap":"24px"}}>
+            {/* Main Cards Grid */}
+            <div className="faculty-grid-container" style={{"flex":"1 1 65%","overflowY":"auto","paddingRight":"8px"}}>
+                <div id="faculty-grid" className="grid-container" style={{"gridTemplateColumns":"repeat(auto-fill, minmax(280px, 1fr))","gap":"20px"}}></div>
+            </div>
+
+            {/* Right Side Stats & Chart */}
+            <div className="faculty-insights-panel" style={{"flex":"0 0 340px","background":"var(--bg-secondary)","border":"1px solid var(--border-primary)","borderRadius":"16px","padding":"20px","display":"flex","flexDirection":"column","gap":"20px","overflowY":"auto"}}>
+                <h3 id="faculty-aside-title" style={{"margin":0,"fontSize":"1.1rem","color":"var(--text-primary)","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"10px"}}>Study Distribution</h3>
+                
+                {/* Time Distribution Pie/Doughnut Placeholder */}
+                <div className="faculty-chart-box" style={{"display":"flex","flexDirection":"column","alignItems":"center","gap":"12px"}}>
+                    <div id="faculty-pie-chart" style={{"width":"140px","height":"140px","borderRadius":"50%","background":"conic-gradient(#38bdf8 0% 100%)","position":"relative","boxShadow":"0 4px 15px rgba(0,0,0,0.3)","display":"flex","alignItems":"center","justifyContent":"center"}}>
+                        <div style={{"width":"90px","height":"90px","borderRadius":"50%","background":"var(--bg-secondary)","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center"}}>
+                            <span id="faculty-total-time-val" style={{"fontSize":"0.95rem","fontWeight":"700","color":"var(--accent-primary)"}}>0h 0m</span>
+                            <span id="faculty-total-time-label" style={{"fontSize":"0.65rem","color":"var(--text-secondary)","textTransform":"uppercase"}}>Total Time</span>
+                        </div>
+                    </div>
+                    <div id="faculty-pie-legend" style={{"display":"flex","flexDirection":"column","gap":"6px","width":"100%","fontSize":"0.8rem","color":"var(--text-secondary)"}}></div>
+                </div>
+
+                {/* Subject Summary Breakdown */}
+                <div className="faculty-subject-breakdown" style={{"borderTop":"1px solid var(--border-secondary)","paddingTop":"16px"}}>
+                    <h4 style={{"margin":"0 0 12px 0","fontSize":"0.95rem","color":"var(--text-primary)"}}>Subject Overview</h4>
+                    <div id="faculty-subject-list" style={{"display":"flex","flexDirection":"column","gap":"8px"}}></div>
+                </div>
+            </div>
+        </div>
+
+        {/* Hidden Inputs for Profile Photo Upload */}
+        <input type="file" id="faculty-photo-upload" accept="image/*" style={{"display":"none"}} />
+
+        {/* Faculty Profile Modal / Detail Drilldown */}
+        <div id="faculty-profile-modal" className="modal-overlay hidden" style={{"zIndex":100000}}>
+            <div className="modal-content" style={{"maxWidth":"700px","width":"90%","maxHeight":"85vh","display":"flex","flexDirection":"column","padding":"24px","borderRadius":"16px","background":"var(--bg-secondary)","color":"var(--text-primary)","border":"1px solid var(--border-primary)"}}>
+                <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","borderBottom":"1px solid var(--border-secondary)","paddingBottom":"12px","marginBottom":"16px"}}>
+                    <h2 id="faculty-profile-title" style={{"margin":0,"fontSize":"1.3rem","color":"var(--accent-primary)"}}>Teacher Profile</h2>
+                    <button className="close-modal-btn" onClick={() => document.getElementById('faculty-profile-modal').classList.add('hidden')} style={{"background":"none","border":"none","color":"var(--text-secondary)","fontSize":"1.5rem","cursor":"pointer"}}>&times;</button>
+                </div>
+                <div id="faculty-profile-body" style={{"overflowY":"auto","flex":1}}></div>
+            </div>
         </div>
     </div>
   );
-}
+});
+
+export default FacultyView;

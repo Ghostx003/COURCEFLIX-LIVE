@@ -1,21 +1,21 @@
-import React from 'react';
-import { useRouter } from '../../hooks/useRouter.js';
+import React, { memo } from 'react';
 
-export default function DoubtsView() {
-  const { currentView } = useRouter();
-
+const DoubtsView = memo(function DoubtsView() {
   return (
-    <div id="doubts-view" className={`view ${currentView === 'doubts-view' ? 'active' : ''}`}>
-        <div id="doubts-list-container" style={{"display":"flex","flexDirection":"column","width":"100%","height":"100%"}}>
-            <main id="doubts-course-grid" className="grid-container"></main>
-        </div>
+    <div id="doubts-view" className="view">
+        <main id="doubts-course-grid" className="grid-container"></main>
         <div id="doubts-detail-container" className="hidden">
             <div className="view-header">
-                <a className="back-link" id="back-to-doubts-grid" style={{"cursor":"pointer","color":"var(--accent-primary)","fontWeight":"500"}}>&larr; Back to Doubts Folders</a>
-                <h2 id="doubts-detail-title" style={{"marginLeft":"1rem","fontSize":"1.25rem"}}></h2>
+                <a className="back-link" id="back-to-doubts-grid">&larr; Back to Courses</a>
+                <h2 id="doubts-detail-title" style={{"marginLeft":"1rem"}}>Course Doubts</h2>
+                <div style={{"marginLeft":"auto","display":"flex","gap":"10px"}}>
+                    <button id="clear-all-doubts-btn" className="secondary-btn" style={{"color":"var(--accent-danger)","borderColor":"var(--accent-danger)"}}><i className="fas fa-trash-alt"></i> Clear All Doubts</button>
+                </div>
             </div>
-            <main id="doubts-specific-grid" className="grid-container"></main>
+            <div id="doubts-list-container" className="doubts-grid"></div>
         </div>
     </div>
   );
-}
+});
+
+export default DoubtsView;

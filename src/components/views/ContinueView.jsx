@@ -1,11 +1,8 @@
-import React from 'react';
-import { useRouter } from '../../hooks/useRouter.js';
+import React, { memo } from 'react';
 
-export default function ContinueView() {
-  const { currentView } = useRouter();
-
+const ContinueView = memo(function ContinueView() {
   return (
-    <div id="continue-view" className={`view ${currentView === 'continue-view' ? 'active' : ''}`} style={{"overflowY":"auto"}}>
+    <div id="continue-view" className="view" style={{"overflowY":"auto"}}>
         <div style={{"padding":"20px"}}>
             <div style={{"display":"flex","justifyContent":"space-between","alignItems":"center","marginBottom":"20px"}}>
                 <div>
@@ -25,4 +22,6 @@ export default function ContinueView() {
         </div>
     </div>
   );
-}
+});
+
+export default ContinueView;
