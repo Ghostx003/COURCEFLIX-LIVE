@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { getAllCourses, getAllProgress } from '../../db/index.js';
 
 function AdviceBanner({ bg, border, color, icon, title, text, onDismiss, extraContent }) {
   const [hoverTimer, setHoverTimer] = useState(null);
@@ -152,58 +153,24 @@ export default function CompletionModal() {
     }
 
     try {
-      // 1. Fetch courses from IndexedDB
-      const request = indexedDB.open('CourseFlixDB');
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        db.onversionchange = () => { try { db.close(); } catch (err) {} };
-        let pending = 0;
-        const checkDone = () => {
-          pending--;
-          if (pending <= 0) {
-            try { db.close(); } catch (err) {}
-          }
-        };
+      const [fetchedCourses, fetchedProgress] = await Promise.all([
+        getAllCourses(),
+        getAllProgress()
+      ]);
 
-        if (db.objectStoreNames.contains('courses')) {
-          pending++;
-          const tx = db.transaction('courses', 'readonly');
-          const store = tx.objectStore('courses');
-          const getAllReq = store.getAll();
-          getAllReq.onsuccess = () => {
-            const fetched = getAllReq.result || [];
-            if (fetched.length > 0) {
-              setAllCourses(fetched);
-            } else if (window.courses && Array.isArray(window.courses) && window.courses.length > 0) {
-              setAllCourses(window.courses);
-            }
-            checkDone();
-          };
-          getAllReq.onerror = () => checkDone();
-        }
+      if (fetchedCourses && fetchedCourses.length > 0) {
+        setAllCourses(fetchedCourses);
+      } else if (window.courses && Array.isArray(window.courses) && window.courses.length > 0) {
+        setAllCourses(window.courses);
+      }
 
-        if (db.objectStoreNames.contains('progress')) {
-          pending++;
-          const txProg = db.transaction('progress', 'readonly');
-          const storeProg = txProg.objectStore('progress');
-          const getProgReq = storeProg.getAll();
-          getProgReq.onsuccess = () => {
-            const progMap = {};
-            (getProgReq.result || []).forEach(p => {
-              progMap[p.id] = p;
-            });
-            setCourseProgressMap(progMap);
-            checkDone();
-          };
-          getProgReq.onerror = () => checkDone();
-        }
-
-        if (pending === 0) {
-          try { db.close(); } catch (err) {}
-        }
-      };
+      const progMap = {};
+      (fetchedProgress || []).forEach(p => {
+        progMap[p.id] = p;
+      });
+      setCourseProgressMap(progMap);
     } catch (err) {
-      console.error('Error fetching CourseFlixDB data:', err);
+      console.error('Error fetching CourseFlixDB data in CompletionModal:', err);
     }
 
     // Load logs from localStorage
