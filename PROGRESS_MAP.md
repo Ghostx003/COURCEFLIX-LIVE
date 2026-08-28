@@ -428,7 +428,40 @@ studyStreak.js (Pure Calculation Engine)
 
 ---
 
+## 22. Phase 9C-6 Status: Subject Rankings (Most & Least Studied) (COMPLETED)
+
+### A. Feature Overview & Architecture
+Extracted shared study log analytics into `studyLogs.js` and migrated **Most Studied Subjects** and **Least Studied Subjects** to a pure React component.
+
+```
+localStorage ('courseflix_logs') + CourseContext (courses)
+   ↓
+ProgressContext (getStudyLogs)
+   ↓
+studyLogs.js (Pure Analytics & Aggregation Engine)
+   ↓
+<SubjectRankings /> (React Component)
+```
+
+### B. Artifacts Created & Modified
+1. **Shared Pure Analytics Utility**:
+   - [`src/utils/studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js): Zero DOM/IDB/React dependencies. Implements `parseLogDate`, `filterLogsByPeriod` (`today`, `week`, `month`, `all`), `aggregateLogsBySubject`, and `calculateSubjectRankings`.
+2. **React Component**:
+   - [`src/components/progress/SubjectRankings.jsx`](file:///e:/projects/courceflix-react/src/components/progress/SubjectRankings.jsx): Dual-card layout for Most Studied and Least Studied subjects with dynamic mode switches (`Total Hours` vs `Lectures`) and period toggles (`Week`, `Month`, `All`).
+
+### C. Parity & Validation
+- **Ordering**: Most studied ranks descending, Least studied ranks ascending.
+- **Mode Switching**: Correctly calculates hours format (`Xh Ym`) and lecture counts (`N Lectures`).
+- **Ties & Priming**: Alphabetical tie-breaking on subject name, primed with all active courses.
+
+### D. Bundle Impact
+- Bundle size: `506.40 kB` (gzip `126.80 kB`).
+- Zero heavy chart libraries; clean modular architecture.
+
+---
+
 *End of Progress Subsystem & Analytics Map.*
+
 
 
 

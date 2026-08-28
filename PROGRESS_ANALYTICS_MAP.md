@@ -172,6 +172,7 @@ To prevent accidental bundle inflation:
 | **Completion Estimator** | [`CompletionEstimator.jsx`](file:///e:/projects/courceflix-react/src/components/progress/CompletionEstimator.jsx) | [`completionEstimator.js`](file:///e:/projects/courceflix-react/src/utils/completionEstimator.js) | ✅ **100% React-Owned** |
 | **Study Streak & Heatmap** | [`StudyStreakHeatmap.jsx`](file:///e:/projects/courceflix-react/src/components/progress/StudyStreakHeatmap.jsx) | [`studyStreak.js`](file:///e:/projects/courceflix-react/src/utils/studyStreak.js) | ✅ **100% React-Owned** |
 | **Lecture Tracker Cards** | [`LectureTracker.jsx`](file:///e:/projects/courceflix-react/src/components/progress/LectureTracker.jsx) | [`lectureTracker.js`](file:///e:/projects/courceflix-react/src/utils/lectureTracker.js) | ✅ **100% React-Owned** |
+| **Subject Rankings** | [`SubjectRankings.jsx`](file:///e:/projects/courceflix-react/src/components/progress/SubjectRankings.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
 
 ---
 
@@ -205,5 +206,38 @@ lectureTracker.js (Pure Transformation Engine)
 
 ---
 
+## 12. Phase 9C-6 Status: Subject Rankings (Most & Least Studied) (COMPLETED)
+
+### A. Feature Overview & Architecture
+Extracted shared study log analytics into `studyLogs.js` and migrated **Most Studied Subjects** and **Least Studied Subjects** to a pure React component.
+
+```
+localStorage ('courseflix_logs') + CourseContext (courses)
+   ↓
+ProgressContext (getStudyLogs)
+   ↓
+studyLogs.js (Pure Analytics & Aggregation Engine)
+   ↓
+<SubjectRankings /> (React Component)
+```
+
+### B. Artifacts Created & Modified
+1. **Shared Pure Analytics Utility**:
+   - [`src/utils/studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js): Zero DOM/IDB/React dependencies. Implements `parseLogDate`, `filterLogsByPeriod` (`today`, `week`, `month`, `all`), `aggregateLogsBySubject`, and `calculateSubjectRankings`.
+2. **React Component**:
+   - [`src/components/progress/SubjectRankings.jsx`](file:///e:/projects/courceflix-react/src/components/progress/SubjectRankings.jsx): Dual-card layout for Most Studied and Least Studied subjects with dynamic mode switches (`Total Hours` vs `Lectures`) and period toggles (`Week`, `Month`, `All`).
+
+### C. Parity & Validation
+- **Ordering**: Most studied ranks descending, Least studied ranks ascending.
+- **Mode Switching**: Correctly calculates hours format (`Xh Ym`) and lecture counts (`N Lectures`).
+- **Ties & Priming**: Alphabetical tie-breaking on subject name, primed with all active courses.
+
+### D. Bundle Impact
+- Bundle size: `506.40 kB` (gzip `126.80 kB`).
+- Zero heavy chart libraries; clean modular architecture.
+
+---
+
 *End of Progress Subsystem Analytics & Dependency Map.*
+
 
