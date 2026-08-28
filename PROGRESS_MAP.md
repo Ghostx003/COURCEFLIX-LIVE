@@ -460,7 +460,40 @@ studyLogs.js (Pure Analytics & Aggregation Engine)
 
 ---
 
+## 23. Phase 9C-7 Status: Learning Time Donut Chart (COMPLETED)
+
+### A. Feature Overview & Architecture
+Migrated the **Learning Time Donut Chart & Subject Breakdown** into a pure React component powered by lightweight native SVG/conic-gradient rendering, reusing `studyLogs.js`.
+
+```
+localStorage ('courseflix_logs') + CourseContext (courses)
+   ↓
+ProgressContext (getStudyLogs)
+   ↓
+studyLogs.js (calculateDonutSlices, getSubjectColor)
+   ↓
+<LearningTimeDonut /> (React Component — Zero heavy chart libraries)
+```
+
+### B. Artifacts Created & Modified
+1. **Analytics Engine Extension**:
+   - [`src/utils/studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js): Added `calculateDonutSlices` and deterministic `getSubjectColor` hashing.
+2. **React Component**:
+   - [`src/components/progress/LearningTimeDonut.jsx`](file:///e:/projects/courceflix-react/src/components/progress/LearningTimeDonut.jsx): 180px donut ring with 70% inner cutout, center total study time display, period filter (`Today`, `This Week`, `This Month`, `All Time`), interactive slice hover, and color-coded subject legend list.
+
+### C. Parity & Validation
+- **Color Determinism**: Hashing algorithm matches exact legacy palette (`#34d399`, `#60a5fa`, `#fbbf24`, etc.).
+- **Proportion Slicing**: Accurate percentage share calculation (`(minutes / totalMinutes) * 100`) summing to $100\%$.
+- **Empty State**: Displays `"No completed subjects for this period."` when 0 minutes are logged.
+
+### D. Bundle Impact
+- Bundle size: `506.40 kB` (gzip `126.80 kB`).
+- 0 bytes increase in root bundle; zero third-party chart dependencies.
+
+---
+
 *End of Progress Subsystem & Analytics Map.*
+
 
 
 
