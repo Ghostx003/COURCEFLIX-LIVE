@@ -1,88 +1,347 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 
 const HistoryView = memo(function HistoryView() {
-  const [activeTab, setActiveTab] = useState('list'); // 'list' or 'calendar'
+  const [activeTab, setActiveTab] = useState('list'); // 'list' | 'calendar'
+  const [currentDateStr, setCurrentDateStr] = useState('');
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const unlockedRef = useRef(false);
+  const dateStrRef = useRef('');
+
+  function dateToStr(d) {
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return yr + '-' + mo + '-' + dy;
+  }
+
+  function isFuture(dateStr) {
+    return dateStr > dateToStr(new Date());
+  }
+
+  function checkDateUnlocked(dStr) {
+    if (!dStr) return true;
+    if (!isFuture(dStr)) return true; // Auto-unlocked after midnight when date becomes today/past
+    try {
+      const unlockedDates = JSON.parse(localStorage.getItem('cal_unlocked_dates') || '[]');
+      return unlockedDates.includes(dStr);
+    } catch {
+      return false;
+    }
+  }
+
+  function unlockCurrentDate(dStr) {
+    if (!dStr) return;
+    try {
+      const unlockedDates = JSON.parse(localStorage.getItem('cal_unlocked_dates') || '[]');
+      if (!unlockedDates.includes(dStr)) {
+        unlockedDates.push(dStr);
+        localStorage.setItem('cal_unlocked_dates', JSON.stringify(unlockedDates));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function navigate(delta) {
+    const base = dateStrRef.current || dateToStr(new Date());
+    const d = new Date(base + 'T00:00:00');
+    d.setDate(d.getDate() + delta);
+    const newDate = dateToStr(d);
+    dateStrRef.current = newDate;
+    setCurrentDateStr(newDate);
+    const isUnl = checkDateUnlocked(newDate);
+    setIsUnlocked(isUnl);
+    unlockedRef.current = isUnl;
+    if (window.renderCalendarDay) window.renderCalendarDay(newDate, isUnl);
+  }
+
+  function handleUnlock() {
+    unlockCurrentDate(dateStrRef.current);
+    setIsUnlocked(true);
+    unlockedRef.current = true;
+    if (window.renderCalendarDay) window.renderCalendarDay(dateStrRef.current, true);
+  }
+
+  function handleMakePlaylist() {
+    if (window.makeCalendarPlaylist) {
+      window.makeCalendarPlaylist(dateStrRef.current, unlockedRef.current);
+    }
+  }
+
+  useEffect(() => {
+    window.setHistoryTabCalendar = (dateStr) => {
+      setActiveTab('calendar');
+      if (dateStr) {
+        dateStrRef.current = dateStr;
+        setCurrentDateStr(dateStr);
+      }
+      const isUnl = checkDateUnlocked(dateStrRef.current || dateToStr(new Date()));
+      setIsUnlocked(isUnl);
+      unlockedRef.current = isUnl;
+      setTimeout(() => {
+        if (window.renderCalendarDay) {
+          window.renderCalendarDay(dateStrRef.current || dateToStr(new Date()), isUnl);
+        }
+      }, 50);
+    };
+    return () => {
+      delete window.setHistoryTabCalendar;
+    };
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'calendar') {
-      if (typeof window.openCalendarView === 'function') {
-        window.openCalendarView();
+      const today = dateToStr(new Date());
+      if (!dateStrRef.current) {
+        dateStrRef.current = today;
       }
+      setCurrentDateStr(dateStrRef.current);
+      const isUnl = checkDateUnlocked(dateStrRef.current);
+      setIsUnlocked(isUnl);
+      unlockedRef.current = isUnl;
+      setTimeout(() => {
+        if (window.renderCalendarDay) {
+          window.renderCalendarDay(dateStrRef.current, isUnl);
+        }
+      }, 50);
+    } else if (activeTab === 'list') {
+      setTimeout(() => {
+        if (window.renderHistoryView) {
+          window.renderHistoryView();
+        }
+      }, 50);
     }
   }, [activeTab]);
 
+  const future = currentDateStr ? isFuture(currentDateStr) : false;
+
   return (
-    <div id="history-view" className="view">
-        <div className="view-header" style={{"display":"flex","alignItems":"center","justifyContent":"space-between","padding":"10px 24px","borderBottom":"1px solid var(--border-secondary)","flexWrap":"wrap","gap":"10px"}}>
-            <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
-                <div className="history-tab-controls" style={{"display":"flex","background":"var(--bg-secondary)","padding":"3px","borderRadius":"8px","border":"1px solid var(--border-secondary)"}}>
-                    <button 
-                      id="history-tab-list-btn" 
-                      className={`tab-toggle-btn ${activeTab === 'list' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('list')}
-                      style={{"padding":"6px 14px","border":"none","background":activeTab === 'list' ? 'var(--accent-primary)' : 'transparent',"color":activeTab === 'list' ? '#fff' : 'var(--text-secondary)',"borderRadius":"6px","cursor":"pointer","fontWeight":"600","fontSize":"0.85rem","display":"flex","alignItems":"center","gap":"6px"}}
-                    >
-                        <i className="fas fa-list"></i> Detailed List
-                    </button>
-                    <button 
-                      id="history-tab-calendar-btn" 
-                      className={`tab-toggle-btn ${activeTab === 'calendar' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('calendar')}
-                      style={{"padding":"6px 14px","border":"none","background":activeTab === 'calendar' ? 'var(--accent-primary)' : 'transparent',"color":activeTab === 'calendar' ? '#fff' : 'var(--text-secondary)',"borderRadius":"6px","cursor":"pointer","fontWeight":"600","fontSize":"0.85rem","display":"flex","alignItems":"center","gap":"6px"}}
-                    >
-                        <i className="fas fa-calendar-alt"></i> Calendar / Planner
-                    </button>
-                </div>
-            </div>
-            {activeTab === 'list' && (
-                <div style={{"display":"flex","gap":"10px","alignItems":"center"}}>
-                    <button id="clear-history-btn" className="secondary-btn"><i className="fas fa-trash"></i> Clear All History</button>
-                </div>
-            )}
-        </div>
+    <div id="history-view" className="view" style={{ height: '100%', overflowY: activeTab === 'list' ? 'auto' : 'hidden' }}>
+      {activeTab === 'list' ? (
+        <div style={{ padding: '20px', minHeight: '100%', boxSizing: 'border-box' }}>
+          {/* Main Header with Toggle */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ margin: '0' }}>Watch History (Last 30 Hours)</h2>
+            
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {/* View Switcher Tabs */}
+              <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-secondary)' }}>
+                <button
+                  className={`secondary-btn ${activeTab === 'list' ? 'active' : ''}`}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: activeTab === 'list' ? 'var(--accent-primary)' : 'transparent',
+                    color: activeTab === 'list' ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onClick={() => setActiveTab('list')}
+                >
+                  <i className="fas fa-list"></i> List View
+                </button>
+                <button
+                  className={`secondary-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: activeTab === 'calendar' ? 'var(--accent-primary)' : 'transparent',
+                    color: activeTab === 'calendar' ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onClick={() => setActiveTab('calendar')}
+                >
+                  <i className="fas fa-calendar-alt"></i> Calendar View
+                </button>
+              </div>
 
-        {/* List View Container */}
-        <div id="history-list-section" style={{"display": activeTab === 'list' ? 'block' : 'none', "height":"calc(100% - 65px)","overflowY":"auto"}}>
-            <div className="history-table-container">
-                <table className="history-table">
-                    <thead>
-                        <tr>
-                            <th>Date &amp; Time</th>
-                            <th>Course</th>
-                            <th>Lecture</th>
-                            <th>Duration</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-table-body">
-                        {/* Populated by JS */}
-                    </tbody>
-                </table>
+              <button id="clear-history-btn" className="secondary-btn">
+                <i className="fas fa-trash"></i> Clear History
+              </button>
             </div>
-        </div>
+          </div>
 
-        {/* Calendar / Planner View Container */}
-        <div id="history-calendar-section" style={{"display": activeTab === 'calendar' ? 'block' : 'none', "height":"calc(100% - 65px)","overflowY":"hidden"}}>
-            <div id="calendar-view" style={{"height":"100%","display":"flex","flexDirection":"column"}}>
-                <div className="calendar-header" style={{"display":"flex","alignItems":"center","justifyContent":"space-between","padding":"8px 24px","background":"var(--bg-secondary)","borderBottom":"1px solid var(--border-secondary)","flexShrink":0}}>
-                    <div style={{"display":"flex","alignItems":"center","gap":"12px"}}>
-                        <button id="cal-prev-week-btn" className="control-btn" style={{"background":"none","border":"none","color":"var(--text-primary)","cursor":"pointer"}}><i className="fas fa-chevron-left"></i></button>
-                        <h3 id="cal-week-range" style={{"margin":"0","fontSize":"1.1rem","color":"var(--text-primary)"}}>This Week</h3>
-                        <button id="cal-next-week-btn" className="control-btn" style={{"background":"none","border":"none","color":"var(--text-primary)","cursor":"pointer"}}><i className="fas fa-chevron-right"></i></button>
-                        <button id="cal-today-btn" className="secondary-btn" style={{"padding":"4px 10px","fontSize":"0.8rem"}}>Today</button>
-                        <button id="cal-undo-btn" className="secondary-btn" style={{"padding":"4px 10px","fontSize":"0.8rem","display":"none"}} title="Undo last action (Ctrl+Z)"><i className="fas fa-undo"></i> Undo</button>
-                    </div>
-                    <div style={{"display":"flex","gap":"8px"}}>
-                        <button id="cal-add-event-btn" className="primary-btn" style={{"padding":"6px 12px","fontSize":"0.85rem"}}><i className="fas fa-plus"></i> Add Event</button>
-                    </div>
-                </div>
-                <div className="calendar-grid-container" style={{"flex":"1","overflowY":"auto","padding":"16px 24px","display":"flex","flexDirection":"column","gap":"12px"}}>
-                    <div id="calendar-days-row" style={{"display":"grid","gridTemplateColumns":"repeat(7, 1fr)","gap":"8px","minHeight":"100%"}}>
-                        {/* Populated dynamically */}
-                    </div>
-                </div>
-            </div>
+          {/* LIST VIEW TAB */}
+          <div id="history-table-container" style={{ background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-secondary)', marginBottom: '40px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-secondary)' }}>
+                  <th style={{ padding: '12px 16px' }}>Course</th>
+                  <th style={{ padding: '12px 16px' }}>Lecture</th>
+                  <th style={{ padding: '12px 16px' }}>Duration</th>
+                  <th style={{ padding: '12px 16px' }}>Time</th>
+                  <th style={{ padding: '12px 16px', width: '40px' }}></th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                {/* History rows injected here */}
+              </tbody>
+            </table>
+          </div>
         </div>
+      ) : (
+        <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%', boxSizing: 'border-box' }}>
+          {/* Main Header with Toggle */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ margin: '0' }}>Watch History</h2>
+            
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {/* View Switcher Tabs */}
+              <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-secondary)' }}>
+                <button
+                  className={`secondary-btn ${activeTab === 'list' ? 'active' : ''}`}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: activeTab === 'list' ? 'var(--accent-primary)' : 'transparent',
+                    color: activeTab === 'list' ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onClick={() => setActiveTab('list')}
+                >
+                  <i className="fas fa-list"></i> List View
+                </button>
+                <button
+                  className={`secondary-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: activeTab === 'calendar' ? 'var(--accent-primary)' : 'transparent',
+                    color: activeTab === 'calendar' ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onClick={() => setActiveTab('calendar')}
+                >
+                  <i className="fas fa-calendar-alt"></i> Calendar View
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* CALENDAR VIEW TAB */}
+          <div id="calendar-view" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-secondary)' }}>
+            {/* === CALENDAR SUB-HEADER === */}
+            <div className="cal-header">
+              <div className="cal-header-left">
+                <h3 className="cal-title" style={{ margin: 0 }}>
+                  <i className="fas fa-calendar-day"></i> Timeline Planner
+                </h3>
+              </div>
+
+              <div className="cal-nav-center">
+                <button className="cal-arrow-btn" onClick={() => navigate(-1)} title="Previous day">
+                  <i className="fas fa-chevron-left"></i>
+                </button>
+                <div className="cal-date-display-wrapper">
+                  <div id="cal-date-display" className="cal-date-text">
+                    {currentDateStr ? '' : 'Loading...'}
+                  </div>
+                  {future && !isUnlocked && (
+                    <span className="cal-future-badge">
+                      <i className="fas fa-lock"></i> Future
+                    </span>
+                  )}
+                  {future && isUnlocked && (
+                    <span className="cal-unlocked-badge">
+                      <i className="fas fa-lock-open"></i> Unlocked
+                    </span>
+                  )}
+                  {currentDateStr === dateToStr(new Date()) && (
+                    <span className="cal-unlocked-badge" style={{ color: '#3b82f6', background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.4)' }}>
+                      <i className="fas fa-calendar-day"></i> Present
+                    </span>
+                  )}
+                </div>
+                <button className="cal-arrow-btn" onClick={() => navigate(1)} title="Next day">
+                  <i className="fas fa-chevron-right"></i>
+                </button>
+              </div>
+
+              <div className="cal-header-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  id="cal-day-hours-studied"
+                  className="info-display progress-green"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    borderColor: 'rgba(16, 185, 129, 0.4)',
+                    color: '#34d399',
+                    fontSize: '0.82rem',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    cursor: 'default'
+                  }}
+                  title="Hours Studied for this day"
+                >
+                  <i className="fas fa-history" style={{ color: '#34d399', marginRight: '6px' }}></i>
+                  <span>0h Studied</span>
+                </div>
+
+                {(!future || isUnlocked) && (
+                  <button
+                    id="cal-make-playlist-btn"
+                    className="cal-playlist-btn"
+                    onClick={handleMakePlaylist}
+                    title="Create a Calendar Event Playlist from this day"
+                  >
+                    <i className="fas fa-play-circle"></i>
+                    Make Playlist
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* === CALENDAR BODY === */}
+            <div className="cal-body">
+              {/* Lock overlay for future days */}
+              {future && !isUnlocked && (
+                <div id="cal-lock-overlay" className="cal-lock-overlay">
+                  <div className="cal-lock-content">
+                    <div className="cal-lock-icon">
+                      <i className="fas fa-lock"></i>
+                    </div>
+                    <h3 className="cal-lock-title">Future Day</h3>
+                    <p className="cal-lock-subtitle">
+                      This day has not arrived yet. Unlock it to plan your study schedule in advance.
+                    </p>
+                    <button className="cal-unlock-btn" onClick={handleUnlock}>
+                      <i className="fas fa-lock-open"></i> Unlock to Plan
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 24-hour timeline — slots injected by legacy.js */}
+              <div id="cal-timeline" className="cal-timeline"></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
