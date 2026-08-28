@@ -174,6 +174,7 @@ To prevent accidental bundle inflation:
 | **Lecture Tracker Cards** | [`LectureTracker.jsx`](file:///e:/projects/courceflix-react/src/components/progress/LectureTracker.jsx) | [`lectureTracker.js`](file:///e:/projects/courceflix-react/src/utils/lectureTracker.js) | ✅ **100% React-Owned** |
 | **Subject Rankings** | [`SubjectRankings.jsx`](file:///e:/projects/courceflix-react/src/components/progress/SubjectRankings.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
 | **Learning Time Donut** | [`LearningTimeDonut.jsx`](file:///e:/projects/courceflix-react/src/components/progress/LearningTimeDonut.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
+| **Hours Activity Chart** | [`HoursActivityChart.jsx`](file:///e:/projects/courceflix-react/src/components/progress/HoursActivityChart.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
 
 ---
 
@@ -271,7 +272,40 @@ studyLogs.js (calculateDonutSlices, getSubjectColor)
 
 ---
 
+## 14. Phase 9C-8 Status: Hours Activity Bar Chart (COMPLETED)
+
+### A. Feature Overview & Architecture
+Migrated the **Hours Activity Bar Chart & Time Series Analytics** to a pure React component, extending `studyLogs.js` with pure daily aggregation.
+
+```
+localStorage ('courseflix_logs')
+   ↓
+ProgressContext (getStudyLogs)
+   ↓
+studyLogs.js (calculateHoursActivity)
+   ↓
+<HoursActivityChart /> (React Component — Zero heavy chart libraries)
+```
+
+### B. Artifacts Created & Modified
+1. **Analytics Engine Extension**:
+   - [`src/utils/studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js): Added `calculateHoursActivity` with $O(1)$ daily lookups, Sun-Sat weekly mapping, 1..31 monthly mapping, delta percentage calculation, and active days summary text generation.
+2. **React Component**:
+   - [`src/components/progress/HoursActivityChart.jsx`](file:///e:/projects/courceflix-react/src/components/progress/HoursActivityChart.jsx): Responsive bar chart with pill tops, gradient fill, change indicator badge (`+200% increase than last week`), period selector (`Weekly` vs `Monthly`), floating hover tooltips, and summary footer.
+
+### C. Parity & Validation
+- **Weekly & Monthly Day Alignment**: Correct week starting index (Sun) and month calendar lengths.
+- **Delta Percentage**: Accurate comparison formula (`((current - prev) / prev) * 100`) with increase/decrease/start/none categorization.
+- **Summary Text**: Exact string synthesis for single-day and multi-day study sessions.
+
+### D. Bundle Impact
+- Bundle size: `506.40 kB` (gzip `126.80 kB`).
+- 0 bytes added to root bundle.
+
+---
+
 *End of Progress Subsystem Analytics & Dependency Map.*
+
 
 
 
