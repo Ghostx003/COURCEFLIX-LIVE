@@ -1,10 +1,32 @@
 /**
  * Pure Study Logs & Subject Analytics Utility
  * Contains zero DOM, zero React, and zero IndexedDB dependencies.
- * Provides period filtering, subject aggregation, and ranked subject metrics.
+ * Provides period filtering, subject aggregation, ranked subject metrics, and donut chart data.
  */
 
 import { formatMinutesToHoursAndMinutes } from './studyStreak.js';
+
+export const SUBJECT_COLORS = [
+    '#34d399', '#60a5fa', '#fbbf24', '#c084fc', '#f87171',
+    '#fb923c', '#818cf8', '#a78bfa', '#f472b6', '#2dd4bf',
+    '#a3e635', '#fde047', '#93c5fd'
+];
+
+/**
+ * Deterministically generates a subject color from the subject name.
+ * Matches legacy progress.html hash algorithm.
+ * @param {string} subjectName
+ * @returns {string} HEX color string
+ */
+export function getSubjectColor(subjectName = '') {
+    if (!subjectName) return SUBJECT_COLORS[0];
+    let hash = 0;
+    for (let i = 0; i < subjectName.length; i++) {
+        hash = subjectName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash % SUBJECT_COLORS.length);
+    return SUBJECT_COLORS[index];
+}
 
 /**
  * Normalizes log date value into a valid Date object.
@@ -159,4 +181,54 @@ export function calculateSubjectRankings(stats = {}, mode = 'hours', direction =
             teacher: item.teacher || 'Unknown'
         };
     });
+}
+
+/**
+ * Computes learning time donut chart slices, percentages, and legend metrics.
+ * @param {Record<string, Object>} stats - Aggregated subject stats
+ * @returns {{ totalMinutes: number, formattedTotal: string, slices: Array<Object> }}
+ */
+export function calculateDonutSlices(stats = {}) {
+    const entries = Object.entries(stats || {})
+        .filter(([, data]) => data && data.minutes > 0)
+        .map(([name, data]) => ({
+            name,
+            minutes: data.minutes,
+            teacher: data.teacher || 'Unknown',
+            color: getSubjectColor(name)
+        }));
+
+    const totalMinutes = entries.reduce((sum, item) => sum + item.minutes, 0);
+
+    if (totalMinutes === 0 || entries.length === 0) {
+        return {
+            totalMinutes: 0,
+            formattedTotal: '0m',
+            slices: []
+        };
+    }
+
+    let cumulativePercentage = 0;
+    const slices = entries.map(item => {
+        const percentage = (item.minutes / totalMinutes) * 100;
+        const startPercent = cumulativePercentage;
+        const endPercent = cumulativePercentage + percentage;
+        cumulativePercentage = endPercent;
+
+        return {
+            name: item.name,
+            minutes: item.minutes,
+            formattedDuration: formatMinutesToHoursAndMinutes(item.minutes),
+            percentage: Math.round(percentage * 10) / 10,
+            startPercent,
+            endPercent,
+            color: item.color
+        };
+    });
+
+    return {
+        totalMinutes,
+        formattedTotal: formatMinutesToHoursAndMinutes(totalMinutes),
+        slices
+    };
 }
