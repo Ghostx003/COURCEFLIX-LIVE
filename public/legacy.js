@@ -10595,7 +10595,7 @@ const finishDate = new Date(Date.now() + (daysRequired * 24 * 60 * 60 * 1000));
                 card.innerHTML = `
                     <button class="hide-faculty-btn" data-faculty="${f.name}" title="Hide Faculty"><i class="fas fa-times"></i></button>
                     <div class="faculty-card-banner">
-                        <div class="faculty-photo" style="${f.photo ? `background-image: url('${f.photo}')` : ''}">
+                        <div class="faculty-photo" style="${f.photo ? `background-image: url('${f.photo}'); background-size: cover; background-position: center; background-repeat: no-repeat;` : ''}">
                             ${!f.photo ? `<i class="fas fa-user-tie"></i>` : ''}
                             <div class="edit-photo-overlay"><i class="fas fa-camera"></i></div>
                         </div>
