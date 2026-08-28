@@ -1,10 +1,11 @@
 /**
  * Pure Study Logs & Subject Analytics Utility
  * Contains zero DOM, zero React, and zero IndexedDB dependencies.
- * Provides period filtering, subject aggregation, ranked subject metrics, and donut chart data.
+ * Provides period filtering, subject aggregation, ranked subject metrics, donut chart data,
+ * and time-series hours activity calculations.
  */
 
-import { formatMinutesToHoursAndMinutes } from './studyStreak.js';
+import { formatMinutesToHoursAndMinutes, toDateKey } from './studyStreak.js';
 
 export const SUBJECT_COLORS = [
     '#34d399', '#60a5fa', '#fbbf24', '#c084fc', '#f87171',
@@ -230,5 +231,157 @@ export function calculateDonutSlices(stats = {}) {
         totalMinutes,
         formattedTotal: formatMinutesToHoursAndMinutes(totalMinutes),
         slices
+    };
+}
+
+/**
+ * Computes Hours Activity time-series bar chart data, delta percentage, and activity summary.
+ * @param {Array<Object>} logs - Study logs
+ * @param {'weekly'|'monthly'} [period='weekly'] - View period
+ * @param {Date} [referenceDate=new Date()] - Current reference date
+ * @param {string|null} [selectedMonthStr=null] - Selected 'YYYY-MM' for monthly view
+ * @returns {{
+ *   labels: Array<string>,
+ *   currentPeriodData: Array<number>,
+ *   prevPeriodData: Array<number>,
+ *   currentTotal: number,
+ *   prevTotal: number,
+ *   changeText: string,
+ *   changeType: 'increase'|'decrease'|'start'|'none',
+ *   summaryText: string,
+ *   maxHours: number,
+ *   bars: Array<{ label: string, hours: number, dateStr: string, percentageHeight: number }>
+ * }}
+ */
+export function calculateHoursActivity(logs = [], period = 'weekly', referenceDate = new Date(), selectedMonthStr = null) {
+    // 1. Build rapid O(1) daily minutes lookup
+    const dailyMinutesMap = new Map();
+    (logs || []).forEach(log => {
+        if (!log || !log.date) return;
+        const key = typeof log.date === 'string' ? log.date.substring(0, 10) : toDateKey(new Date(log.date));
+        const durMinutes = (log.duration || 0) / 60;
+        dailyMinutesMap.set(key, (dailyMinutesMap.get(key) || 0) + durMinutes);
+    });
+
+    const now = new Date(referenceDate);
+    let labels = [];
+    const currentPeriodData = [];
+    const prevPeriodData = [];
+    const dates = [];
+
+    if (period === 'weekly') {
+        labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayOfWeek = now.getDay();
+
+        for (let i = 0; i < 7; i++) {
+            const currentDate = new Date(now);
+            currentDate.setDate(now.getDate() - dayOfWeek + i);
+            const prevDate = new Date(currentDate);
+            prevDate.setDate(currentDate.getDate() - 7);
+
+            const currentKey = toDateKey(currentDate);
+            const prevKey = toDateKey(prevDate);
+
+            dates.push(currentDate);
+            currentPeriodData[i] = (dailyMinutesMap.get(currentKey) || 0) / 60;
+            prevPeriodData[i] = (dailyMinutesMap.get(prevKey) || 0) / 60;
+        }
+    } else { // monthly
+        let year, month;
+        if (selectedMonthStr && selectedMonthStr !== 'all') {
+            const parts = selectedMonthStr.split('-');
+            year = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10) - 1;
+        } else {
+            year = now.getFullYear();
+            month = now.getMonth();
+        }
+
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+        labels = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
+
+        for (let i = 1; i <= daysInMonth; i++) {
+            const currentDate = new Date(year, month, i);
+            const prevDate = new Date(year, month - 1, i);
+
+            const currentKey = toDateKey(currentDate);
+            const prevKey = i <= daysInPrevMonth ? toDateKey(prevDate) : null;
+
+            dates.push(currentDate);
+            currentPeriodData[i - 1] = (dailyMinutesMap.get(currentKey) || 0) / 60;
+            prevPeriodData[i - 1] = prevKey ? (dailyMinutesMap.get(prevKey) || 0) / 60 : 0;
+        }
+    }
+
+    const currentTotal = currentPeriodData.reduce((a, b) => a + b, 0);
+    const prevTotal = prevPeriodData.reduce((a, b) => a + b, 0);
+
+    let changeText = '';
+    let changeType = 'none';
+
+    if (prevTotal > 0) {
+        const change = ((currentTotal - prevTotal) / prevTotal) * 100;
+        if (change >= 0) {
+            changeText = `+${change.toFixed(0)}% increase than last ${period === 'weekly' ? 'week' : 'month'}`;
+            changeType = 'increase';
+        } else {
+            changeText = `${change.toFixed(0)}% decrease than last ${period === 'weekly' ? 'week' : 'month'}`;
+            changeType = 'decrease';
+        }
+    } else if (currentTotal > 0) {
+        changeText = 'Great start!';
+        changeType = 'start';
+    } else {
+        changeText = `No activity last ${period === 'weekly' ? 'week' : 'month'}`;
+        changeType = 'none';
+    }
+
+    let maxDay = '', minDay = '';
+    let maxHours = 0, minHours = Infinity;
+    let activeDaysCount = 0;
+
+    currentPeriodData.forEach((hours, index) => {
+        if (hours > 0) {
+            activeDaysCount++;
+            if (hours < minHours) {
+                minHours = hours;
+                minDay = labels[index];
+            }
+        }
+        if (hours > maxHours) {
+            maxHours = hours;
+            maxDay = labels[index];
+        }
+    });
+
+    let summaryText = '';
+    if (activeDaysCount > 1) {
+        summaryText = `Most active on ${maxDay} (${maxHours.toFixed(1)}h), least on ${minDay} (${minHours.toFixed(1)}h).`;
+    } else if (activeDaysCount === 1) {
+        summaryText = `You studied for ${maxHours.toFixed(1)}h on ${maxDay}.`;
+    }
+
+    // Prepare bar items for SVG/CSS rendering
+    const ceiling = Math.max(maxHours, 1);
+    const bars = currentPeriodData.map((hours, idx) => ({
+        label: labels[idx],
+        hours,
+        date: dates[idx],
+        dateStr: dates[idx] ? dates[idx].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : labels[idx],
+        percentageHeight: Math.round((hours / ceiling) * 100)
+    }));
+
+    return {
+        labels,
+        currentPeriodData,
+        prevPeriodData,
+        currentTotal: Math.round(currentTotal * 10) / 10,
+        prevTotal: Math.round(prevTotal * 10) / 10,
+        changeText,
+        changeType,
+        summaryText,
+        maxHours: Math.round(maxHours * 10) / 10,
+        bars
     };
 }
