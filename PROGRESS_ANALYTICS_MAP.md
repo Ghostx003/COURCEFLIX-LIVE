@@ -175,6 +175,7 @@ To prevent accidental bundle inflation:
 | **Subject Rankings** | [`SubjectRankings.jsx`](file:///e:/projects/courceflix-react/src/components/progress/SubjectRankings.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
 | **Learning Time Donut** | [`LearningTimeDonut.jsx`](file:///e:/projects/courceflix-react/src/components/progress/LearningTimeDonut.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
 | **Hours Activity Chart** | [`HoursActivityChart.jsx`](file:///e:/projects/courceflix-react/src/components/progress/HoursActivityChart.jsx) | [`studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js) | ✅ **100% React-Owned** |
+| **Daily Study Schedule** | [`DailyStudySchedule.jsx`](file:///e:/projects/courceflix-react/src/components/progress/DailyStudySchedule.jsx) | [`studySchedule.js`](file:///e:/projects/courceflix-react/src/utils/studySchedule.js) | ✅ **100% React-Owned** |
 
 ---
 
@@ -304,7 +305,40 @@ studyLogs.js (calculateHoursActivity)
 
 ---
 
+## 15. Phase 9C-9 Status: Daily Study Schedule / Activity Log (COMPLETED)
+
+### A. Feature Overview & Architecture
+Migrated the **Daily Study Schedule & Study Activity Log** to a pure React component, using `studySchedule.js` for chronological activity transformation and faculty metadata mapping.
+
+```
+localStorage ('courseflix_logs') + CourseContext (courses)
+   ↓
+ProgressContext (getStudyLogs)
+   ↓
+studySchedule.js (transformLogsToActivitySchedule, formatActivityDate)
+   ↓
+<DailyStudySchedule /> (React Component)
+```
+
+### B. Artifacts Created & Modified
+1. **Pure Schedule Engine**:
+   - [`src/utils/studySchedule.js`](file:///e:/projects/courceflix-react/src/utils/studySchedule.js): Zero DOM/IDB/React dependencies. Implements `transformLogsToActivitySchedule` with chronological sorting (most recent first), teacher resolution fallback, duration formatting, and subject color badges.
+2. **React Component**:
+   - [`src/components/progress/DailyStudySchedule.jsx`](file:///e:/projects/courceflix-react/src/components/progress/DailyStudySchedule.jsx): Scrollable session activity feed with colored LOG pill badges, subject titles, teacher metadata subtitles, formatted timestamps (`Aug 28, 10:30 AM`), and study durations.
+
+### C. Parity & Validation
+- **Chronological Sorting**: Most recent activities appear at the top of the feed.
+- **Teacher Fallback**: Resolves teacher name from active courses list if omitted in the log.
+- **Empty State**: Displays `"No study activity recorded yet."` when 0 logs exist.
+
+### D. Bundle Impact
+- Bundle size: `506.40 kB` (gzip `126.80 kB`).
+- 0 bytes added to root bundle.
+
+---
+
 *End of Progress Subsystem Analytics & Dependency Map.*
+
 
 
 
