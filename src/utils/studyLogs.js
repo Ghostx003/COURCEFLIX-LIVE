@@ -2,7 +2,7 @@
  * Pure Study Logs & Subject Analytics Utility
  * Contains zero DOM, zero React, and zero IndexedDB dependencies.
  * Provides period filtering, subject aggregation, ranked subject metrics, donut chart data,
- * and time-series hours activity calculations.
+ * time-series hours activity calculations, and stacked criteria breakdowns.
  */
 
 import { formatMinutesToHoursAndMinutes, toDateKey } from './studyStreak.js';
@@ -383,5 +383,81 @@ export function calculateHoursActivity(logs = [], period = 'weekly', referenceDa
         summaryText,
         maxHours: Math.round(maxHours * 10) / 10,
         bars
+    };
+}
+
+/**
+ * Computes Stacked Criteria Breakdown per subject across a given period.
+ * Matches legacy calculateStatsByMode + renderStackedBarGraph formulas.
+ * @param {Array<Object>} logs - Study logs
+ * @param {Array<Object>} courses - Enrolled courses
+ * @param {'all'|'month'|'week'|'today'} [period='all'] - Time period filter
+ * @param {string} [criteria1='Logged Time'] - First criteria label
+ * @param {string} [criteria2='Completed Time'] - Second criteria label
+ * @param {Date} [referenceDate=new Date()] - Reference date
+ * @returns {{
+ *   criteria1: string,
+ *   criteria2: string,
+ *   bars: Array<{
+ *     subject: string,
+ *     val1: number,
+ *     val2: number,
+ *     totalHours: number,
+ *     formattedVal1: string,
+ *     formattedVal2: string,
+ *     formattedTotal: string,
+ *     pct1: number,
+ *     pct2: number,
+ *     heightPct: number
+ *   }>,
+ *   maxTotalHours: number
+ * }}
+ */
+export function calculateStackedActivity(
+    logs = [],
+    courses = [],
+    period = 'all',
+    criteria1 = 'Logged Time',
+    criteria2 = 'Completed Time',
+    referenceDate = new Date()
+) {
+    const stats = aggregateLogsBySubject(logs, period, courses, referenceDate);
+    const entries = Object.values(stats || {});
+
+    const bars = entries
+        .map(item => {
+            const subject = item.name;
+            const val1 = (item.loggedMinutes || 0) / 60; // Logged Hours
+            const missingCount = Math.max(0, (item.completedLectures || 0) - (item.loggedCount || 0));
+            const val2 = (missingCount * 45) / 60; // Completed extra Hours
+            const totalHours = val1 + val2;
+
+            return {
+                subject,
+                val1: Math.round(val1 * 10) / 10,
+                val2: Math.round(val2 * 10) / 10,
+                totalHours: Math.round(totalHours * 10) / 10,
+                formattedVal1: formatMinutesToHoursAndMinutes(val1 * 60),
+                formattedVal2: formatMinutesToHoursAndMinutes(val2 * 60),
+                formattedTotal: formatMinutesToHoursAndMinutes(totalHours * 60),
+                pct1: totalHours > 0 ? (val1 / totalHours) * 100 : 0,
+                pct2: totalHours > 0 ? (val2 / totalHours) * 100 : 0
+            };
+        })
+        .filter(item => item.totalHours > 0)
+        .sort((a, b) => b.totalHours - a.totalHours);
+
+    const maxTotalHours = bars.reduce((max, item) => Math.max(max, item.totalHours), 0);
+    const ceiling = Math.max(maxTotalHours, 1);
+
+    bars.forEach(item => {
+        item.heightPct = Math.round((item.totalHours / ceiling) * 100);
+    });
+
+    return {
+        criteria1,
+        criteria2,
+        bars,
+        maxTotalHours: Math.round(maxTotalHours * 10) / 10
     };
 }
