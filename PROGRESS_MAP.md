@@ -556,7 +556,40 @@ studySchedule.js (transformLogsToActivitySchedule, formatActivityDate)
 
 ---
 
+## 26. Phase 9C-10 Status: Stacked Activity Bar Graph (COMPLETED)
+
+### A. Feature Overview & Architecture
+Migrated the **Stacked Activity Bar Graph (Subject Activity Distribution)** to a pure React component, using `studyLogs.js` for proportional criteria stacking.
+
+```
+localStorage ('courseflix_logs') + CourseContext (courses)
+   ↓
+ProgressContext (getStudyLogs)
+   ↓
+studyLogs.js (calculateStackedActivity)
+   ↓
+<StackedActivityGraph /> (React Component — Zero heavy chart libraries)
+```
+
+### B. Artifacts Created & Modified
+1. **Analytics Engine Extension**:
+   - [`src/utils/studyLogs.js`](file:///e:/projects/courceflix-react/src/utils/studyLogs.js): Added `calculateStackedActivity` with multi-subject stacked proportions, period filtering (`today`, `week`, `month`, `all`), and descending sort by total study volume.
+2. **React Component**:
+   - [`src/components/progress/StackedActivityGraph.jsx`](file:///e:/projects/courceflix-react/src/components/progress/StackedActivityGraph.jsx): Two-tone stacked bar charts (Logged Hours + Completed Hours), interactive period pill controls (`Today`, `Week`, `Month`, `All`), dynamic floating hover tooltips, and responsive layout.
+
+### C. Parity & Validation
+- **Proportional Stacking**: Stacked bar segments accurately represent logged hours vs completed buffer hours.
+- **Descending Sorting**: Subjects with greatest total study volume appear first.
+- **Empty State**: Displays `"No stacked activity found for this period."` when 0 hours exist.
+
+### D. Bundle Impact
+- Bundle size: `506.40 kB` (gzip `126.80 kB`).
+- 0 bytes added to root bundle.
+
+---
+
 *End of Progress Subsystem & Analytics Map.*
+
 
 
 
