@@ -1979,11 +1979,13 @@ window.initCourseFlix = async function() {
         }
 
         async function renderCourseGrid() {
-            // Update total time left pill
-            updateTotalTimeLeftDisplay();
-            
-            // Dispatch event to inform React useCourses hook of updates
-            window.dispatchEvent(new CustomEvent('courseflix:data-updated'));
+            // Courses are already delivered via courseflix:courses-loaded — no extra work needed here.
+            // updateTotalTimeLeftDisplay is heavy; defer it far to background after paint.
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(() => updateTotalTimeLeftDisplay(), { timeout: 3000 });
+            } else {
+                setTimeout(() => updateTotalTimeLeftDisplay(), 1500);
+            }
         }
 
         async function renderSubcourseView(courseId, basePath = '', pushState = true) {

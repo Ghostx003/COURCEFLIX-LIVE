@@ -44,19 +44,23 @@ export function CourseProvider({ children }) {
     }, []);
 
     useEffect(() => {
+        // Only hit IndexedDB once on mount. After that, rely on events.
         reloadCourses();
 
         const handleCoursesLoaded = (e) => {
+            // legacy.js already fetched from IDB — use the data it already has
             if (e && e.detail && Array.isArray(e.detail)) {
                 setCourses([...e.detail]);
                 setLoading(false);
-            } else {
-                reloadCourses();
             }
+            // else: ignore — our own reloadCourses() on mount will handle it
         };
 
         const handleDataUpdated = () => {
-            reloadCourses();
+            // Don't re-hit IndexedDB. If legacy already updated window.courses, reflect it directly.
+            if (Array.isArray(window.courses)) {
+                setCourses([...window.courses]);
+            }
         };
 
         window.addEventListener('courseflix:courses-loaded', handleCoursesLoaded);

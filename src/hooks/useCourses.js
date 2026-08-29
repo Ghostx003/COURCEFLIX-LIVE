@@ -55,19 +55,21 @@ function useStandaloneCourses() {
     }, []);
 
     useEffect(() => {
+        // Only hit IndexedDB once on initial mount
         reloadCourses();
 
         const handleCoursesLoaded = (e) => {
             if (e && e.detail && Array.isArray(e.detail)) {
                 setCourses([...e.detail]);
                 setLoading(false);
-            } else {
-                reloadCourses();
             }
         };
 
         const handleDataUpdated = () => {
-            reloadCourses();
+            // Use window.courses in-memory — don't re-fetch from IndexedDB
+            if (Array.isArray(window.courses)) {
+                setCourses([...window.courses]);
+            }
         };
 
         window.addEventListener('courseflix:courses-loaded', handleCoursesLoaded);
