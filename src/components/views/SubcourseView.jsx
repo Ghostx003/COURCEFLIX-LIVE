@@ -8,19 +8,21 @@ import {
     getParentPath,
     isSubfolderPathHidden
 } from '../../utils/subcourseUtils.js';
-import {
-    updateCourseTitle,
-    updateCourseFaculty,
-    toggleCourseRating,
-    toggleCourseIgnored,
-    removeCourseThumbnail,
-    saveCourse
-} from '../../services/courseService.js';
+import { saveCourse } from '../../services/courseService.js';
 import { showToast } from '../../services/utils.js';
 
 export default function SubcourseView() {
     const { currentView, params, navigate } = useRouter();
-    const { courses, loading } = useCourses();
+    const {
+        courses,
+        loading,
+        updateCourseTitle,
+        updateCourseFaculty,
+        setCourseRating,
+        toggleCourseIgnored,
+        toggleCourseSplitView,
+        removeCourseThumbnail
+    } = useCourses();
 
     const courseId = params?.courseId;
     const basePath = params?.path || '';
@@ -110,7 +112,7 @@ export default function SubcourseView() {
     const handleRatingChange = async (fullPath, starValue) => {
         if (!course) return;
         try {
-            await toggleCourseRating(course.id, starValue, fullPath);
+            await setCourseRating(course.id, starValue, fullPath);
         } catch (e) {
             console.error('Failed to update rating', e);
         }
@@ -128,11 +130,7 @@ export default function SubcourseView() {
     const handleSplitToggle = async (fullPath, isSplit) => {
         if (!course) return;
         try {
-            const updated = { ...course };
-            updated.subCourseData = updated.subCourseData || {};
-            updated.subCourseData[fullPath] = updated.subCourseData[fullPath] || {};
-            updated.subCourseData[fullPath].isSplitView = isSplit;
-            await saveCourse(updated);
+            await toggleCourseSplitView(course.id, isSplit, fullPath);
         } catch (e) {
             console.error('Failed to toggle split further', e);
         }

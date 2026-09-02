@@ -225,18 +225,26 @@ export async function toggleCourseIgnored(courseId, isIgnored, subfolder = null)
 }
 
 /**
- * Toggles the split-by-folders view mode for a course.
+ * Toggles the split-by-folders view mode for a course or subcourse.
  * @param {string|number} courseId
  * @param {boolean} isSplitView
+ * @param {string|null} [subfolder=null]
  * @returns {Promise<boolean>}
  */
-export async function toggleCourseSplitView(courseId, isSplitView) {
+export async function toggleCourseSplitView(courseId, isSplitView, subfolder = null) {
     const course = await getCourse(courseId);
     if (!course) throw new Error(`Course not found: ${courseId}`);
 
-    course.isSplitView = !!isSplitView;
+    if (subfolder) {
+        course.subCourseData = course.subCourseData || {};
+        course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
+        course.subCourseData[subfolder].isSplitView = !!isSplitView;
+    } else {
+        course.isSplitView = !!isSplitView;
+    }
+
     await saveCourse(course);
-    return course.isSplitView;
+    return subfolder ? course.subCourseData[subfolder].isSplitView : course.isSplitView;
 }
 
 /**

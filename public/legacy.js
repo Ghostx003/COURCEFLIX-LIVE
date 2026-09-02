@@ -3925,9 +3925,10 @@ window.initCourseFlix = async function() {
         
         document.body.addEventListener('change', async (e) => {
             if (e.target.classList.contains('split-course-cb')) {
-                const courseId = parseInt(e.target.dataset.id);
+                const courseId = e.target.dataset.id;
                 const subfolder = e.target.dataset.subfolder;
-                const course = courses.find(c => c.id === courseId);
+                const courseList = (typeof courses !== 'undefined' ? courses : window.courses) || [];
+                const course = courseList.find(c => String(c.id) === String(courseId) || c.id === parseInt(courseId));
                 
                 if (course) {
                     if (subfolder) {
@@ -3937,7 +3938,11 @@ window.initCourseFlix = async function() {
                     } else {
                         course.isSplitView = e.target.checked;
                     }
-                    await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                    if (typeof window.courseService?.saveCourse === 'function') {
+                        await window.courseService.saveCourse(course);
+                    } else {
+                        await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                    }
                 }
             }
         });
@@ -10096,9 +10101,10 @@ window.initCourseFlix = async function() {
         // --- Ignore Checkbox Logic ---
         document.body.addEventListener('change', async (e) => {
             if (e.target.classList.contains('course-ignore-cb')) {
-                const courseId = parseInt(e.target.dataset.id);
+                const courseId = e.target.dataset.id;
                 const subfolder = e.target.dataset.subfolder;
-                const course = courses.find(c => c.id === courseId);
+                const courseList = (typeof courses !== 'undefined' ? courses : window.courses) || [];
+                const course = courseList.find(c => String(c.id) === String(courseId) || c.id === parseInt(courseId));
                 
                 if (course) {
                     if (subfolder) {
@@ -10108,7 +10114,11 @@ window.initCourseFlix = async function() {
                     } else {
                         course.isIgnored = e.target.checked;
                     }
-                    await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                    if (typeof window.courseService?.saveCourse === 'function') {
+                        await window.courseService.saveCourse(course);
+                    } else {
+                        await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                    }
                     updateTotalTimeLeftDisplay(); // Re-calculate immediately
                 }
             }

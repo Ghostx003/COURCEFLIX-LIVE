@@ -154,10 +154,18 @@ export function CourseProvider({ children }) {
         }
     }, []);
 
-    const toggleCourseSplitView = useCallback(async (courseId, isSplitView) => {
+    const toggleCourseSplitView = useCallback(async (courseId, isSplitView, subfolder = null) => {
         try {
-            await serviceToggleCourseSplitView(courseId, isSplitView);
-            setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...c, isSplitView: !!isSplitView } : c));
+            await serviceToggleCourseSplitView(courseId, isSplitView, subfolder);
+            setCourses(prev => prev.map(c => {
+                if (String(c.id) !== String(courseId)) return c;
+                if (subfolder) {
+                    const subData = { ...(c.subCourseData || {}) };
+                    subData[subfolder] = { ...(subData[subfolder] || {}), isSplitView: !!isSplitView };
+                    return { ...c, subCourseData: subData };
+                }
+                return { ...c, isSplitView: !!isSplitView };
+            }));
         } catch (err) {
             console.error(`[CourseProvider] Error toggling split view for ${courseId}:`, err);
             throw err;
