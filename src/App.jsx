@@ -45,62 +45,174 @@ export default function App() {
       const isPlayer = activeView && activeView.id === 'player-view';
       const activeInput = document.querySelector('input:focus, textarea:focus, [contenteditable="true"]:focus');
 
-      if (isPlayer && !activeInput && (e.key === 'x' || e.key === 'X' || e.code === 'KeyX')) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      if (isPlayer && !activeInput) {
         const videoPlayer = document.getElementById('video-player');
-        if (videoPlayer) {
-          const preservedTime = videoPlayer.currentTime;
-          let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) - 0.1;
-          if (newSpeed < 0.1) newSpeed = 0.1;
-          newSpeed = parseFloat(newSpeed.toFixed(2));
-          videoPlayer.playbackRate = newSpeed;
-          window.activePlaybackRate = newSpeed;
-          const speedBtn = document.getElementById('speed-btn');
-          if (speedBtn) speedBtn.textContent = newSpeed + 'x';
-          if (typeof window.showToast === 'function') {
-            window.showToast(`Speed: ${newSpeed}x`);
-          }
-          if (videoPlayer.currentTime !== preservedTime) {
-            videoPlayer.currentTime = preservedTime;
-          }
-          requestAnimationFrame(() => {
-            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.5) {
-              videoPlayer.currentTime = preservedTime;
-            }
-          });
-        }
-        return;
-      }
+        const key = e.key ? (e.key.length === 1 ? e.key.toLowerCase() : e.key) : '';
 
-      if (isPlayer && !activeInput && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC')) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-        const videoPlayer = document.getElementById('video-player');
-        if (videoPlayer) {
-          const preservedTime = videoPlayer.currentTime;
-          let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) + 0.1;
-          if (newSpeed > 5.0) newSpeed = 5.0;
-          newSpeed = parseFloat(newSpeed.toFixed(2));
-          videoPlayer.playbackRate = newSpeed;
-          window.activePlaybackRate = newSpeed;
-          const speedBtn = document.getElementById('speed-btn');
-          if (speedBtn) speedBtn.textContent = newSpeed + 'x';
-          if (typeof window.showToast === 'function') {
-            window.showToast(`Speed: ${newSpeed}x`);
+        // Check if key is an intentional seek:
+        // ArrowLeft, ArrowRight are intentional seek keys.
+        // Ctrl+Z (cycle bookmarks), Ctrl+P (jump to present), Ctrl+T (jump to present) are bookmark/timeline navigation.
+        // Plain 'p' and 'n' change lectures.
+        const isArrowSeek = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+        const isBookmarkNav = (e.ctrlKey || e.metaKey) && (key === 'z' || key === 'p' || key === 't');
+        const isLectureNav = !e.ctrlKey && !e.metaKey && !e.shiftKey && (key === 'p' || key === 'n');
+
+        const preKeyTime = videoPlayer ? videoPlayer.currentTime : null;
+
+        const enforceNoSeek = () => {
+          if (videoPlayer && preKeyTime !== null) {
+            if (Math.abs(videoPlayer.currentTime - preKeyTime) > 0.2) {
+              videoPlayer.currentTime = preKeyTime;
+            }
           }
-          if (videoPlayer.currentTime !== preservedTime) {
-            videoPlayer.currentTime = preservedTime;
-          }
-          requestAnimationFrame(() => {
-            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.5) {
+        };
+
+        // Z (Add Bookmark) - completely prevent browser extension rewind / seeking!
+        if (key === 'z' && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (videoPlayer) {
+            const preservedTime = videoPlayer.currentTime;
+            if (typeof window.addBookmark === 'function') {
+              window.addBookmark();
+            }
+            if (videoPlayer.currentTime !== preservedTime) {
               videoPlayer.currentTime = preservedTime;
             }
-          });
+            const keepLocked = () => {
+              if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                videoPlayer.currentTime = preservedTime;
+              }
+            };
+            requestAnimationFrame(keepLocked);
+            setTimeout(keepLocked, 30);
+            setTimeout(keepLocked, 80);
+            setTimeout(keepLocked, 180);
+          }
+          return;
         }
-        return;
+
+        // Ctrl+Z (Cycle Bookmarks)
+        if (key === 'z' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (typeof window.cycleBookmarks === 'function') {
+            window.cycleBookmarks();
+          }
+          return;
+        }
+
+        // X (Decrease Speed by 0.1x) - completely prevent browser extension advance / seeking!
+        if (key === 'x' && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (videoPlayer) {
+            const preservedTime = videoPlayer.currentTime;
+            let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) - 0.1;
+            if (newSpeed < 0.1) newSpeed = 0.1;
+            newSpeed = parseFloat(newSpeed.toFixed(2));
+            videoPlayer.playbackRate = newSpeed;
+            window.activePlaybackRate = newSpeed;
+            const speedBtn = document.getElementById('speed-btn');
+            if (speedBtn) speedBtn.textContent = newSpeed + 'x';
+            if (typeof window.showToast === 'function') {
+              window.showToast(`Speed: ${newSpeed}x`);
+            }
+            if (videoPlayer.currentTime !== preservedTime) {
+              videoPlayer.currentTime = preservedTime;
+            }
+            const keepLocked = () => {
+              if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                videoPlayer.currentTime = preservedTime;
+              }
+            };
+            requestAnimationFrame(keepLocked);
+            setTimeout(keepLocked, 30);
+            setTimeout(keepLocked, 80);
+            setTimeout(keepLocked, 180);
+          }
+          return;
+        }
+
+        // C (Increase Speed by 0.1x) - completely prevent browser extension advance / seeking!
+        if (key === 'c' && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (videoPlayer) {
+            const preservedTime = videoPlayer.currentTime;
+            let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) + 0.1;
+            if (newSpeed > 5.0) newSpeed = 5.0;
+            newSpeed = parseFloat(newSpeed.toFixed(2));
+            videoPlayer.playbackRate = newSpeed;
+            window.activePlaybackRate = newSpeed;
+            const speedBtn = document.getElementById('speed-btn');
+            if (speedBtn) speedBtn.textContent = newSpeed + 'x';
+            if (typeof window.showToast === 'function') {
+              window.showToast(`Speed: ${newSpeed}x`);
+            }
+            if (videoPlayer.currentTime !== preservedTime) {
+              videoPlayer.currentTime = preservedTime;
+            }
+            const keepLocked = () => {
+              if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                videoPlayer.currentTime = preservedTime;
+              }
+            };
+            requestAnimationFrame(keepLocked);
+            setTimeout(keepLocked, 30);
+            setTimeout(keepLocked, 80);
+            setTimeout(keepLocked, 180);
+          }
+          return;
+        }
+
+        // Prevent extension hijack on known controller keys ('s', 'd', 'v', 'r', 'g')
+        if (['s', 'd', 'v', 'r', 'g'].includes(key) && !e.ctrlKey && !e.metaKey) {
+          if (key === 's') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (typeof window.captureDoubt === 'function') {
+              window.captureDoubt();
+            }
+            enforceNoSeek();
+            requestAnimationFrame(enforceNoSeek);
+            setTimeout(enforceNoSeek, 40);
+            return;
+          }
+          if (key === 'd' && e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (typeof window.togglePlayerDppPanel === 'function') {
+              window.togglePlayerDppPanel();
+            }
+            enforceNoSeek();
+            requestAnimationFrame(enforceNoSeek);
+            setTimeout(enforceNoSeek, 40);
+            return;
+          }
+          if (key === 'd' || key === 'v' || key === 'r' || key === 'g') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            enforceNoSeek();
+            requestAnimationFrame(enforceNoSeek);
+            setTimeout(enforceNoSeek, 40);
+            return;
+          }
+        }
+
+        // For all other non-seek keys: guard against timeline shifting
+        if (!isArrowSeek && !isBookmarkNav && !isLectureNav && preKeyTime !== null) {
+          requestAnimationFrame(enforceNoSeek);
+          setTimeout(enforceNoSeek, 30);
+          setTimeout(enforceNoSeek, 80);
+        }
       }
 
       if ((e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {

@@ -7838,7 +7838,51 @@ window.initCourseFlix = async function() {
                         });
                     }
                     break;
-                case 's': if (view.id === 'player-view' && currentCourse && currentLectureLi) captureDoubt(); break;
+                case 's':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        const preservedTime = videoPlayer.currentTime;
+                        if (currentCourse && currentLectureLi) captureDoubt();
+                        requestAnimationFrame(() => {
+                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                                videoPlayer.currentTime = preservedTime;
+                            }
+                        });
+                    }
+                    break;
+                case 'd':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        const preservedTime = videoPlayer.currentTime;
+                        if (e.shiftKey) {
+                            window.togglePlayerDppPanel();
+                        }
+                        requestAnimationFrame(() => {
+                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                                videoPlayer.currentTime = preservedTime;
+                            }
+                        });
+                    }
+                    break;
+                case 'v':
+                case 'r':
+                case 'g':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        const preservedTime = videoPlayer.currentTime;
+                        requestAnimationFrame(() => {
+                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                                videoPlayer.currentTime = preservedTime;
+                            }
+                        });
+                    }
+                    break;
                 case 'n': 
                     if (e.shiftKey) {
                         e.preventDefault();
@@ -7849,12 +7893,6 @@ window.initCourseFlix = async function() {
                             if (nextLi) playVideo(nextLi);
                             else showToast('No next lecture available.');
                         }
-                    }
-                    break;
-                case 'd':
-                    if (e.shiftKey) {
-                        e.preventDefault();
-                        if (view.id === 'player-view') window.togglePlayerDppPanel();
                     }
                     break;
                 case 'p': 
@@ -7874,10 +7912,30 @@ window.initCourseFlix = async function() {
                     if (view.id === 'player-view') {
                         e.preventDefault();
                         e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
                         if (e.ctrlKey || e.metaKey) {
                             cycleBookmarks();
                         } else {
+                            const preservedTime = videoPlayer.currentTime;
                             addBookmark();
+                            if (videoPlayer.currentTime !== preservedTime) {
+                                videoPlayer.currentTime = preservedTime;
+                            }
+                            requestAnimationFrame(() => {
+                                if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                                    videoPlayer.currentTime = preservedTime;
+                                }
+                            });
+                            setTimeout(() => {
+                                if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                                    videoPlayer.currentTime = preservedTime;
+                                }
+                            }, 30);
+                            setTimeout(() => {
+                                if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
+                                    videoPlayer.currentTime = preservedTime;
+                                }
+                            }, 80);
                         }
                     }
                     break;
@@ -8020,8 +8078,12 @@ window.initCourseFlix = async function() {
 
                 default: shouldPreventDefault = false; break;
             } 
-            if (shouldPreventDefault) e.preventDefault();
-        });
+            if (shouldPreventDefault) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            }
+        }, true);
         
         mediaResizeHandle.addEventListener('mousedown', (e) => { 
             e.preventDefault(); 
@@ -8188,6 +8250,9 @@ window.initCourseFlix = async function() {
             } else {
                 showToast(`Bookmark already exists at ${formatTime(currentTime)}`);
             }
+            if (videoPlayer && Math.abs(videoPlayer.currentTime - currentTime) > 0.2) {
+                videoPlayer.currentTime = currentTime;
+            }
         }
 
         window.savedTimelinePosition = null;
@@ -8234,6 +8299,10 @@ window.initCourseFlix = async function() {
             window.savedTimelinePosition = null;
             window.isBookmarkCyclingSession = false;
         }
+
+        window.addBookmark = addBookmark;
+        window.cycleBookmarks = cycleBookmarks;
+        window.jumpToPresentTimeline = jumpToPresentTimeline;
 
         async function clearCurrentVideoBookmarks() {
             const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
@@ -9830,6 +9899,7 @@ window.initCourseFlix = async function() {
                 showToast("Could not capture screenshot.", true);
             }
         }
+        window.captureDoubt = captureDoubt;
 
         async function renderContinueView() {
             await cleanupOrphanedHistoryEntries();
