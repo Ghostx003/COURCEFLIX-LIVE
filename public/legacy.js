@@ -7788,7 +7788,6 @@ window.initCourseFlix = async function() {
                         e.preventDefault();
                         e.stopPropagation();
                         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                        const preservedTime = videoPlayer.currentTime;
                         let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) + 0.1;
                         if (newSpeed > 5.0) newSpeed = 5.0;
                         newSpeed = parseFloat(newSpeed.toFixed(2));
@@ -7800,14 +7799,6 @@ window.initCourseFlix = async function() {
                         if (typeof showToast === 'function') {
                             showToast(`Speed: ${newSpeed}x`);
                         }
-                        if (videoPlayer.currentTime !== preservedTime) {
-                            videoPlayer.currentTime = preservedTime;
-                        }
-                        requestAnimationFrame(() => {
-                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.5) {
-                                videoPlayer.currentTime = preservedTime;
-                            }
-                        });
                     }
                     break;
                 case 'x':
@@ -7816,7 +7807,6 @@ window.initCourseFlix = async function() {
                         e.preventDefault();
                         e.stopPropagation();
                         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                        const preservedTime = videoPlayer.currentTime;
                         let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) - 0.1;
                         if (newSpeed < 0.1) newSpeed = 0.1;
                         newSpeed = parseFloat(newSpeed.toFixed(2));
@@ -7828,14 +7818,6 @@ window.initCourseFlix = async function() {
                         if (typeof showToast === 'function') {
                             showToast(`Speed: ${newSpeed}x`);
                         }
-                        if (videoPlayer.currentTime !== preservedTime) {
-                            videoPlayer.currentTime = preservedTime;
-                        }
-                        requestAnimationFrame(() => {
-                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.5) {
-                                videoPlayer.currentTime = preservedTime;
-                            }
-                        });
                     }
                     break;
                 case 's':
@@ -7843,13 +7825,7 @@ window.initCourseFlix = async function() {
                         e.preventDefault();
                         e.stopPropagation();
                         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                        const preservedTime = videoPlayer.currentTime;
                         if (currentCourse && currentLectureLi) captureDoubt();
-                        requestAnimationFrame(() => {
-                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
-                                videoPlayer.currentTime = preservedTime;
-                            }
-                        });
                     }
                     break;
                 case 'd':
@@ -7857,15 +7833,9 @@ window.initCourseFlix = async function() {
                         e.preventDefault();
                         e.stopPropagation();
                         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                        const preservedTime = videoPlayer.currentTime;
                         if (e.shiftKey) {
                             window.togglePlayerDppPanel();
                         }
-                        requestAnimationFrame(() => {
-                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
-                                videoPlayer.currentTime = preservedTime;
-                            }
-                        });
                     }
                     break;
                 case 'v':
@@ -7875,12 +7845,6 @@ window.initCourseFlix = async function() {
                         e.preventDefault();
                         e.stopPropagation();
                         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                        const preservedTime = videoPlayer.currentTime;
-                        requestAnimationFrame(() => {
-                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
-                                videoPlayer.currentTime = preservedTime;
-                            }
-                        });
                     }
                     break;
                 case 'n': 
@@ -7916,26 +7880,7 @@ window.initCourseFlix = async function() {
                         if (e.ctrlKey || e.metaKey) {
                             cycleBookmarks();
                         } else {
-                            const preservedTime = videoPlayer.currentTime;
                             addBookmark();
-                            if (videoPlayer.currentTime !== preservedTime) {
-                                videoPlayer.currentTime = preservedTime;
-                            }
-                            requestAnimationFrame(() => {
-                                if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
-                                    videoPlayer.currentTime = preservedTime;
-                                }
-                            });
-                            setTimeout(() => {
-                                if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
-                                    videoPlayer.currentTime = preservedTime;
-                                }
-                            }, 30);
-                            setTimeout(() => {
-                                if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.2) {
-                                    videoPlayer.currentTime = preservedTime;
-                                }
-                            }, 80);
                         }
                     }
                     break;
@@ -8249,9 +8194,6 @@ window.initCourseFlix = async function() {
                 showToast(`Bookmark added at ${formatTime(currentTime)}`);
             } else {
                 showToast(`Bookmark already exists at ${formatTime(currentTime)}`);
-            }
-            if (videoPlayer && Math.abs(videoPlayer.currentTime - currentTime) > 0.2) {
-                videoPlayer.currentTime = currentTime;
             }
         }
 

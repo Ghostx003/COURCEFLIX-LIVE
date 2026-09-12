@@ -130,9 +130,6 @@ export function renderBookmarks() {
             } else {
                 showToast(`Bookmark already exists at ${formatTime(currentTime)}`);
             }
-            if (videoPlayer && Math.abs(videoPlayer.currentTime - currentTime) > 0.2) {
-                videoPlayer.currentTime = currentTime;
-            }
         }
 
 export function cycleBookmarks() {
