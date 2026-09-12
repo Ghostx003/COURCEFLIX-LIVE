@@ -7783,17 +7783,59 @@ window.initCourseFlix = async function() {
             switch(key) { 
                 case ' ': if (view.id === 'player-view') playPauseBtn.click(); break;
                 case 'c': 
+                case 'C':
                     if (view.id === 'player-view') {
-                        let newSpeed = videoPlayer.playbackRate + 0.1;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        const preservedTime = videoPlayer.currentTime;
+                        let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) + 0.1;
                         if (newSpeed > 5.0) newSpeed = 5.0;
-                        videoPlayer.playbackRate = parseFloat(newSpeed.toFixed(2));
+                        newSpeed = parseFloat(newSpeed.toFixed(2));
+                        videoPlayer.playbackRate = newSpeed;
+                        window.activePlaybackRate = newSpeed;
+                        if (typeof speedBtn !== 'undefined' && speedBtn) {
+                            speedBtn.textContent = newSpeed + 'x';
+                        }
+                        if (typeof showToast === 'function') {
+                            showToast(`Speed: ${newSpeed}x`);
+                        }
+                        if (videoPlayer.currentTime !== preservedTime) {
+                            videoPlayer.currentTime = preservedTime;
+                        }
+                        requestAnimationFrame(() => {
+                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.5) {
+                                videoPlayer.currentTime = preservedTime;
+                            }
+                        });
                     }
                     break;
                 case 'x':
+                case 'X':
                     if (view.id === 'player-view') {
-                        let newSpeed = videoPlayer.playbackRate - 0.1;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        const preservedTime = videoPlayer.currentTime;
+                        let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) - 0.1;
                         if (newSpeed < 0.1) newSpeed = 0.1;
-                        videoPlayer.playbackRate = parseFloat(newSpeed.toFixed(2));
+                        newSpeed = parseFloat(newSpeed.toFixed(2));
+                        videoPlayer.playbackRate = newSpeed;
+                        window.activePlaybackRate = newSpeed;
+                        if (typeof speedBtn !== 'undefined' && speedBtn) {
+                            speedBtn.textContent = newSpeed + 'x';
+                        }
+                        if (typeof showToast === 'function') {
+                            showToast(`Speed: ${newSpeed}x`);
+                        }
+                        if (videoPlayer.currentTime !== preservedTime) {
+                            videoPlayer.currentTime = preservedTime;
+                        }
+                        requestAnimationFrame(() => {
+                            if (Math.abs(videoPlayer.currentTime - preservedTime) > 0.5) {
+                                videoPlayer.currentTime = preservedTime;
+                            }
+                        });
                     }
                     break;
                 case 's': if (view.id === 'player-view' && currentCourse && currentLectureLi) captureDoubt(); break;
