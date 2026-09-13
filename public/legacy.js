@@ -3749,7 +3749,30 @@ window.initCourseFlix = async function() {
                 }
             }
 
-            if (!course.handle && !(subfolder && course.subCourseData?.[subfolder]?.handle)) {
+            // If refreshing a specific subfolder:
+            // Check if we have subfolder handle directly or can resolve it from course.handle
+            let subHandle = (subfolder && course.subCourseData?.[subfolder]?.handle) || null;
+            if (!subHandle && subfolder && course.handle) {
+                try {
+                    let cur = course.handle;
+                    for (const part of subfolder.split('/').filter(Boolean)) {
+                        cur = await cur.getDirectoryHandle(part);
+                    }
+                    subHandle = cur;
+                    course.subCourseData = course.subCourseData || {};
+                    course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
+                    course.subCourseData[subfolder].handle = subHandle;
+                } catch(e) {
+                    console.warn(`Subfolder "${subfolder}" not found inside root course handle:`, e);
+                }
+            }
+
+            if (subfolder && !subHandle) {
+                showToast(`Could not find folder for "${subfolder.split('/').pop()}". Please use Relocate button to link it.`, true);
+                return;
+            }
+
+            if (!subfolder && !course.handle) {
                 showToast('Could not find course folder. Please use Relocate button to re-link it.', true);
                 return;
             }
@@ -3757,9 +3780,10 @@ window.initCourseFlix = async function() {
             if (btnElement) btnElement.classList.add('loading');
 
             try {
-                // If refreshing a specific subfolder that has its own handle
-                if (subfolder && course.subCourseData?.[subfolder]?.handle) {
-                    const subHandle = course.subCourseData[subfolder].handle;
+                let refreshedItemTitle = course.title || 'Course';
+                let refreshedVideoCount = 0;
+
+                if (subfolder && subHandle) {
                     let perm = await subHandle.queryPermission({ mode: 'read' });
                     if (perm !== 'granted') {
                         perm = await subHandle.requestPermission({ mode: 'read' });
@@ -3770,14 +3794,32 @@ window.initCourseFlix = async function() {
                     }
 
                     const subData = await scanDirectoryHandle(subHandle, subfolder, course.lectures || []);
-                    if (subData && subData.lectures) {
-                        course.lectures = (course.lectures || []).filter(l => !((l.chapter || '') === subfolder || (l.chapter || '').startsWith(subfolder + '/')));
-                        course.chapters = (course.chapters || []).filter(ch => !((ch.name || '') === subfolder || (ch.name || '').startsWith(subfolder + '/')));
-                        course.lectures.push(...subData.lectures);
-                        course.chapters.push(...subData.chapters);
+                    course.lectures = course.lectures || [];
+                    course.chapters = course.chapters || [];
+
+                    // Filter out existing lectures and chapters for this specific subfolder
+                    const otherLectures = course.lectures.filter(l => !((l.chapter || '') === subfolder || (l.chapter || '').startsWith(subfolder + '/')));
+                    const otherChapters = course.chapters.filter(ch => !((ch.name || '') === subfolder || (ch.name || '').startsWith(subfolder + '/')));
+
+                    const newSubLectures = subData?.lectures || [];
+                    const newSubChapters = subData?.chapters || [];
+
+                    course.lectures = [...otherLectures, ...newSubLectures];
+                    if (newSubChapters.length > 0) {
+                        course.chapters = [...otherChapters, ...newSubChapters];
+                    } else {
+                        // Always keep at least the subfolder chapter entry so the subcourse is NEVER hidden/lost
+                        course.chapters = [...otherChapters, { name: subfolder, lectures: newSubLectures }];
                     }
+                    course.chapters.sort((a, b) => naturalSort(a, b));
+
+                    if (course.subCourseData && course.subCourseData[subfolder]) {
+                        course.subCourseData[subfolder].hidden = false;
+                    }
+
+                    refreshedItemTitle = subfolder.split('/').pop();
+                    refreshedVideoCount = newSubLectures.length;
                 } else if (course.handle) {
-                    // Refreshing root course
                     let perm = await course.handle.queryPermission({ mode: 'read' });
                     if (perm !== 'granted') {
                         perm = await course.handle.requestPermission({ mode: 'read' });
@@ -3792,26 +3834,38 @@ window.initCourseFlix = async function() {
                     // Merge overriden custom relocated subfolder handles if any exist
                     if (course.subCourseData) {
                         for (const subPath of Object.keys(course.subCourseData)) {
-                            const subHandle = course.subCourseData[subPath]?.handle;
-                            if (subHandle) {
+                            const customSubHandle = course.subCourseData[subPath]?.handle;
+                            if (customSubHandle) {
                                 try {
-                                    let subPerm = await subHandle.queryPermission({ mode: 'read' });
+                                    let subPerm = await customSubHandle.queryPermission({ mode: 'read' });
                                     if (subPerm !== 'granted') {
-                                        subPerm = await subHandle.requestPermission({ mode: 'read' });
+                                        subPerm = await customSubHandle.requestPermission({ mode: 'read' });
                                     }
                                     if (subPerm === 'granted') {
-                                        const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
-                                        // Remove old scan results for this subpath
+                                        const subData = await scanDirectoryHandle(customSubHandle, subPath, course.lectures || []);
                                         newCourseData.lectures = newCourseData.lectures.filter(l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/')));
                                         newCourseData.chapters = newCourseData.chapters.filter(ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/')));
-                                        // Inject custom scan results
-                                        newCourseData.lectures.push(...subData.lectures);
-                                        newCourseData.chapters.push(...subData.chapters);
+                                        newCourseData.lectures.push(...(subData.lectures || []));
+                                        newCourseData.chapters.push(...(subData.chapters || []));
                                     }
                                 } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
                             }
                         }
                     }
+
+                    // CRITICAL PRESERVATION: Keep chapters and lectures that were added externally or from other sources
+                    const scannedChapterNames = new Set((newCourseData.chapters || []).map(ch => ch.name));
+                    (course.chapters || []).forEach(oldCh => {
+                        if (!scannedChapterNames.has(oldCh.name)) {
+                            const oldChLectures = (course.lectures || []).filter(l => (l.chapter || '') === oldCh.name);
+                            newCourseData.chapters.push({ name: oldCh.name, lectures: oldChLectures });
+                            oldChLectures.forEach(l => {
+                                if (!newCourseData.lectures.some(nl => nl.id === l.id)) {
+                                    newCourseData.lectures.push(l);
+                                }
+                            });
+                        }
+                    });
 
                     // Preserve custom lectures and chapters that don't have disk handles
                     if (course.lectures) {
@@ -3848,6 +3902,9 @@ window.initCourseFlix = async function() {
 
                     course.lectures = newCourseData.lectures;
                     course.chapters = (newCourseData.chapters || []).sort((a,b)=>naturalSort(a,b));
+
+                    refreshedItemTitle = course.title || 'Course';
+                    refreshedVideoCount = course.lectures.length;
                 }
 
                 course.videoCount = (course.lectures || []).length;
@@ -3871,16 +3928,12 @@ window.initCourseFlix = async function() {
                 } else if (currentView === 'subcourse-view') {
                     const viewEl = document.getElementById('subcourse-view');
                     const path = (viewEl && viewEl.dataset.currentPath) || '';
-                    if (viewEl && String(courseId) === String(viewEl.dataset.courseId)) {
-                        await renderSubcourseView(course.id, path, false);
-                    } else {
-                        await renderCourseGrid();
-                    }
+                    await renderSubcourseView(course.id, path, false);
                 } else if (currentView === 'upload-view') {
                     if (typeof renderUploadView === 'function') renderUploadView();
                 }
 
-                showToast(`Refreshed "${course.title || 'Course'}" (${course.videoCount || 0} videos)`);
+                showToast(`Refreshed "${refreshedItemTitle}" (${refreshedVideoCount} videos)`);
             } catch (error) {
                 console.error('Error refreshing course:', error);
                 showToast('An error occurred while refreshing the course.', true);
@@ -5308,6 +5361,11 @@ window.initCourseFlix = async function() {
                 course.videoCount = (course.videoCount || 0) + addedVideoCount;
                 course.totalDuration = (course.totalDuration || 0) + addedDuration;
                 
+                course.subCourseData = course.subCourseData || {};
+                course.subCourseData[targetSubPath] = course.subCourseData[targetSubPath] || {};
+                course.subCourseData[targetSubPath].handle = dirHandle;
+                course.subCourseData[targetSubPath].hidden = false;
+
                 await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
                 showToast(`Sub-course "${dirHandle.name}" added successfully (${addedVideoCount} videos)!`, false);
                 
