@@ -8,7 +8,7 @@ import {
     getParentPath,
     isSubfolderPathHidden
 } from '../../utils/subcourseUtils.js';
-import { saveCourse } from '../../services/courseService.js';
+import { saveCourse, refreshCourse } from '../../services/courseService.js';
 import { showToast } from '../../services/utils.js';
 
 export default function SubcourseView() {
@@ -186,9 +186,11 @@ export default function SubcourseView() {
         }
     };
 
-    const handleRefreshSubfolder = async (cId, fullPath) => {
-        if (typeof window.refreshCourse === 'function') {
-            await window.refreshCourse(cId);
+    const handleRefreshSubfolder = async (cId, fullPath, btnElement) => {
+        try {
+            await refreshCourse(cId, btnElement, fullPath);
+        } catch (e) {
+            console.error('Failed to refresh subfolder', e);
         }
     };
 
@@ -202,9 +204,7 @@ export default function SubcourseView() {
                 updated.subCourseData[fullPath].handle = newHandle;
                 await saveCourse(updated);
                 showToast(`Relocated subfolder: ${fullPath.split('/').pop()}`);
-                if (typeof window.refreshCourse === 'function') {
-                    await window.refreshCourse(cId);
-                }
+                await refreshCourse(cId, null, fullPath);
             } catch (err) {
                 if (err.name !== 'AbortError') console.error('Relocate failed', err);
             }

@@ -71,10 +71,7 @@ export function isSubfolderPathHidden(course, subfolderPath) {
             const normKey = String(key).toLowerCase().trim();
             if (
                 normSub === normKey ||
-                normSub.startsWith(normKey + '/') ||
-                normKey.startsWith(normSub + '/') ||
-                normSub.endsWith('/' + normKey) ||
-                normSub.includes('/' + normKey + '/')
+                normSub.startsWith(normKey + '/')
             ) {
                 return true;
             }

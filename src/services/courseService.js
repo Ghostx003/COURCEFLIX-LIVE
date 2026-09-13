@@ -10,6 +10,8 @@ import {
     bulkPutCourses as repoBulkPutCourses
 } from '../db/coursesRepository.js';
 import { parseCourseId } from '../db/database.js';
+import { scanDirectoryTree, naturalSort } from './fileSystemService.js';
+import { showToast } from './utils.js';
 
 /**
  * Normalizes a course entity, ensuring calculated runtime flags like `isLinked` are present.
@@ -367,8 +369,195 @@ export function sortCourses(courses, sortPref = 'custom', progressMap = new Map(
     return sorted;
 }
 
+/**
+ * Refreshes course or subcourse content by rescanning directory handles from the filesystem.
+ * Preserves custom URLs, existing chapters, and unhides the target subfolder if specified.
+ * Synchronizes with IndexedDB, in-memory courses, and dispatches UI update events.
+ *
+ * @param {string|number} courseId
+ * @param {HTMLElement|null} [btnElement=null]
+ * @param {string|null} [targetSubfolder=null]
+ * @returns {Promise<Object|null>}
+ */
+export async function refreshCourse(courseId, btnElement = null, targetSubfolder = null) {
+    const course = await getCourse(courseId);
+    if (!course || (!course.handle && !course.isCustomCourse)) {
+        showToast('Could not find the course folder. It may have been moved or deleted.', true);
+        return null;
+    }
+
+    if (btnElement?.classList) btnElement.classList.add('loading');
+
+    try {
+        course.subCourseData = course.subCourseData || {};
+
+        // If a specific subfolder is refreshed, explicitly ensure it is unhidden and not ignored
+        if (targetSubfolder) {
+            course.subCourseData[targetSubfolder] = course.subCourseData[targetSubfolder] || {};
+            course.subCourseData[targetSubfolder].hidden = false;
+            course.subCourseData[targetSubfolder].isIgnored = false;
+        }
+
+        // Check/request permission on root handle if present
+        if (course.handle) {
+            const queryPerm = typeof course.handle.queryPermission === 'function' ? await course.handle.queryPermission({ mode: 'read' }) : 'granted';
+            if (queryPerm !== 'granted') {
+                const reqPerm = typeof course.handle.requestPermission === 'function' ? await course.handle.requestPermission({ mode: 'read' }) : 'granted';
+                if (reqPerm !== 'granted') {
+                    showToast('Permission denied. Cannot refresh course.', true);
+                    return null;
+                }
+            }
+        }
+
+        let newCourseData = {
+            chapters: [],
+            videoCount: 0,
+            lectures: [],
+            totalDuration: 0,
+            hasInaccessibleFiles: false
+        };
+
+        if (course.handle) {
+            newCourseData = await scanDirectoryTree(course.handle, {
+                basePath: '',
+                cachedLectures: course.lectures || []
+            });
+        }
+
+        // Merge relocated / attached subfolder handles in course.subCourseData
+        for (const subPath of Object.keys(course.subCourseData)) {
+            const subDataEntry = course.subCourseData[subPath];
+            const subHandle = subDataEntry?.handle;
+            if (subHandle) {
+                try {
+                    let hasPerm = false;
+                    if (typeof subHandle.queryPermission === 'function') {
+                        hasPerm = (await subHandle.queryPermission({ mode: 'read' })) === 'granted';
+                        if (!hasPerm && typeof subHandle.requestPermission === 'function') {
+                            hasPerm = (await subHandle.requestPermission({ mode: 'read' })) === 'granted';
+                        }
+                    } else {
+                        hasPerm = true;
+                    }
+
+                    if (hasPerm) {
+                        const subScan = await scanDirectoryTree(subHandle, {
+                            basePath: subPath,
+                            cachedLectures: course.lectures || []
+                        });
+                        // Remove previous scan entries matching subPath
+                        newCourseData.lectures = newCourseData.lectures.filter(
+                            l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/'))
+                        );
+                        newCourseData.chapters = newCourseData.chapters.filter(
+                            ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/'))
+                        );
+                        newCourseData.lectures.push(...subScan.lectures);
+                        newCourseData.chapters.push(...subScan.chapters);
+                    }
+                } catch (e) {
+                    console.warn(`Subfolder scan failed for ${subPath}:`, e);
+                }
+            }
+        }
+
+        // Preserve all previously registered chapters so empty/intermediate subcourses never disappear
+        if (Array.isArray(course.chapters)) {
+            for (const oldCh of course.chapters) {
+                if (!newCourseData.chapters.some(c => c.name === oldCh.name)) {
+                    const matchingLecs = newCourseData.lectures.filter(l => l.chapter === oldCh.name);
+                    newCourseData.chapters.push({
+                        name: oldCh.name,
+                        lectures: matchingLecs
+                    });
+                }
+            }
+        }
+
+        // If a specific subfolder was refreshed, always ensure its chapter entry exists
+        if (targetSubfolder && !newCourseData.chapters.some(c => c.name === targetSubfolder)) {
+            const matchingLecs = newCourseData.lectures.filter(l => l.chapter === targetSubfolder);
+            newCourseData.chapters.push({
+                name: targetSubfolder,
+                lectures: matchingLecs
+            });
+        }
+
+        // Preserve custom lectures
+        if (Array.isArray(course.lectures)) {
+            const customLectures = course.lectures.filter(l => l.customUrl);
+            if (customLectures.length > 0) {
+                for (const cl of customLectures) {
+                    if (!newCourseData.lectures.some(l => l.id === cl.id)) {
+                        newCourseData.lectures.push(cl);
+                    }
+                }
+                const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
+                customChapterNames.forEach(chapterName => {
+                    let existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
+                    if (!existingChapter) {
+                        const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                        newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
+                    } else {
+                        const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                        for (const cl of chapterLectures) {
+                            if (!existingChapter.lectures.some(l => l.id === cl.id)) {
+                                existingChapter.lectures.push(cl);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        course.lectures = newCourseData.lectures;
+        course.chapters = newCourseData.chapters.sort(naturalSort);
+        course.videoCount = course.lectures.length;
+        course.totalDuration = course.lectures.reduce((sum, l) => sum + (l.duration || 0), 0);
+
+        if (typeof window.invalidateCourseProgressCache === 'function') {
+            window.invalidateCourseProgressCache(course.id);
+        }
+        if (typeof window.calculateCourseProgress === 'function') {
+            window.calculateCourseProgress(course, true);
+        }
+
+        await saveCourse(course);
+
+        // Notify entire app (React contexts & legacy listeners)
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('courseflix:data-updated'));
+            window.dispatchEvent(new CustomEvent('courseflix:courses-loaded', { detail: window.courses }));
+
+            if (typeof window.renderCourseGrid === 'function' && document.getElementById('dashboard-view')?.classList.contains('active')) {
+                window.renderCourseGrid();
+            }
+            if (typeof window.updateTotalTimeLeftDisplay === 'function') {
+                window.updateTotalTimeLeftDisplay();
+            }
+        }
+
+        if (targetSubfolder) {
+            const subLecs = course.lectures.filter(l => (l.chapter || '') === targetSubfolder || (l.chapter || '').startsWith(targetSubfolder + '/'));
+            showToast(`Refreshed "${targetSubfolder.split('/').pop()}"! (${subLecs.length} lectures)`);
+        } else {
+            showToast(`Refreshed "${course.title}"! (${course.lectures.length} lectures)`);
+        }
+
+        return course;
+    } catch (err) {
+        console.error('[courseService] Error refreshing course:', err);
+        showToast('An error occurred while refreshing.', true);
+        return null;
+    } finally {
+        if (btnElement?.classList) btnElement.classList.remove('loading');
+    }
+}
+
 // Bind to window for backward compatibility with unmigrated legacy modules
 if (typeof window !== 'undefined') {
+    window.refreshCourse = refreshCourse;
     window.courseService = {
         getCourses,
         getCourse,
@@ -384,6 +573,7 @@ if (typeof window !== 'undefined') {
         updateCourseThumbnail,
         removeCourseThumbnail,
         reorderCourses,
-        sortCourses
+        sortCourses,
+        refreshCourse
     };
 }

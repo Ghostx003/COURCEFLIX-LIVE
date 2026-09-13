@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import CourseGrid from '../dashboard/CourseGrid.jsx';
 import { useCourses } from '../../hooks/useCourses.js';
 import { useRouter } from '../../hooks/useRouter.js';
+import { refreshCourse } from '../../services/courseService.js';
 
 const SORT_OPTIONS = [
     { value: 'custom', label: 'Custom (Drag & Drop)' },
@@ -136,9 +137,11 @@ export default function DashboardViewElView() {
         }
     }, [courses]);
 
-    const handleRefreshCourse = useCallback((courseId, btnElement) => {
-        if (typeof window.refreshCourse === 'function') {
-            window.refreshCourse(courseId, btnElement);
+    const handleRefreshCourse = useCallback(async (courseId, btnElement) => {
+        try {
+            await refreshCourse(courseId, btnElement);
+        } catch (e) {
+            console.error('Failed to refresh course', e);
         }
     }, []);
 

@@ -642,7 +642,7 @@ window.initCourseFlix = async function() {
                 const item = course.subCourseData[key];
                 if (item && (item.hidden || item.isIgnored)) {
                     const normKey = String(key).toLowerCase().trim();
-                    if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
+                    if (normSub === normKey || normSub.startsWith(normKey + '/')) {
                         return true;
                     }
                 }
@@ -660,7 +660,7 @@ window.initCourseFlix = async function() {
                 const item = course.subCourseData[key];
                 if (item && item.hidden) {
                     const normKey = String(key).toLowerCase().trim();
-                    if (normSub === normKey || normSub.startsWith(normKey + '/') || normKey.startsWith(normSub + '/') || normSub.endsWith('/' + normKey) || normSub.includes('/' + normKey + '/')) {
+                    if (normSub === normKey || normSub.startsWith(normKey + '/')) {
                         return true;
                     }
                 }
@@ -3483,9 +3483,14 @@ window.initCourseFlix = async function() {
             }
         }
         
-        async function refreshCourse(courseId, btnElement) {
-            const course = courses.find(c => c.id === courseId);
-            if (!course || !course.handle) {
+        async function refreshCourse(courseId, btnElement, targetSubfolder = null) {
+            if (typeof window !== 'undefined' && window.courseService && typeof window.courseService.refreshCourse === 'function') {
+                return await window.courseService.refreshCourse(courseId, btnElement, targetSubfolder);
+            }
+
+            const courseList = (typeof courses !== 'undefined' && courses.length ? courses : window.courses) || [];
+            const course = courseList.find(c => String(c.id) === String(courseId) || c.id === courseId);
+            if (!course || (!course.handle && !course.isCustomCourse)) {
                 showToast('Could not find the root course folder. It may have been moved or deleted.', true);
                 return;
             }
@@ -3493,27 +3498,50 @@ window.initCourseFlix = async function() {
             if (btnElement) btnElement.classList.add('loading');
 
             try {
-                if ((await course.handle.queryPermission({ mode: 'read' })) !== 'granted') {
-                    if ((await course.handle.requestPermission({ mode: 'read' })) !== 'granted') {
-                        showToast('Permission denied. Cannot refresh course.', true);
-                        return;
+                course.subCourseData = course.subCourseData || {};
+                if (targetSubfolder) {
+                    course.subCourseData[targetSubfolder] = course.subCourseData[targetSubfolder] || {};
+                    course.subCourseData[targetSubfolder].hidden = false;
+                    course.subCourseData[targetSubfolder].isIgnored = false;
+                }
+
+                if (course.handle) {
+                    if ((await course.handle.queryPermission({ mode: 'read' })) !== 'granted') {
+                        if ((await course.handle.requestPermission({ mode: 'read' })) !== 'granted') {
+                            showToast('Permission denied. Cannot refresh course.', true);
+                            return;
+                        }
                     }
                 }
 
-                const newCourseData = await scanDirectoryHandle(course.handle, '', course.lectures || []);
+                let newCourseData = {
+                    chapters: [],
+                    videoCount: 0,
+                    lectures: [],
+                    totalDuration: 0,
+                    hasInaccessibleFiles: false
+                };
+
+                if (course.handle) {
+                    newCourseData = await scanDirectoryHandle(course.handle, '', course.lectures || []);
+                }
                 
                 // Merge overriden custom relocated subfolder handles if any exist
                 if (course.subCourseData) {
                     for (const subPath of Object.keys(course.subCourseData)) {
-                        const subHandle = course.subCourseData[subPath].handle;
+                        const subHandle = course.subCourseData[subPath]?.handle;
                         if (subHandle) {
                             try {
-                                if (await subHandle.queryPermission({ mode: 'read' }) === 'granted') {
+                                let hasPerm = false;
+                                if ((await subHandle.queryPermission({ mode: 'read' })) === 'granted') {
+                                    hasPerm = true;
+                                } else {
+                                    hasPerm = (await subHandle.requestPermission({ mode: 'read' })) === 'granted';
+                                }
+                                if (hasPerm) {
                                     const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
-                                    // Remove old scan results for this subpath
                                     newCourseData.lectures = newCourseData.lectures.filter(l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/')));
                                     newCourseData.chapters = newCourseData.chapters.filter(ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/')));
-                                    // Inject custom scan results
                                     newCourseData.lectures.push(...subData.lectures);
                                     newCourseData.chapters.push(...subData.chapters);
                                 }
@@ -3522,23 +3550,51 @@ window.initCourseFlix = async function() {
                     }
                 }
 
+                // Preserve all previous chapters so empty/intermediate subcourses never disappear
+                if (Array.isArray(course.chapters)) {
+                    for (const oldCh of course.chapters) {
+                        if (!newCourseData.chapters.some(c => c.name === oldCh.name)) {
+                            const matchingLecs = newCourseData.lectures.filter(l => l.chapter === oldCh.name);
+                            newCourseData.chapters.push({
+                                name: oldCh.name,
+                                lectures: matchingLecs
+                            });
+                        }
+                    }
+                }
+
+                // If a specific subfolder was refreshed, always ensure its chapter entry exists
+                if (targetSubfolder && !newCourseData.chapters.some(c => c.name === targetSubfolder)) {
+                    const matchingLecs = newCourseData.lectures.filter(l => l.chapter === targetSubfolder);
+                    newCourseData.chapters.push({
+                        name: targetSubfolder,
+                        lectures: matchingLecs
+                    });
+                }
+
                 // Preserve custom lectures and chapters that don't have disk handles
                 if (course.lectures) {
                     const customLectures = course.lectures.filter(l => l.customUrl);
                     if (customLectures.length > 0) {
-                        newCourseData.lectures.push(...customLectures);
+                        for (const cl of customLectures) {
+                            if (!newCourseData.lectures.some(l => l.id === cl.id)) {
+                                newCourseData.lectures.push(cl);
+                            }
+                        }
                         
-                        // Extract unique chapters from custom lectures
                         const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
                         customChapterNames.forEach(chapterName => {
-                            if (!newCourseData.chapters.find(ch => ch.name === chapterName)) {
+                            let existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
+                            if (!existingChapter) {
                                 const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
                                 newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
                             } else {
-                                // If chapter exists (unlikely for pure custom, but possible if mixed), append lectures
-                                const existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
                                 const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
-                                existingChapter.lectures.push(...chapterLectures);
+                                for (const cl of chapterLectures) {
+                                    if (!existingChapter.lectures.some(l => l.id === cl.id)) {
+                                        existingChapter.lectures.push(cl);
+                                    }
+                                }
                             }
                         });
                     }
@@ -3548,18 +3604,37 @@ window.initCourseFlix = async function() {
                 course.chapters = newCourseData.chapters.sort((a,b)=>naturalSort(a,b));
                 course.videoCount = course.lectures.length;
                 course.totalDuration = course.lectures.reduce((sum, l) => sum + (l.duration||0), 0);
-                invalidateCourseProgressCache(course.id);
-                calculateCourseProgress(course, true);
+                if (typeof invalidateCourseProgressCache === 'function') invalidateCourseProgressCache(course.id);
+                if (typeof calculateCourseProgress === 'function') calculateCourseProgress(course, true);
                 
                 await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
                 
-                const currentView = document.querySelector('.view.active').id;
+                // Synchronize global references
+                if (typeof window !== 'undefined') {
+                    if (Array.isArray(window.courses)) {
+                        const idx = window.courses.findIndex(c => String(c.id) === String(course.id));
+                        if (idx !== -1) window.courses[idx] = course;
+                    }
+                    window.dispatchEvent(new CustomEvent('courseflix:data-updated'));
+                    window.dispatchEvent(new CustomEvent('courseflix:courses-loaded', { detail: window.courses || courses }));
+                }
+
+                const currentView = document.querySelector('.view.active')?.id;
                 if (currentView === 'dashboard-view') {
-                    await renderCourseGrid();
+                    if (typeof renderCourseGrid === 'function') await renderCourseGrid();
                 } else if (currentView === 'subcourse-view') {
                     const viewEl = document.getElementById('subcourse-view');
-                    const path = viewEl.dataset.currentPath || '';
-                    if(courseId === parseInt(viewEl.dataset.courseId)) await renderSubcourseView(courseId, path);
+                    const path = viewEl?.dataset?.currentPath || '';
+                    if(courseId === parseInt(viewEl?.dataset?.courseId) && typeof renderSubcourseView === 'function') {
+                        await renderSubcourseView(courseId, path);
+                    }
+                }
+
+                if (targetSubfolder) {
+                    const subLecs = course.lectures.filter(l => (l.chapter || '') === targetSubfolder || (l.chapter || '').startsWith(targetSubfolder + '/'));
+                    showToast(`Refreshed "${targetSubfolder.split('/').pop()}"! (${subLecs.length} lectures)`);
+                } else {
+                    showToast(`Refreshed "${course.title}"! (${course.lectures.length} lectures)`);
                 }
             } catch (error) {
                 console.error('Error refreshing course:', error);
@@ -3568,6 +3643,7 @@ window.initCourseFlix = async function() {
                 if(btnElement) btnElement.classList.remove('loading');
             }
         }
+        window.refreshCourse = refreshCourse;
 
         async function showMediaViewer(fileHandle, fileType, fileName, lectureProgress) {
             try {
@@ -4120,7 +4196,8 @@ window.initCourseFlix = async function() {
             if (refreshBtn) { 
                 e.stopPropagation(); 
                 const courseId = parseInt(refreshBtn.dataset.id); 
-                await refreshCourse(courseId, refreshBtn); 
+                const subfolder = refreshBtn.dataset.subfolder || null;
+                await refreshCourse(courseId, refreshBtn, subfolder); 
                 return;
             }
             

@@ -121,7 +121,7 @@ export default function SubcourseCard({
                     title="Refresh Content"
                     onClick={(e) => {
                         e.stopPropagation();
-                        onRefreshSubfolder(course.id, fullPath);
+                        onRefreshSubfolder(course.id, fullPath, e.currentTarget);
                     }}
                 >
                     <i className="fas fa-sync-alt"></i>
