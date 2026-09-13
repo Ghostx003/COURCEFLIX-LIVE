@@ -44,6 +44,105 @@ export default function App() {
     window.scrollTo(0, 0);
 
     const handleKeyDown = (e) => {
+      const activeView = document.querySelector('.view.active');
+      const isPlayer = activeView && activeView.id === 'player-view';
+      const activeInput = document.querySelector('input:focus, textarea:focus, [contenteditable="true"]:focus');
+
+      if (isPlayer && !activeInput) {
+        const videoPlayer = document.getElementById('video-player');
+        const key = e.key ? (e.key.length === 1 ? e.key.toLowerCase() : e.key) : '';
+
+        // Z (Add Bookmark) - completely block browser extension rewind/advance at root capture phase
+        if (key === 'z' && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (typeof window.addBookmark === 'function') {
+            window.addBookmark();
+          }
+          return;
+        }
+
+        // Ctrl+Z (Cycle Bookmarks)
+        if (key === 'z' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (typeof window.cycleBookmarks === 'function') {
+            window.cycleBookmarks();
+          }
+          return;
+        }
+
+        // X (Decrease Speed by 0.1x) - completely block browser extension advance/rewind at root capture phase
+        if (key === 'x' && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (videoPlayer) {
+            let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) - 0.1;
+            if (newSpeed < 0.1) newSpeed = 0.1;
+            newSpeed = parseFloat(newSpeed.toFixed(2));
+            videoPlayer.playbackRate = newSpeed;
+            window.activePlaybackRate = newSpeed;
+            const speedBtn = document.getElementById('speed-btn');
+            if (speedBtn) speedBtn.textContent = newSpeed + 'x';
+            if (typeof window.showToast === 'function') {
+              window.showToast(`Speed: ${newSpeed}x`);
+            }
+          }
+          return;
+        }
+
+        // C (Increase Speed by 0.1x) - completely block browser extension advance/rewind at root capture phase
+        if (key === 'c' && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          if (videoPlayer) {
+            let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) + 0.1;
+            if (newSpeed > 5.0) newSpeed = 5.0;
+            newSpeed = parseFloat(newSpeed.toFixed(2));
+            videoPlayer.playbackRate = newSpeed;
+            window.activePlaybackRate = newSpeed;
+            const speedBtn = document.getElementById('speed-btn');
+            if (speedBtn) speedBtn.textContent = newSpeed + 'x';
+            if (typeof window.showToast === 'function') {
+              window.showToast(`Speed: ${newSpeed}x`);
+            }
+          }
+          return;
+        }
+
+        // Prevent extension hijack on known controller keys ('s', 'd', 'v', 'r', 'g')
+        if (['s', 'd', 'v', 'r', 'g'].includes(key) && !e.ctrlKey && !e.metaKey) {
+          if (key === 's') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (typeof window.captureDoubt === 'function') {
+              window.captureDoubt();
+            }
+            return;
+          }
+          if (key === 'd' && e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (typeof window.togglePlayerDppPanel === 'function') {
+              window.togglePlayerDppPanel();
+            }
+            return;
+          }
+          if (key === 'd' || key === 'v' || key === 'r' || key === 'g') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return;
+          }
+        }
+      }
+
       if ((e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {
         e.preventDefault();
         e.stopPropagation();
@@ -51,7 +150,6 @@ export default function App() {
           window.openGlobalSearchShortcut();
         }
       } else if (e.key === 'Escape' || e.code === 'Escape') {
-        const activeView = document.querySelector('.view.active');
         if (activeView && activeView.id === 'search-results-view') {
           e.preventDefault();
           if (typeof window.closeSearchAndReturnToOrigin === 'function') {

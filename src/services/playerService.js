@@ -773,7 +773,6 @@ Object.defineProperties(globalThis, {
                             return;
                         }
                     }
-                }
 
                 let newCourseData = {
                     chapters: [],
@@ -809,6 +808,57 @@ Object.defineProperties(globalThis, {
                             } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
                         }
                     }
+
+                    // CRITICAL PRESERVATION: Keep chapters and lectures that were added externally or from other sources
+                    const scannedChapterNames = new Set((newCourseData.chapters || []).map(ch => ch.name));
+                    (course.chapters || []).forEach(oldCh => {
+                        if (!scannedChapterNames.has(oldCh.name)) {
+                            const oldChLectures = (course.lectures || []).filter(l => (l.chapter || '') === oldCh.name);
+                            newCourseData.chapters.push({ name: oldCh.name, lectures: oldChLectures });
+                            oldChLectures.forEach(l => {
+                                if (!newCourseData.lectures.some(nl => nl.id === l.id)) {
+                                    newCourseData.lectures.push(l);
+                                }
+                            });
+                        }
+                    });
+
+                    if (course.lectures) {
+                        const customLectures = course.lectures.filter(l => 
+                            l.customUrl || 
+                            l.isCustom || 
+                            (course.subCourseData && course.subCourseData[l.chapter] && course.subCourseData[l.chapter].isCustom)
+                        );
+                        if (customLectures.length > 0) {
+                            customLectures.forEach(cLec => {
+                                if (!newCourseData.lectures.some(l => l.id === cLec.id)) {
+                                    newCourseData.lectures.push(cLec);
+                                }
+                            });
+                            
+                            const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
+                            customChapterNames.forEach(chapterName => {
+                                const chapterLectures = newCourseData.lectures.filter(l => l.chapter === chapterName);
+                                const existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
+                                if (!existingChapter) {
+                                    newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
+                                } else {
+                                    existingChapter.lectures = chapterLectures;
+                                }
+                            });
+                        }
+                    }
+
+                    if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
+                        showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
+                        return;
+                    }
+
+                    course.lectures = newCourseData.lectures;
+                    course.chapters = (newCourseData.chapters || []).sort((a,b)=>naturalSort(a,b));
+
+                    refreshedItemTitle = course.title || 'Course';
+                    refreshedVideoCount = course.lectures.length;
                 }
 
                 // Preserve all previous chapters so empty/intermediate subcourses never disappear
@@ -863,6 +913,8 @@ Object.defineProperties(globalThis, {
                 } else {
                     showToast(`Refreshed "${course.title}"! (${course.lectures.length} lectures)`);
                 }
+
+                showToast(`Refreshed "${refreshedItemTitle}" (${refreshedVideoCount} videos)`);
             } catch (error) {
                 console.error('Error refreshing course:', error);
                 showToast('An error occurred while refreshing the course.', true);
@@ -2176,6 +2228,11 @@ Object.defineProperties(globalThis, {
                 course.videoCount = (course.videoCount || 0) + addedVideoCount;
                 course.totalDuration = (course.totalDuration || 0) + addedDuration;
                 
+                course.subCourseData = course.subCourseData || {};
+                course.subCourseData[targetSubPath] = course.subCourseData[targetSubPath] || {};
+                course.subCourseData[targetSubPath].handle = dirHandle;
+                course.subCourseData[targetSubPath].hidden = false;
+
                 await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
                 showToast(`Sub-course "${dirHandle.name}" added successfully (${addedVideoCount} videos)!`, false);
                 

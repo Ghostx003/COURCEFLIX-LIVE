@@ -214,6 +214,150 @@
         .loading-screen { position: fixed; inset: 0; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; z-index: 1000; flex-direction: column; gap: 1rem; }
         .spinner { width: 40px; height: 40px; border: 4px solid var(--border-primary); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* --- LECTURE SELECTION MODAL --- */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center; z-index: 2000; animation: fadeIn 0.2s ease;
+        }
+        .modal-content-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-secondary); border-radius: 16px;
+            width: 92%; max-width: 490px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85); animation: modalScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes modalScaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+        .modal-header {
+            padding: 14px 18px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .modal-btn-icon {
+            background: var(--bg-tertiary); border: 1px solid var(--border-primary); color: var(--text-secondary);
+            width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+        }
+        .modal-btn-icon:hover { color: var(--text-primary); border-color: var(--accent-primary); background: var(--border-secondary); }
+
+        .modal-body {
+            padding: 16px 18px; overflow-y: auto; flex-grow: 1; max-height: 55vh; display: flex; flex-direction: column; gap: 8px;
+        }
+
+        /* Chapter Items */
+        .modal-chapter-item {
+            display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+            background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 10px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .modal-chapter-item:hover {
+            border-color: var(--accent-primary); background: rgba(255, 255, 255, 0.06); transform: translateX(4px);
+        }
+        .modal-chapter-title {
+            font-weight: 600; font-size: 0.95rem; color: var(--text-primary); display: flex; align-items: center; gap: 10px;
+        }
+        .modal-chapter-count {
+            font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-primary); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-primary);
+        }
+
+        /* Lecture Question Palette Grid */
+        .palette-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 10px; padding: 4px;
+        }
+        .palette-square {
+            width: 44px; height: 44px; border-radius: 8px; font-weight: 700; font-size: 0.95rem;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s;
+            user-select: none; position: relative;
+        }
+        .palette-square.completed {
+            background: #10b981; color: #ffffff; border: 1px solid #059669; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+        }
+        .palette-square.completed:hover {
+            filter: brightness(1.1); transform: scale(1.08);
+        }
+        .palette-square.uncompleted {
+            background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-secondary);
+        }
+        .palette-square.uncompleted:hover {
+            border-color: var(--accent-primary); background: rgba(255, 255, 255, 0.08); transform: scale(1.08);
+        }
+        .palette-square.current-selected {
+            box-shadow: 0 0 0 2px var(--accent-primary), 0 0 10px var(--accent-glow) !important;
+        }
+
+        .modal-footer {
+            padding: 12px 18px; border-top: 1px solid var(--border-primary); background: var(--bg-primary);
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .modal-legend {
+            display: flex; align-items: center; gap: 16px; font-size: 0.8rem; color: var(--text-secondary);
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-box { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+        .legend-box.completed { background: #10b981; border: 1px solid #059669; }
+        .legend-box.uncompleted { background: var(--bg-tertiary); border: 1px solid var(--border-secondary); }
+
+        .modal-hover-info {
+            font-size: 0.85rem; color: var(--text-primary); font-weight: 500; min-height: 20px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* Thumbnail Interactive (Double-click Affordance) */
+        .thumbnail-interactive {
+            cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; position: relative;
+        }
+        .thumbnail-interactive:hover {
+            border-color: var(--accent-primary) !important;
+            box-shadow: 0 0 0 1px var(--accent-primary), 0 4px 15px var(--accent-glow) !important;
+        }
+        .thumbnail-interactive .thumb-badge {
+            position: absolute; top: 6px; right: 6px; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px);
+            color: var(--text-primary); font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.2);
+            opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 5;
+        }
+        .thumbnail-interactive:hover .thumb-badge {
+            opacity: 1;
+        }
+
+        /* Subject Order Bar in Dashboard (Feature 3) */
+        .subject-order-bar {
+            background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px;
+            padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;
+        }
+        .subject-order-header {
+            display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);
+        }
+        .subject-chips-list {
+            display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center;
+        }
+        .subject-chip {
+            background: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 8px;
+            padding: 6px 12px; font-size: 0.85rem; font-weight: 600; color: var(--text-primary);
+            display: flex; align-items: center; gap: 8px; cursor: grab; transition: all 0.2s; user-select: none;
+        }
+        .subject-chip:hover {
+            border-color: var(--accent-primary); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .subject-chip.dragging {
+            opacity: 0.4;
+        }
+        .subject-chip.drag-over {
+            border: 2px dashed var(--accent-primary) !important; transform: scale(1.05);
+        }
+
+        /* Allocation Item Dragging (Feature 2) */
+        .allocation-item {
+            transition: all 0.2s ease;
+        }
+        .allocation-item.dragging {
+            opacity: 0.4; background: var(--bg-tertiary);
+        }
+        .allocation-item.drag-over {
+            border: 2px dashed var(--accent-primary) !important; transform: scale(1.01);
+        }
+        .alloc-drag-handle {
+            cursor: grab; color: var(--text-secondary); font-size: 1.1rem; padding: 6px; margin-right: 8px; opacity: 0.6; transition: opacity 0.2s;
+        }
+        .allocation-item:hover .alloc-drag-handle {
+            opacity: 1;
+        }
     </style>
 <script>
 function syncParentTheme() {
@@ -337,6 +481,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
             <div id="playlist-stats-container" style="display: flex; gap: 1rem; margin-bottom: 2rem;"></div>
 
+            <!-- Subject sequence reordering bar (Feature 3) -->
+            <div id="subject-sequence-container" style="margin-bottom: 2rem;"></div>
+
             <div id="continue-container">
                 <!-- Continue learning card here -->
             </div>
@@ -355,6 +502,28 @@ window.addEventListener('DOMContentLoaded', () => {
                 <div class="upcoming-list" id="finished-list-container" style="display: none; padding-top: 1rem;">
                     <!-- Finished lectures here -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LECTURE SELECTION MODAL (Feature 1) -->
+    <div id="lecture-select-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content-card">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px; flex-grow: 1; overflow: hidden;">
+                    <button id="modal-back-btn" class="modal-btn-icon" style="display: none;" title="Back to chapters"><i class="fas fa-arrow-left"></i></button>
+                    <div style="overflow: hidden;">
+                        <div id="modal-course-title" style="font-weight: 700; font-size: 1.15rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Subject</div>
+                        <div id="modal-sub-breadcrumb" style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Select a chapter</div>
+                    </div>
+                </div>
+                <button id="modal-close-btn" class="modal-btn-icon" title="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" id="modal-body-content">
+                <!-- Chapter list or Lecture Question Palette rendered here -->
+            </div>
+            <div class="modal-footer" id="modal-footer-legend">
+                <!-- Dynamic Legend / Hover preview info rendered here -->
             </div>
         </div>
     </div>
@@ -573,6 +742,8 @@ window.addEventListener('DOMContentLoaded', () => {
             if (target) target.classList.add('active');
         }
 
+        let draggedAllocIndex = null;
+
         function renderAllocationList() {
             const container = $('allocation-list-container');
             if (!container) return;
@@ -587,16 +758,21 @@ window.addEventListener('DOMContentLoaded', () => {
                 smartSplit();
             }
 
-            selectedSubjects.forEach(sub => {
+            selectedSubjects.forEach((sub, idx) => {
                 const item = document.createElement('div');
                 item.className = 'allocation-item';
+                item.draggable = true;
+                item.dataset.index = idx;
 
                 const val = allocatedLectures[sub.groupName] || 0;
 
                 item.innerHTML = `
-                    <div>
-                        <div class="allocation-name">${sub.groupName}</div>
-                        <div style="font-size:0.85rem; color:var(--text-secondary);">${sub.facultyName}</div>
+                    <div style="display: flex; align-items: center;">
+                        <i class="fas fa-grip-vertical alloc-drag-handle" title="Drag to reorder subjects before playlist creation"></i>
+                        <div>
+                            <div class="allocation-name">${sub.groupName}</div>
+                            <div style="font-size:0.85rem; color:var(--text-secondary);">${sub.facultyName}</div>
+                        </div>
                     </div>
                     <div class="allocation-controls">
                         <button class="alloc-btn dec-btn" data-group="${sub.groupName}">-</button>
@@ -605,7 +781,47 @@ window.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                item.querySelector('.dec-btn').onclick = () => {
+                item.addEventListener('dragstart', function(e) {
+                    draggedAllocIndex = parseInt(this.dataset.index);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', draggedAllocIndex);
+                    this.classList.add('dragging');
+                });
+
+                item.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    return false;
+                });
+
+                item.addEventListener('dragenter', function(e) {
+                    e.preventDefault();
+                    this.classList.add('drag-over');
+                });
+
+                item.addEventListener('dragleave', function(e) {
+                    this.classList.remove('drag-over');
+                });
+
+                item.addEventListener('drop', function(e) {
+                    e.stopPropagation();
+                    this.classList.remove('drag-over');
+                    const targetIndex = parseInt(this.dataset.index);
+                    if (draggedAllocIndex !== null && draggedAllocIndex !== targetIndex) {
+                        const movedSubject = selectedSubjects.splice(draggedAllocIndex, 1)[0];
+                        selectedSubjects.splice(targetIndex, 0, movedSubject);
+                        renderAllocationList();
+                    }
+                    return false;
+                });
+
+                item.addEventListener('dragend', function() {
+                    this.classList.remove('dragging');
+                    document.querySelectorAll('.allocation-item').forEach(el => el.classList.remove('drag-over'));
+                });
+
+                item.querySelector('.dec-btn').onclick = (e) => {
+                    e.stopPropagation();
                     if ((allocatedLectures[sub.groupName] || 0) > 0) {
                         allocatedLectures[sub.groupName]--;
                         const valEl = $(`alloc-val-${sub.groupName}`);
@@ -614,7 +830,8 @@ window.addEventListener('DOMContentLoaded', () => {
                     }
                 };
 
-                item.querySelector('.inc-btn').onclick = () => {
+                item.querySelector('.inc-btn').onclick = (e) => {
+                    e.stopPropagation();
                     allocatedLectures[sub.groupName] = (allocatedLectures[sub.groupName] || 0) + 1;
                     const valEl = $(`alloc-val-${sub.groupName}`);
                     if (valEl) valEl.textContent = allocatedLectures[sub.groupName];
@@ -793,15 +1010,371 @@ window.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.lecture-item, .continue-card').forEach(el => el.classList.remove('drag-over'));
         }
 
+        // --- SUBJECT ORDER REORDERING AFTER PLAYLIST CREATION (Feature 3) ---
+        let draggedSubjectChipIndex = null;
+
+        function renderSubjectOrderBar() {
+            const container = $('subject-sequence-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!generatedPlaylist || generatedPlaylist.length === 0) return;
+
+            // Collect distinct subjects in their current playlist order
+            const subjectsInPlaylist = [];
+            generatedPlaylist.forEach(lec => {
+                const title = lec.courseTitle || 'Subject';
+                if (!subjectsInPlaylist.includes(title)) {
+                    subjectsInPlaylist.push(title);
+                }
+            });
+
+            if (subjectsInPlaylist.length <= 1) return;
+
+            const bar = document.createElement('div');
+            bar.className = 'subject-order-bar';
+
+            bar.innerHTML = `
+                <div class="subject-order-header">
+                    <span><i class="fas fa-sort-amount-down-alt" style="color: var(--accent-primary); margin-right: 6px;"></i> Subject Order</span>
+                    <span style="font-size: 0.8rem; font-weight: normal; opacity: 0.8;">Drag & drop subjects to reorder sequence</span>
+                </div>
+                <div class="subject-chips-list" id="subject-chips-container"></div>
+            `;
+
+            const chipsContainer = bar.querySelector('#subject-chips-container');
+
+            subjectsInPlaylist.forEach((subName, sIdx) => {
+                const chip = document.createElement('div');
+                chip.className = 'subject-chip';
+                chip.draggable = true;
+                chip.dataset.index = sIdx;
+                
+                const subLecCount = generatedPlaylist.filter(l => (l.courseTitle || 'Subject') === subName).length;
+
+                chip.innerHTML = `
+                    <i class="fas fa-grip-vertical" style="opacity: 0.5;"></i>
+                    <span>${sIdx + 1}. ${subName}</span>
+                    <span style="font-size: 0.75rem; background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-primary); color: var(--text-secondary);">${subLecCount} lec</span>
+                `;
+
+                chip.addEventListener('dragstart', function(e) {
+                    draggedSubjectChipIndex = parseInt(this.dataset.index);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', draggedSubjectChipIndex);
+                    this.classList.add('dragging');
+                });
+
+                chip.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    return false;
+                });
+
+                chip.addEventListener('dragenter', function(e) {
+                    e.preventDefault();
+                    this.classList.add('drag-over');
+                });
+
+                chip.addEventListener('dragleave', function(e) {
+                    this.classList.remove('drag-over');
+                });
+
+                chip.addEventListener('drop', function(e) {
+                    e.stopPropagation();
+                    this.classList.remove('drag-over');
+                    const targetIndex = parseInt(this.dataset.index);
+                    if (draggedSubjectChipIndex !== null && draggedSubjectChipIndex !== targetIndex) {
+                        const movedSubject = subjectsInPlaylist.splice(draggedSubjectChipIndex, 1)[0];
+                        subjectsInPlaylist.splice(targetIndex, 0, movedSubject);
+                        reorderPlaylistBySubjects(subjectsInPlaylist);
+                    }
+                    return false;
+                });
+
+                chip.addEventListener('dragend', function() {
+                    this.classList.remove('dragging');
+                    document.querySelectorAll('.subject-chip').forEach(el => el.classList.remove('drag-over'));
+                });
+
+                chipsContainer.appendChild(chip);
+            });
+
+            container.appendChild(bar);
+        }
+
+        function reorderPlaylistBySubjects(newSubjectOrder) {
+            const newPlaylist = [];
+            newSubjectOrder.forEach(subName => {
+                const lecs = generatedPlaylist.filter(lec => (lec.courseTitle || 'Subject') === subName);
+                newPlaylist.push(...lecs);
+            });
+            // Keep any fallback items
+            generatedPlaylist.forEach(lec => {
+                if (!newSubjectOrder.includes(lec.courseTitle || 'Subject')) {
+                    newPlaylist.push(lec);
+                }
+            });
+
+            generatedPlaylist = newPlaylist;
+            localStorage.setItem('courseflix_goals_playlist', JSON.stringify(generatedPlaylist));
+            renderDashboard();
+        }
+
+        // --- LECTURE SELECTION MODAL (Feature 1) ---
+        let currentModalContext = null;
+
+        function openLectureModal(playlistIndex) {
+            if (!generatedPlaylist || !generatedPlaylist[playlistIndex]) return;
+            const currentLec = generatedPlaylist[playlistIndex];
+
+            let matchingCourses = courses.filter(c => (c.title || c.name || 'Subject') === currentLec.courseTitle && !c.isIgnored);
+            if (matchingCourses.length === 0) {
+                matchingCourses = courses.filter(c => String(c.id) === String(currentLec.courseId) && !c.isIgnored);
+            }
+            if (matchingCourses.length === 0 && courses.length > 0) {
+                matchingCourses = [courses.find(c => String(c.id) === String(currentLec.courseId)) || courses[0]];
+            }
+
+            let chapters = [];
+            let directLectures = [];
+
+            matchingCourses.forEach(c => {
+                if (!c) return;
+                if (c.chapters && c.chapters.length > 0) {
+                    c.chapters.forEach(ch => {
+                        if (isSubfolderIgnored(c, ch.name)) return;
+                        const fac = getSubfolderFacultyName(c, ch.name);
+                        if (currentLec.facultyName && fac && fac !== currentLec.facultyName && fac !== 'N/A Faculty' && fac !== 'Unknown Faculty') return;
+
+                        const customName = c.subCourseData && c.subCourseData[ch.name] && c.subCourseData[ch.name].customName;
+                        chapters.push({
+                            course: c,
+                            chapter: ch,
+                            displayName: customName || ch.name,
+                            rawName: ch.name,
+                            lectures: ch.lectures || []
+                        });
+                    });
+                } else if (c.lectures && c.lectures.length > 0) {
+                    const fac = c.facultyName;
+                    if (currentLec.facultyName && fac && fac !== currentLec.facultyName && fac !== 'Unknown Faculty') return;
+                    c.lectures.forEach((l, lIdx) => {
+                        directLectures.push({
+                            course: c,
+                            lecture: l,
+                            index: lIdx
+                        });
+                    });
+                }
+            });
+
+            currentModalContext = {
+                playlistIndex: playlistIndex,
+                currentLec: currentLec,
+                matchingCourses: matchingCourses,
+                chapters: chapters,
+                directLectures: directLectures,
+                currentChapter: null
+            };
+
+            const modal = $('lecture-select-modal');
+            if (!modal) return;
+
+            $('modal-course-title').textContent = currentLec.courseTitle || 'Subject';
+
+            if (chapters.length > 0) {
+                // Case 1: The subject contains subfolders/chapters
+                renderModalChapterList();
+            } else {
+                // Case 2: The subject has no subfolders
+                renderModalPalette(directLectures, null);
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function closeLectureModal() {
+            const modal = $('lecture-select-modal');
+            if (modal) modal.style.display = 'none';
+            currentModalContext = null;
+        }
+
+        function renderModalChapterList() {
+            if (!currentModalContext) return;
+            currentModalContext.currentChapter = null;
+
+            const backBtn = $('modal-back-btn');
+            if (backBtn) backBtn.style.display = 'none';
+
+            $('modal-sub-breadcrumb').textContent = 'Select a chapter';
+
+            const body = $('modal-body-content');
+            if (!body) return;
+            body.innerHTML = '';
+
+            const legend = $('modal-footer-legend');
+            if (legend) {
+                legend.innerHTML = `
+                    <div class="modal-hover-info" id="modal-hover-info">Select any chapter to browse and pick a lecture</div>
+                `;
+            }
+
+            if (currentModalContext.chapters.length === 0) {
+                body.innerHTML = '<div class="empty-state" style="padding: 1.5rem;"><i class="fas fa-folder-open" style="font-size: 2rem;"></i><p>No chapters available for this subject.</p></div>';
+                return;
+            }
+
+            currentModalContext.chapters.forEach(chObj => {
+                const item = document.createElement('div');
+                item.className = 'modal-chapter-item';
+                const lecCount = chObj.lectures ? chObj.lectures.length : 0;
+
+                let completedCount = 0;
+                if (chObj.lectures) {
+                    chObj.lectures.forEach(l => {
+                        const prog = courseProgress[`${chObj.course.id}_${l.id}`];
+                        if (prog && prog.completed) completedCount++;
+                    });
+                }
+
+                item.innerHTML = `
+                    <div class="modal-chapter-title">
+                        <i class="fas fa-folder" style="color: var(--accent-primary);"></i>
+                        <span title="${chObj.displayName}">${chObj.displayName}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="modal-chapter-count">${completedCount}/${lecCount}</span>
+                        <i class="fas fa-chevron-right" style="font-size: 0.8rem; color: var(--text-secondary);"></i>
+                    </div>
+                `;
+
+                item.onclick = () => {
+                    renderModalPalette(chObj.lectures, chObj);
+                };
+
+                body.appendChild(item);
+            });
+        }
+
+        function renderModalPalette(lectureList, chapterObj) {
+            if (!currentModalContext) return;
+            currentModalContext.currentChapter = chapterObj;
+
+            const backBtn = $('modal-back-btn');
+            if (chapterObj) {
+                if (backBtn) {
+                    backBtn.style.display = 'flex';
+                    backBtn.onclick = () => renderModalChapterList();
+                }
+                $('modal-sub-breadcrumb').textContent = chapterObj.displayName;
+            } else {
+                if (backBtn) backBtn.style.display = 'none';
+                $('modal-sub-breadcrumb').textContent = 'Lectures Palette';
+            }
+
+            const body = $('modal-body-content');
+            if (!body) return;
+            body.innerHTML = '';
+
+            const legend = $('modal-footer-legend');
+            if (legend) {
+                legend.innerHTML = `
+                    <div class="modal-legend">
+                        <div class="legend-item"><span class="legend-box completed"></span> Completed</div>
+                        <div class="legend-item"><span class="legend-box uncompleted"></span> Uncompleted</div>
+                    </div>
+                    <div class="modal-hover-info" id="modal-hover-info">Click any lecture square to select it for Goals View</div>
+                `;
+            }
+
+            const hoverInfoEl = $('modal-hover-info');
+
+            if (!lectureList || lectureList.length === 0) {
+                body.innerHTML = '<div class="empty-state" style="padding: 1.5rem;"><i class="fas fa-video-slash" style="font-size: 2rem;"></i><p>No lectures found.</p></div>';
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'palette-grid';
+
+            const currentLec = currentModalContext.currentLec;
+
+            lectureList.forEach((item, idx) => {
+                const lec = item.lecture || item;
+                const course = item.course || (chapterObj ? chapterObj.course : currentModalContext.matchingCourses[0]);
+                const courseId = course ? course.id : currentLec.courseId;
+
+                const progId = `${courseId}_${lec.id}`;
+                const prog = courseProgress[progId];
+                let isCompleted = false;
+                const durSecs = lec.duration && typeof lec.duration === 'number' ? lec.duration : 3600;
+                if (prog && prog.completed) isCompleted = true;
+                else if (prog && prog.currentTime && prog.currentTime >= durSecs && durSecs > 0) isCompleted = true;
+
+                const isCurrentActive = String(currentLec.lectureId) === String(lec.id) && String(currentLec.courseId) === String(courseId);
+
+                const square = document.createElement('button');
+                square.className = `palette-square ${isCompleted ? 'completed' : 'uncompleted'} ${isCurrentActive ? 'current-selected' : ''}`;
+                square.textContent = idx + 1;
+
+                const h = Math.floor(durSecs / 3600);
+                const m = Math.floor((durSecs % 3600) / 60);
+                const durStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+                const lecTitle = lec.title || lec.name || lec.displayName || `Lecture ${idx + 1}`;
+
+                square.title = `[${idx + 1}] ${lecTitle} (${durStr})${isCompleted ? ' - Completed' : ''}`;
+
+                square.onmouseenter = () => {
+                    if (hoverInfoEl) {
+                        hoverInfoEl.innerHTML = `<strong>Lecture ${idx + 1}:</strong> ${lecTitle} <span style="color:var(--accent-primary);">(${durStr})</span> ${isCompleted ? '<span style="color:#10b981;">• Completed</span>' : ''}`;
+                    }
+                };
+
+                square.onclick = () => {
+                    selectLectureFromModal(course, lec, chapterObj, idx + 1);
+                };
+
+                grid.appendChild(square);
+            });
+
+            body.appendChild(grid);
+        }
+
+        function selectLectureFromModal(course, lec, chapterObj, lectureNumber) {
+            if (!currentModalContext) return;
+            const playlistIndex = currentModalContext.playlistIndex;
+            const currentLec = currentModalContext.currentLec;
+
+            const newLec = {
+                courseId: course.id,
+                courseTitle: course.title || course.name || currentLec.courseTitle,
+                lectureId: lec.id,
+                title: lec.title || lec.name || lec.displayName || `Lecture ${lectureNumber}`,
+                duration: lec.duration || 3600,
+                chName: chapterObj ? chapterObj.rawName : undefined,
+                facultyName: currentLec.facultyName || course.facultyName
+            };
+
+            generatedPlaylist[playlistIndex] = newLec;
+            localStorage.setItem('courseflix_goals_playlist', JSON.stringify(generatedPlaylist));
+
+            closeLectureModal();
+            renderDashboard();
+        }
+
         function renderDashboard() {
             $('dashboard-date').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
             
             const continueContainer = $('continue-container');
             const upcomingContainer = $('upcoming-list-container');
             const finishedContainer = $('finished-list-container');
+            const seqContainer = $('subject-sequence-container');
+
             if (continueContainer) continueContainer.innerHTML = '';
             if (upcomingContainer) upcomingContainer.innerHTML = '';
             if (finishedContainer) finishedContainer.innerHTML = '';
+            if (seqContainer) seqContainer.innerHTML = '';
 
             const statsContainer = $('playlist-stats-container');
             if (statsContainer) statsContainer.innerHTML = '';
@@ -810,6 +1383,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (upcomingContainer) upcomingContainer.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><h2>No goals set for today!</h2><p>Click "New Playlist" to create your goals.</p></div>';
                 return;
             }
+
+            renderSubjectOrderBar();
 
             let totalDuration = 0;
             let totalWatched = 0;
@@ -945,14 +1520,15 @@ window.addEventListener('DOMContentLoaded', () => {
                     // Continue Card
                     if (continueContainer) {
                         continueContainer.innerHTML = `
-                            <div class="continue-card" draggable="true" data-index="${idx}" onclick="playLecture('${lec.courseId}', '${lec.lectureId}')">
-                                <div style="width: 200px; height: 160px; background-color: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; margin-right: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
+                            <div class="continue-card" draggable="true" data-index="${idx}" onclick="if(!event.target.closest('.thumbnail-interactive')) playLecture('${lec.courseId}', '${lec.lectureId}')">
+                                <div class="thumbnail-interactive" style="width: 200px; height: 160px; background-color: var(--bg-secondary); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; margin-right: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.4);" onclick="event.stopPropagation();" ondblclick="event.stopPropagation(); openLectureModal(${idx});" title="Double-click to select a specific lecture">
                                     <div style="width: 100%; flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
                                         ${thumbHtml}
                                     </div>
                                     <div style="padding: 12px 14px; font-weight: 700; font-size: 1rem; color: #fff; height: 50px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                         ${lec.courseTitle}
                                     </div>
+                                    <div class="thumb-badge"><i class="fas fa-th"></i> Double-click</div>
                                 </div>
                                 <div class="continue-info">
                                     <div class="continue-label">Continue Watching</div>
@@ -989,20 +1565,21 @@ window.addEventListener('DOMContentLoaded', () => {
                     const opacityStyle = isCompleted ? 'opacity: 0.5;' : '';
                     const strikeStyle = isCompleted ? 'text-decoration: line-through;' : '';
                     if (isCompleted) {
-                        item.style.pointerEvents = 'none';
                         item.style.borderColor = 'var(--border-secondary)';
+                        item.draggable = false;
                     } else {
                         item.draggable = true;
                     }
                     
                     item.innerHTML = `
-                        <div style="width: 130px; height: 100px; background-color: var(--bg-secondary); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3); ${opacityStyle}">
+                        <div class="thumbnail-interactive" style="width: 130px; height: 100px; background-color: var(--bg-secondary); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3); ${opacityStyle}" onclick="event.stopPropagation();" ondblclick="event.stopPropagation(); openLectureModal(${idx});" title="Double-click to select a specific lecture">
                             <div style="width: 100%; flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
                                 ${thumbHtml}
                             </div>
                             <div style="padding: 6px 10px; font-weight: 700; font-size: 0.8rem; color: #fff; height: 32px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ${strikeStyle}">
                                 ${lec.courseTitle}
                             </div>
+                            <div class="thumb-badge"><i class="fas fa-th"></i> Double-click</div>
                         </div>
                         <div class="lecture-time" style="${isCompleted ? 'background: transparent; border: 1px solid var(--accent-primary); color: var(--accent-primary);' : ''}">${isCompleted ? '<i class="fas fa-check"></i>' : startTimeStr}</div>
                         <div class="lecture-details" style="${opacityStyle}">
@@ -1020,10 +1597,11 @@ window.addEventListener('DOMContentLoaded', () => {
                         ${isCompleted ? '' : '<i class="fas fa-grip-vertical drag-handle" title="Drag to reorder subjects" style="color: var(--text-tertiary); margin-left: 1rem; cursor: grab;"></i>'}
                     `;
                     item.onclick = (e) => {
-                        if (e.target.closest('.drag-handle')) return;
-                        if (!isCompleted && idx > firstUncompletedIdx && firstUncompletedIdx !== -1) {
+                        if (e.target.closest('.drag-handle') || e.target.closest('.thumbnail-interactive')) return;
+                        if (isCompleted) return;
+                        if (idx > firstUncompletedIdx && firstUncompletedIdx !== -1) {
                             alert("Complete the previous lecture in order to gain access to this!");
-                        } else if (!isCompleted) {
+                        } else {
                             playLecture(lec.courseId, lec.lectureId);
                         }
                     };
@@ -1147,6 +1725,21 @@ window.addEventListener('DOMContentLoaded', () => {
                     }
                 };
             }
+
+            // Modal close listeners (Feature 1)
+            const modalCloseBtn = $('modal-close-btn');
+            if (modalCloseBtn) modalCloseBtn.onclick = closeLectureModal;
+
+            const selectModal = $('lecture-select-modal');
+            if (selectModal) {
+                selectModal.onclick = (e) => {
+                    if (e.target.id === 'lecture-select-modal') closeLectureModal();
+                };
+            }
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeLectureModal();
+            });
         }
 
         // --- INIT ---

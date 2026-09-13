@@ -3512,7 +3512,6 @@ window.initCourseFlix = async function() {
                             return;
                         }
                     }
-                }
 
                 let newCourseData = {
                     chapters: [],
@@ -3548,7 +3547,6 @@ window.initCourseFlix = async function() {
                             } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
                         }
                     }
-                }
 
                 // Preserve all previous chapters so empty/intermediate subcourses never disappear
                 if (Array.isArray(course.chapters)) {
@@ -3598,6 +3596,18 @@ window.initCourseFlix = async function() {
                             }
                         });
                     }
+
+                    // Safeguard: If scan found 0 lectures, but old course had lectures, check if files were inaccessible
+                    if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
+                        showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
+                        return;
+                    }
+
+                    course.lectures = newCourseData.lectures;
+                    course.chapters = (newCourseData.chapters || []).sort((a,b)=>naturalSort(a,b));
+
+                    refreshedItemTitle = course.title || 'Course';
+                    refreshedVideoCount = course.lectures.length;
                 }
 
                 course.lectures = newCourseData.lectures;
@@ -3636,6 +3646,8 @@ window.initCourseFlix = async function() {
                 } else {
                     showToast(`Refreshed "${course.title}"! (${course.lectures.length} lectures)`);
                 }
+
+                showToast(`Refreshed "${refreshedItemTitle}" (${refreshedVideoCount} videos)`);
             } catch (error) {
                 console.error('Error refreshing course:', error);
                 showToast('An error occurred while refreshing the course.', true);
@@ -4205,6 +4217,7 @@ window.initCourseFlix = async function() {
             if (refreshCustomBtn) {
                 e.stopPropagation();
                 const courseId = parseInt(refreshCustomBtn.dataset.id);
+                const subfolder = refreshCustomBtn.dataset.subfolder || '';
                 
                 let uploader = document.getElementById('custom-course-refresh-upload');
                 if (!uploader) {
@@ -4220,7 +4233,9 @@ window.initCourseFlix = async function() {
                         if (!file) return;
                         
                         const cId = parseInt(uploader.dataset.courseId);
-                        const targetCourse = courses.find(c => c.id === cId);
+                        const targetSubfolder = uploader.dataset.subfolder || '';
+                        const targetCourse = (typeof courses !== 'undefined' && Array.isArray(courses) ? courses.find(c => String(c.id) === String(cId)) : null) ||
+                                             (window.courses ? window.courses.find(c => String(c.id) === String(cId)) : null);
                         if (!targetCourse) return;
 
                         const reader = new FileReader();
@@ -4267,7 +4282,8 @@ window.initCourseFlix = async function() {
                                     id: Date.now().toString() + '_' + newLectures.length,
                                     displayName: `Lecture ${newLectures.length + 1}`,
                                     customUrl: currentUrl,
-                                    duration: durationSeconds
+                                    duration: durationSeconds,
+                                    chapter: targetSubfolder || "Custom Lectures"
                                 });
                             }
                             
@@ -4276,14 +4292,46 @@ window.initCourseFlix = async function() {
                                 return;
                             }
                             
-                            targetCourse.lectures = newLectures;
-                            targetCourse.chapters = [{ name: "Custom Lectures", lectures: newLectures }];
-                            targetCourse.videoCount = newLectures.length;
+                            if (targetSubfolder) {
+                                targetCourse.lectures = (targetCourse.lectures || []).filter(l => !((l.chapter || '') === targetSubfolder || (l.chapter || '').startsWith(targetSubfolder + '/')));
+                                targetCourse.chapters = (targetCourse.chapters || []).filter(ch => !((ch.name || '') === targetSubfolder || (ch.name || '').startsWith(targetSubfolder + '/')));
+                                targetCourse.lectures.push(...newLectures);
+                                targetCourse.chapters.push({ name: targetSubfolder, lectures: newLectures });
+                                targetCourse.chapters.sort((a, b) => naturalSort(a, b));
+                            } else {
+                                targetCourse.lectures = newLectures;
+                                targetCourse.chapters = [{ name: "Custom Lectures", lectures: newLectures }];
+                            }
+                            targetCourse.videoCount = targetCourse.lectures.length;
+                            targetCourse.totalDuration = targetCourse.lectures.reduce((sum, l) => sum + (l.duration || 0), 0);
                             
                             await new Promise(r => getStore(STORE_NAME, 'readwrite').put(targetCourse).onsuccess = r);
                             
+                            if (typeof courses !== 'undefined' && Array.isArray(courses)) {
+                                const idx = courses.findIndex(c => String(c.id) === String(targetCourse.id));
+                                if (idx !== -1) courses[idx] = targetCourse;
+                            }
+                            if (typeof window.courses !== 'undefined' && Array.isArray(window.courses)) {
+                                const idx = window.courses.findIndex(c => String(c.id) === String(targetCourse.id));
+                                if (idx !== -1) window.courses[idx] = targetCourse;
+                            }
+
                             showToast(`Refreshed! Found ${newLectures.length} lectures.`);
-                            renderCourseGrid();
+                            const activeView = document.querySelector('.view.active');
+                            const currentView = activeView ? activeView.id : '';
+                            if (currentView === 'dashboard-view' || currentView === 'dashboard-view-el') {
+                                await renderCourseGrid();
+                            } else if (currentView === 'subcourse-view') {
+                                const viewEl = document.getElementById('subcourse-view');
+                                const path = (viewEl && viewEl.dataset.currentPath) || '';
+                                if (viewEl && String(targetCourse.id) === String(viewEl.dataset.courseId)) {
+                                    await renderSubcourseView(targetCourse.id, path, false);
+                                } else {
+                                    await renderCourseGrid();
+                                }
+                            } else {
+                                await renderCourseGrid();
+                            }
                         };
                         reader.readAsText(file);
                         uploader.value = ''; // Reset for next time
@@ -4291,6 +4339,7 @@ window.initCourseFlix = async function() {
                 }
                 
                 uploader.dataset.courseId = courseId;
+                uploader.dataset.subfolder = subfolder;
                 uploader.click();
                 return;
             }
@@ -5033,6 +5082,11 @@ window.initCourseFlix = async function() {
                 course.videoCount = (course.videoCount || 0) + addedVideoCount;
                 course.totalDuration = (course.totalDuration || 0) + addedDuration;
                 
+                course.subCourseData = course.subCourseData || {};
+                course.subCourseData[targetSubPath] = course.subCourseData[targetSubPath] || {};
+                course.subCourseData[targetSubPath].handle = dirHandle;
+                course.subCourseData[targetSubPath].hidden = false;
+
                 await new Promise(r => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = r);
                 showToast(`Sub-course "${dirHandle.name}" added successfully (${addedVideoCount} videos)!`, false);
                 
@@ -7643,20 +7697,70 @@ window.initCourseFlix = async function() {
             switch(key) { 
                 case ' ': if (view.id === 'player-view') playPauseBtn.click(); break;
                 case 'c': 
+                case 'C':
                     if (view.id === 'player-view') {
-                        let newSpeed = videoPlayer.playbackRate + 0.1;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) + 0.1;
                         if (newSpeed > 5.0) newSpeed = 5.0;
-                        videoPlayer.playbackRate = parseFloat(newSpeed.toFixed(2));
+                        newSpeed = parseFloat(newSpeed.toFixed(2));
+                        videoPlayer.playbackRate = newSpeed;
+                        window.activePlaybackRate = newSpeed;
+                        if (typeof speedBtn !== 'undefined' && speedBtn) {
+                            speedBtn.textContent = newSpeed + 'x';
+                        }
+                        if (typeof showToast === 'function') {
+                            showToast(`Speed: ${newSpeed}x`);
+                        }
                     }
                     break;
                 case 'x':
+                case 'X':
                     if (view.id === 'player-view') {
-                        let newSpeed = videoPlayer.playbackRate - 0.1;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        let newSpeed = (videoPlayer.playbackRate || window.activePlaybackRate || 1.0) - 0.1;
                         if (newSpeed < 0.1) newSpeed = 0.1;
-                        videoPlayer.playbackRate = parseFloat(newSpeed.toFixed(2));
+                        newSpeed = parseFloat(newSpeed.toFixed(2));
+                        videoPlayer.playbackRate = newSpeed;
+                        window.activePlaybackRate = newSpeed;
+                        if (typeof speedBtn !== 'undefined' && speedBtn) {
+                            speedBtn.textContent = newSpeed + 'x';
+                        }
+                        if (typeof showToast === 'function') {
+                            showToast(`Speed: ${newSpeed}x`);
+                        }
                     }
                     break;
-                case 's': if (view.id === 'player-view' && currentCourse && currentLectureLi) captureDoubt(); break;
+                case 's':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        if (currentCourse && currentLectureLi) captureDoubt();
+                    }
+                    break;
+                case 'd':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        if (e.shiftKey) {
+                            window.togglePlayerDppPanel();
+                        }
+                    }
+                    break;
+                case 'v':
+                case 'r':
+                case 'g':
+                    if (view.id === 'player-view') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                    }
+                    break;
                 case 'n': 
                     if (e.shiftKey) {
                         e.preventDefault();
@@ -7667,12 +7771,6 @@ window.initCourseFlix = async function() {
                             if (nextLi) playVideo(nextLi);
                             else showToast('No next lecture available.');
                         }
-                    }
-                    break;
-                case 'd':
-                    if (e.shiftKey) {
-                        e.preventDefault();
-                        if (view.id === 'player-view') window.togglePlayerDppPanel();
                     }
                     break;
                 case 'p': 
@@ -7692,6 +7790,7 @@ window.initCourseFlix = async function() {
                     if (view.id === 'player-view') {
                         e.preventDefault();
                         e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
                         if (e.ctrlKey || e.metaKey) {
                             cycleBookmarks();
                         } else {
@@ -7840,8 +7939,12 @@ window.initCourseFlix = async function() {
 
                 default: shouldPreventDefault = false; break;
             } 
-            if (shouldPreventDefault) e.preventDefault();
-        });
+            if (shouldPreventDefault) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            }
+        }, true);
         
         mediaResizeHandle.addEventListener('mousedown', (e) => { 
             e.preventDefault(); 
@@ -8054,6 +8157,10 @@ window.initCourseFlix = async function() {
             window.savedTimelinePosition = null;
             window.isBookmarkCyclingSession = false;
         }
+
+        window.addBookmark = addBookmark;
+        window.cycleBookmarks = cycleBookmarks;
+        window.jumpToPresentTimeline = jumpToPresentTimeline;
 
         async function clearCurrentVideoBookmarks() {
             const activeCourse = currentCourse || (typeof window !== 'undefined' ? window.currentCourse : null);
@@ -9654,6 +9761,7 @@ window.initCourseFlix = async function() {
                 showToast("Could not capture screenshot.", true);
             }
         }
+        window.captureDoubt = captureDoubt;
 
         async function renderContinueView() {
             const t0 = performance.now();
