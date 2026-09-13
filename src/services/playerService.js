@@ -747,59 +747,145 @@ Object.defineProperties(globalThis, {
         }
         
         async function refreshCourse(courseId, btnElement) {
-            const course = (window.courses || []).find(c => c.id === courseId);
-            if (!course || !course.handle) {
-                showToast('Could not find the root course folder. It may have been moved or deleted.', true);
+            const course = (window.courses || []).find(c => String(c.id) === String(courseId));
+            if (!course) {
+                showToast('Could not find course data.', true);
+                return;
+            }
+
+            const subfolder = btnElement && btnElement.dataset ? btnElement.dataset.subfolder : null;
+
+            if (course.isCustomCourse || (subfolder && course.subCourseData && course.subCourseData[subfolder]?.isCustom)) {
+                let uploader = document.getElementById('custom-course-refresh-upload');
+                if (uploader) {
+                    uploader.dataset.courseId = course.id;
+                    uploader.dataset.subfolder = subfolder || '';
+                    uploader.click();
+                    return;
+                }
+            }
+
+            if (!course.handle && !(subfolder && course.subCourseData?.[subfolder]?.handle)) {
+                showToast('Could not find course folder. Please use Relocate button to re-link it.', true);
                 return;
             }
 
             if (btnElement) btnElement.classList.add('loading');
 
             try {
-                if ((await course.handle.queryPermission({ mode: 'read' })) !== 'granted') {
-                    if ((await course.handle.requestPermission({ mode: 'read' })) !== 'granted') {
+                if (subfolder && course.subCourseData?.[subfolder]?.handle) {
+                    const subHandle = course.subCourseData[subfolder].handle;
+                    let perm = await subHandle.queryPermission({ mode: 'read' });
+                    if (perm !== 'granted') {
+                        perm = await subHandle.requestPermission({ mode: 'read' });
+                    }
+                    if (perm !== 'granted') {
+                        showToast('Permission denied for subfolder.', true);
+                        return;
+                    }
+
+                    const subData = await scanDirectoryHandle(subHandle, subfolder, course.lectures || []);
+                    if (subData && subData.lectures) {
+                        course.lectures = (course.lectures || []).filter(l => !((l.chapter || '') === subfolder || (l.chapter || '').startsWith(subfolder + '/')));
+                        course.chapters = (course.chapters || []).filter(ch => !((ch.name || '') === subfolder || (ch.name || '').startsWith(subfolder + '/')));
+                        course.lectures.push(...subData.lectures);
+                        course.chapters.push(...subData.chapters);
+                    }
+                } else if (course.handle) {
+                    let perm = await course.handle.queryPermission({ mode: 'read' });
+                    if (perm !== 'granted') {
+                        perm = await course.handle.requestPermission({ mode: 'read' });
+                    }
+                    if (perm !== 'granted') {
                         showToast('Permission denied. Cannot refresh course.', true);
                         return;
                     }
-                }
 
-                const newCourseData = await scanDirectoryHandle(course.handle, '', course.lectures || []);
-                
-                // Merge overriden custom relocated subfolder handles if any exist
-                if (course.subCourseData) {
-                    for (const subPath of Object.keys(course.subCourseData)) {
-                        const subHandle = course.subCourseData[subPath].handle;
-                        if (subHandle) {
-                            try {
-                                if (await subHandle.queryPermission({ mode: 'read' }) === 'granted') {
-                                    const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
-                                    // Remove old scan results for this subpath
-                                    newCourseData.lectures = newCourseData.lectures.filter(l => !(l.chapter === subPath || l.chapter.startsWith(subPath + '/')));
-                                    newCourseData.chapters = newCourseData.chapters.filter(ch => !(ch.name === subPath || ch.name.startsWith(subPath + '/')));
-                                    // Inject custom scan results
-                                    newCourseData.lectures.push(...subData.lectures);
-                                    newCourseData.chapters.push(...subData.chapters);
-                                }
-                            } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
+                    const newCourseData = await scanDirectoryHandle(course.handle, '', course.lectures || []);
+                    
+                    if (course.subCourseData) {
+                        for (const subPath of Object.keys(course.subCourseData)) {
+                            const subHandle = course.subCourseData[subPath]?.handle;
+                            if (subHandle) {
+                                try {
+                                    let subPerm = await subHandle.queryPermission({ mode: 'read' });
+                                    if (subPerm !== 'granted') {
+                                        subPerm = await subHandle.requestPermission({ mode: 'read' });
+                                    }
+                                    if (subPerm === 'granted') {
+                                        const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
+                                        newCourseData.lectures = newCourseData.lectures.filter(l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/')));
+                                        newCourseData.chapters = newCourseData.chapters.filter(ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/')));
+                                        newCourseData.lectures.push(...subData.lectures);
+                                        newCourseData.chapters.push(...subData.chapters);
+                                    }
+                                } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
+                            }
                         }
                     }
+
+                    if (course.lectures) {
+                        const customLectures = course.lectures.filter(l => 
+                            l.customUrl || 
+                            l.isCustom || 
+                            (course.subCourseData && course.subCourseData[l.chapter] && course.subCourseData[l.chapter].isCustom)
+                        );
+                        if (customLectures.length > 0) {
+                            customLectures.forEach(cLec => {
+                                if (!newCourseData.lectures.some(l => l.id === cLec.id)) {
+                                    newCourseData.lectures.push(cLec);
+                                }
+                            });
+                            
+                            const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
+                            customChapterNames.forEach(chapterName => {
+                                const chapterLectures = newCourseData.lectures.filter(l => l.chapter === chapterName);
+                                const existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
+                                if (!existingChapter) {
+                                    newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
+                                } else {
+                                    existingChapter.lectures = chapterLectures;
+                                }
+                            });
+                        }
+                    }
+
+                    if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
+                        showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
+                        return;
+                    }
+
+                    course.lectures = newCourseData.lectures;
+                    course.chapters = (newCourseData.chapters || []).sort((a,b)=>naturalSort(a,b));
                 }
 
-                course.lectures = newCourseData.lectures;
-                course.chapters = newCourseData.chapters.sort((a,b)=>naturalSort(a,b));
-                course.videoCount = course.lectures.length;
-                course.totalDuration = course.lectures.reduce((sum, l) => sum + (l.duration||0), 0);
+                course.videoCount = (course.lectures || []).length;
+                course.totalDuration = (course.lectures || []).reduce((sum, l) => sum + (l.duration||0), 0);
                 
                 await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
                 
-                const currentView = document.querySelector('.view.active').id;
-                if (currentView === 'dashboard-view') {
+                if (typeof window.courses !== 'undefined' && Array.isArray(window.courses)) {
+                    const idx = window.courses.findIndex(c => String(c.id) === String(course.id));
+                    if (idx !== -1) window.courses[idx] = course;
+                }
+
+                const activeView = document.querySelector('.view.active');
+                const currentView = activeView ? activeView.id : '';
+                if (currentView === 'dashboard-view' || currentView === 'dashboard-view-el') {
                     await renderCourseGrid();
                 } else if (currentView === 'subcourse-view') {
                     const viewEl = document.getElementById('subcourse-view');
-                    const path = viewEl.dataset.currentPath || '';
-                    if(courseId === parseInt(viewEl.dataset.courseId)) await renderSubcourseView(courseId, path);
+                    const path = (viewEl && viewEl.dataset.currentPath) || '';
+                    if (viewEl && String(courseId) === String(viewEl.dataset.courseId)) {
+                        await renderSubcourseView(course.id, path, false);
+                    } else {
+                        await renderCourseGrid();
+                    }
+                } else if (currentView === 'upload-view') {
+                    if (typeof renderUploadView === 'function') renderUploadView();
                 }
+
+                showToast(`Refreshed "${course.title || 'Course'}" (${course.videoCount || 0} videos)`);
             } catch (error) {
                 console.error('Error refreshing course:', error);
                 showToast('An error occurred while refreshing the course.', true);
