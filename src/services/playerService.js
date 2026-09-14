@@ -773,6 +773,7 @@ Object.defineProperties(globalThis, {
                             return;
                         }
                     }
+                }
 
                 let newCourseData = {
                     chapters: [],
@@ -802,70 +803,19 @@ Object.defineProperties(globalThis, {
                                     const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
                                     newCourseData.lectures = newCourseData.lectures.filter(l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/')));
                                     newCourseData.chapters = newCourseData.chapters.filter(ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/')));
-                                    newCourseData.lectures.push(...subData.lectures);
-                                    newCourseData.chapters.push(...subData.chapters);
+                                    newCourseData.lectures.push(...(subData.lectures || []));
+                                    newCourseData.chapters.push(...(subData.chapters || []));
                                 }
                             } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
                         }
                     }
-
-                    // CRITICAL PRESERVATION: Keep chapters and lectures that were added externally or from other sources
-                    const scannedChapterNames = new Set((newCourseData.chapters || []).map(ch => ch.name));
-                    (course.chapters || []).forEach(oldCh => {
-                        if (!scannedChapterNames.has(oldCh.name)) {
-                            const oldChLectures = (course.lectures || []).filter(l => (l.chapter || '') === oldCh.name);
-                            newCourseData.chapters.push({ name: oldCh.name, lectures: oldChLectures });
-                            oldChLectures.forEach(l => {
-                                if (!newCourseData.lectures.some(nl => nl.id === l.id)) {
-                                    newCourseData.lectures.push(l);
-                                }
-                            });
-                        }
-                    });
-
-                    if (course.lectures) {
-                        const customLectures = course.lectures.filter(l => 
-                            l.customUrl || 
-                            l.isCustom || 
-                            (course.subCourseData && course.subCourseData[l.chapter] && course.subCourseData[l.chapter].isCustom)
-                        );
-                        if (customLectures.length > 0) {
-                            customLectures.forEach(cLec => {
-                                if (!newCourseData.lectures.some(l => l.id === cLec.id)) {
-                                    newCourseData.lectures.push(cLec);
-                                }
-                            });
-                            
-                            const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
-                            customChapterNames.forEach(chapterName => {
-                                const chapterLectures = newCourseData.lectures.filter(l => l.chapter === chapterName);
-                                const existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
-                                if (!existingChapter) {
-                                    newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
-                                } else {
-                                    existingChapter.lectures = chapterLectures;
-                                }
-                            });
-                        }
-                    }
-
-                    if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
-                        showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
-                        return;
-                    }
-
-                    course.lectures = newCourseData.lectures;
-                    course.chapters = (newCourseData.chapters || []).sort((a,b)=>naturalSort(a,b));
-
-                    refreshedItemTitle = course.title || 'Course';
-                    refreshedVideoCount = course.lectures.length;
                 }
 
                 // Preserve all previous chapters so empty/intermediate subcourses never disappear
                 if (Array.isArray(course.chapters)) {
                     for (const oldCh of course.chapters) {
                         if (!newCourseData.chapters.some(c => c.name === oldCh.name)) {
-                            const matchingLecs = newCourseData.lectures.filter(l => l.chapter === oldCh.name);
+                            const matchingLecs = (newCourseData.lectures || []).filter(l => l.chapter === oldCh.name);
                             newCourseData.chapters.push({
                                 name: oldCh.name,
                                 lectures: matchingLecs
@@ -875,11 +825,44 @@ Object.defineProperties(globalThis, {
                 }
 
                 if (targetSubfolder && !newCourseData.chapters.some(c => c.name === targetSubfolder)) {
-                    const matchingLecs = newCourseData.lectures.filter(l => l.chapter === targetSubfolder);
+                    const matchingLecs = (newCourseData.lectures || []).filter(l => l.chapter === targetSubfolder);
                     newCourseData.chapters.push({
                         name: targetSubfolder,
                         lectures: matchingLecs
                     });
+                }
+
+                // Preserve custom lectures and chapters that don't have disk handles
+                if (course.lectures) {
+                    const customLectures = course.lectures.filter(l => l.customUrl);
+                    if (customLectures.length > 0) {
+                        for (const cl of customLectures) {
+                            if (!newCourseData.lectures.some(l => l.id === cl.id)) {
+                                newCourseData.lectures.push(cl);
+                            }
+                        }
+                        
+                        const customChapterNames = new Set(customLectures.map(l => l.chapter).filter(Boolean));
+                        customChapterNames.forEach(chapterName => {
+                            let existingChapter = newCourseData.chapters.find(ch => ch.name === chapterName);
+                            if (!existingChapter) {
+                                const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                                newCourseData.chapters.push({ name: chapterName, lectures: chapterLectures });
+                            } else {
+                                const chapterLectures = customLectures.filter(l => l.chapter === chapterName);
+                                for (const cl of chapterLectures) {
+                                    if (!existingChapter.lectures.some(l => l.id === cl.id)) {
+                                        existingChapter.lectures.push(cl);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+
+                if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
+                    showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
+                    return;
                 }
 
                 course.lectures = newCourseData.lectures;
@@ -913,8 +896,6 @@ Object.defineProperties(globalThis, {
                 } else {
                     showToast(`Refreshed "${course.title}"! (${course.lectures.length} lectures)`);
                 }
-
-                showToast(`Refreshed "${refreshedItemTitle}" (${refreshedVideoCount} videos)`);
             } catch (error) {
                 console.error('Error refreshing course:', error);
                 showToast('An error occurred while refreshing the course.', true);

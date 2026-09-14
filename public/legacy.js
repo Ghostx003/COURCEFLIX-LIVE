@@ -3512,6 +3512,7 @@ window.initCourseFlix = async function() {
                             return;
                         }
                     }
+                }
 
                 let newCourseData = {
                     chapters: [],
@@ -3541,18 +3542,19 @@ window.initCourseFlix = async function() {
                                     const subData = await scanDirectoryHandle(subHandle, subPath, course.lectures || []);
                                     newCourseData.lectures = newCourseData.lectures.filter(l => !((l.chapter || '') === subPath || (l.chapter || '').startsWith(subPath + '/')));
                                     newCourseData.chapters = newCourseData.chapters.filter(ch => !((ch.name || '') === subPath || (ch.name || '').startsWith(subPath + '/')));
-                                    newCourseData.lectures.push(...subData.lectures);
-                                    newCourseData.chapters.push(...subData.chapters);
+                                    newCourseData.lectures.push(...(subData.lectures || []));
+                                    newCourseData.chapters.push(...(subData.chapters || []));
                                 }
                             } catch(e) { console.warn(`Relocated subfolder scan failed for ${subPath}`, e); }
                         }
                     }
+                }
 
                 // Preserve all previous chapters so empty/intermediate subcourses never disappear
                 if (Array.isArray(course.chapters)) {
                     for (const oldCh of course.chapters) {
                         if (!newCourseData.chapters.some(c => c.name === oldCh.name)) {
-                            const matchingLecs = newCourseData.lectures.filter(l => l.chapter === oldCh.name);
+                            const matchingLecs = (newCourseData.lectures || []).filter(l => l.chapter === oldCh.name);
                             newCourseData.chapters.push({
                                 name: oldCh.name,
                                 lectures: matchingLecs
@@ -3563,7 +3565,7 @@ window.initCourseFlix = async function() {
 
                 // If a specific subfolder was refreshed, always ensure its chapter entry exists
                 if (targetSubfolder && !newCourseData.chapters.some(c => c.name === targetSubfolder)) {
-                    const matchingLecs = newCourseData.lectures.filter(l => l.chapter === targetSubfolder);
+                    const matchingLecs = (newCourseData.lectures || []).filter(l => l.chapter === targetSubfolder);
                     newCourseData.chapters.push({
                         name: targetSubfolder,
                         lectures: matchingLecs
@@ -3596,18 +3598,12 @@ window.initCourseFlix = async function() {
                             }
                         });
                     }
+                }
 
-                    // Safeguard: If scan found 0 lectures, but old course had lectures, check if files were inaccessible
-                    if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
-                        showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
-                        return;
-                    }
-
-                    course.lectures = newCourseData.lectures;
-                    course.chapters = (newCourseData.chapters || []).sort((a,b)=>naturalSort(a,b));
-
-                    refreshedItemTitle = course.title || 'Course';
-                    refreshedVideoCount = course.lectures.length;
+                // Safeguard: If scan found 0 lectures, but old course had lectures, check if files were inaccessible
+                if (newCourseData.lectures.length === 0 && (course.lectures || []).length > 0 && newCourseData.hasInaccessibleFiles) {
+                    showToast('Files in course folder could not be accessed. Existing course content preserved.', true);
+                    return;
                 }
 
                 course.lectures = newCourseData.lectures;
@@ -3646,8 +3642,6 @@ window.initCourseFlix = async function() {
                 } else {
                     showToast(`Refreshed "${course.title}"! (${course.lectures.length} lectures)`);
                 }
-
-                showToast(`Refreshed "${refreshedItemTitle}" (${refreshedVideoCount} videos)`);
             } catch (error) {
                 console.error('Error refreshing course:', error);
                 showToast('An error occurred while refreshing the course.', true);

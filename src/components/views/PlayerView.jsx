@@ -35,7 +35,7 @@ const PlayerView = memo(function PlayerView() {
             <div id="video-wrapper-container">
                 <div id="video-wrapper">
                     <video id="video-player"></video>
-                    <iframe id="custom-iframe-player" className="hidden" style={{ width: '100%', height: '100%', border: 'none', zIndex: 10, position: 'relative' }} allow="autoplay; fullscreen; encrypted-media" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"></iframe>
+                    <iframe id="custom-iframe-player" className="hidden" style={{ width: '100%', height: '100%', border: 'none', zIndex: 10, position: 'relative' }} allow="autoplay; fullscreen; encrypted-media"></iframe>
                     
                     <audio id="brown-noise-audio" src="brown.dat" style={{"display":"none"}} onEnded={(e) => { e.target.currentTime = 20; e.target.play(); }}></audio>
                     <button id="unmute-btn" className="hidden"><i className="fas fa-volume-mute"></i> Click to Unmute</button>
