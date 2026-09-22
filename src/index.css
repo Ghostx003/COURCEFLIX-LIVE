@@ -1279,13 +1279,18 @@
         #video-wrapper:hover .video-controls-container { opacity:1; }
         #video-wrapper.hide-controls .video-controls-container { opacity: 0 !important; pointer-events: none; }
         #video-wrapper.hide-controls { cursor: none; }
-        .timeline-container { padding: 10px 0; position: relative; cursor: pointer; display: flex; align-items: center; box-sizing: border-box; }
-        .timeline { -webkit-appearance:none; appearance:none; background:rgba(255,255,255,0.3); cursor:pointer; height:8px; width:100%; border-radius:5px; transition: height 0.15s ease; margin: 0; padding: 0; outline: none; }
-        .timeline-container:hover .timeline, .timeline:hover { height: 12px; }
+        .timeline-container { height: 28px; padding: 0; position: relative; cursor: pointer; display: flex; align-items: center; box-sizing: border-box; }
+        .timeline { -webkit-appearance:none; appearance:none; background:rgba(255,255,255,0.3); cursor:pointer; height:8px; width:100%; border-radius:5px; transition: height 0.15s ease; margin: 0; padding: 0; outline: none; display: block; }
+        .timeline-container:hover .timeline { height: 12px; }
+        .timeline::-webkit-slider-runnable-track { cursor: pointer; }
+        .timeline::-moz-range-track { cursor: pointer; }
         .timeline::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; height:18px; width:18px; border-radius:50%; background-color:var(--accent-primary); border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5); transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease; opacity: 0; cursor: pointer; }
         .timeline::-moz-range-thumb{ height:18px; width:18px; border-radius:50%; background-color:var(--accent-primary); border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5); transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease; opacity: 0; cursor: pointer; }
         .timeline-container:hover .timeline::-webkit-slider-thumb { opacity: 1; transform: scale(1.1); }
         .timeline-container:hover .timeline::-moz-range-thumb { opacity: 1; transform: scale(1.1); }
+        .timeline:active::-webkit-slider-thumb { transform: scale(1.2); }
+        .timeline:active::-moz-range-thumb { transform: scale(1.2); }
+
 
         .controls { display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;color:white;}
         .left-controls, .right-controls { display:flex;align-items:center;gap:15px; }
