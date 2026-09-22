@@ -9,7 +9,7 @@ import {
     isSubfolderPathHidden
 } from '../../utils/subcourseUtils.js';
 import { saveCourse, refreshCourse } from '../../services/courseService.js';
-import { showToast } from '../../services/utils.js';
+import { showToast, showDeleteConfirmModal } from '../../services/utils.js';
 
 export default function SubcourseView() {
     const { currentView, params, navigate } = useRouter();
@@ -21,7 +21,8 @@ export default function SubcourseView() {
         setCourseRating,
         toggleCourseIgnored,
         toggleCourseSplitView,
-        removeCourseThumbnail
+        removeCourseThumbnail,
+        deleteSubfolder
     } = useCourses();
 
     const courseId = params?.courseId;
@@ -155,36 +156,35 @@ export default function SubcourseView() {
     };
 
     const handleDeleteSubfolder = (cId, fullPath) => {
-        if (typeof window.showDeleteConfirmModal === 'function') {
+        const doDelete = async () => {
+            try {
+                await deleteSubfolder(cId, fullPath);
+                showToast('Subfolder deleted successfully');
+            } catch (e) {
+                console.error('Failed to delete subfolder', e);
+                showToast('Failed to delete subfolder', true);
+            }
+        };
+
+        if (typeof showDeleteConfirmModal === 'function') {
+            showDeleteConfirmModal({
+                title: 'Delete Subfolder',
+                message: 'Do you really want to delete this subfolder?',
+                onConfirm: doDelete
+            });
+        } else if (typeof window !== 'undefined' && typeof window.showDeleteConfirmModal === 'function') {
             window.showDeleteConfirmModal({
                 title: 'Delete Subfolder',
                 message: 'Do you really want to delete this subfolder?',
-                onConfirm: async () => {
-                    if (!course) return;
-                    const updated = { ...course };
-                    updated.subCourseData = updated.subCourseData || {};
-                    updated.subCourseData[fullPath] = updated.subCourseData[fullPath] || {};
-
-                    if (updated.subCourseData[fullPath].isCustom) {
-                        updated.lectures = (updated.lectures || []).filter(
-                            l => l.chapter !== fullPath && !l.chapter.startsWith(fullPath + '/')
-                        );
-                        updated.chapters = (updated.chapters || []).filter(
-                            ch => ch.name !== fullPath && !ch.name.startsWith(fullPath + '/')
-                        );
-                        delete updated.subCourseData[fullPath];
-                        updated.videoCount = updated.lectures.length;
-                    } else {
-                        updated.subCourseData[fullPath].hidden = true;
-                        updated.subCourseData[fullPath].isIgnored = true;
-                    }
-
-                    await saveCourse(updated);
-                    showToast('Subfolder deleted successfully');
-                }
+                onConfirm: doDelete
             });
+        } else {
+            if (window.confirm('Do you really want to delete this subfolder?')) {
+                doDelete();
+            }
         }
     };
+
 
     const handleRefreshSubfolder = async (cId, fullPath, btnElement) => {
         try {

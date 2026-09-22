@@ -1870,6 +1870,8 @@ window.initCourseFlix = async function() {
                 if (onConfirm) await onConfirm();
             };
         }
+        window.showDeleteConfirmModal = showDeleteConfirmModal;
+
 
         function populateSortGroupOptions() {
             const sortSelect = document.getElementById('course-sort-select');

@@ -9,9 +9,12 @@ import {
     deleteCourse as repoDeleteCourse,
     bulkPutCourses as repoBulkPutCourses
 } from '../db/coursesRepository.js';
+import { deleteHistoryForSubfolder } from '../db/historyRepository.js';
 import { parseCourseId } from '../db/database.js';
 import { scanDirectoryTree, naturalSort } from './fileSystemService.js';
+import { calculateCourseProgress } from './progressService.js';
 import { showToast } from './utils.js';
+
 
 /**
  * Normalizes a course entity, ensuring calculated runtime flags like `isLinked` are present.
@@ -108,6 +111,78 @@ export async function deleteCourse(id) {
         window.courses = window.courses.filter(c => String(c.id) !== String(id));
     }
 }
+
+/**
+ * Deletes or hides a subfolder for a given course.
+ * For custom subcourses, permanently removes their lectures and chapters.
+ * For standard subcourses, marks them hidden and ignored.
+ * Also cleans up history and purges orphaned data across stores.
+ * @param {string|number} courseId
+ * @param {string} subfolder
+ * @returns {Promise<Object>} The updated course object
+ */
+export async function deleteSubfolder(courseId, subfolder) {
+    const course = await getCourse(courseId);
+    if (!course) throw new Error(`Course not found: ${courseId}`);
+
+    course.subCourseData = { ...(course.subCourseData || {}) };
+    course.subCourseData[subfolder] = { ...(course.subCourseData[subfolder] || {}) };
+
+    if (course.subCourseData[subfolder].isCustom) {
+        // Custom subcourse: remove lectures and chapters
+        course.lectures = (course.lectures || []).filter(
+            l => l.chapter !== subfolder && !l.chapter.startsWith(subfolder + '/')
+        );
+        course.chapters = (course.chapters || []).filter(
+            ch => ch.name !== subfolder && !ch.name.startsWith(subfolder + '/')
+        );
+        delete course.subCourseData[subfolder];
+        course.videoCount = (course.lectures || []).length;
+    } else {
+        // Standard subcourse: mark as hidden and ignored
+        course.subCourseData[subfolder].hidden = true;
+        course.subCourseData[subfolder].isIgnored = true;
+    }
+
+    try {
+        calculateCourseProgress(course, true);
+    } catch (err) {
+        console.warn('[courseService] Error recalculating progress after deleting subfolder:', err);
+    }
+
+    await saveCourse(course);
+
+    // Clean up history records for this subfolder
+    try {
+        await deleteHistoryForSubfolder(courseId, subfolder);
+    } catch (err) {
+        console.warn('[courseService] Error cleaning up history for subfolder:', err);
+    }
+
+    // Clean up legacy stores (progress, dpps, doubts, etc.) if purge function is available
+    if (typeof window !== 'undefined' && typeof window.purgeAllDataForDeletedCoursesAndSubfolders === 'function') {
+        try {
+            await window.purgeAllDataForDeletedCoursesAndSubfolders();
+        } catch (e) {
+            console.warn('[courseService] Error in purgeAllDataForDeletedCoursesAndSubfolders:', e);
+        }
+    }
+
+    // Refresh history view if available
+    if (typeof window !== 'undefined' && typeof window.renderHistoryView === 'function') {
+        try {
+            window.renderHistoryView();
+        } catch (e) {}
+    }
+
+    // Dispatch data-updated event so listeners across the application sync
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('courseflix:data-updated', { detail: { courseId, subfolder } }));
+    }
+
+    return course;
+}
+
 
 /**
  * Persists pre-computed stats (completion, duration, counts) to the course object in IndexedDB.
@@ -564,6 +639,7 @@ if (typeof window !== 'undefined') {
         saveCourse,
         updateCourse,
         deleteCourse,
+        deleteSubfolder,
         persistCourseStats,
         updateCourseTitle,
         updateCourseFaculty,

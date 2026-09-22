@@ -143,6 +143,57 @@ export function switchView(viewId, pushState = true) {
     }
 }
 
+export function showDeleteConfirmModal({ title = 'Delete Subfolder', message = 'Do you really want to delete it?', onConfirm }) {
+    if (typeof window !== 'undefined' && typeof window.showDeleteConfirmModal === 'function' && window.showDeleteConfirmModal !== showDeleteConfirmModal) {
+        return window.showDeleteConfirmModal({ title, message, onConfirm });
+    }
+    let modal = document.getElementById('global-delete-confirm-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'global-delete-confirm-modal';
+        modal.className = 'modal-overlay hidden';
+        modal.style.cssText = 'z-index: 1000000; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;';
+        modal.innerHTML = `
+            <div class="modal-content glass-modal" style="max-width: 400px; width: 90%; padding: 1.75rem; text-align: center; border-radius: 16px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem auto; font-size: 1.5rem;">
+                    <i class="fas fa-trash-alt"></i>
+                </div>
+                <h3 id="delete-modal-title" style="margin: 0 0 0.5rem 0; font-size: 1.25rem; font-weight: 700; color: #ffffff;">${title}</h3>
+                <p id="delete-modal-message" style="margin: 0 0 1.5rem 0; font-size: 0.92rem; color: var(--text-secondary); line-height: 1.4;">${message}</p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button id="delete-modal-cancel-btn" class="secondary-btn" style="padding: 9px 18px; border-radius: 10px; font-weight: 600; cursor: pointer;">Cancel</button>
+                    <button id="delete-modal-yes-btn" class="danger-btn" style="background: #ef4444; color: #ffffff; padding: 9px 18px; border-radius: 10px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);">YES DELETE</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    const titleEl = modal.querySelector('#delete-modal-title');
+    const msgEl = modal.querySelector('#delete-modal-message');
+    const yesBtn = modal.querySelector('#delete-modal-yes-btn');
+    const cancelBtn = modal.querySelector('#delete-modal-cancel-btn');
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+
+    modal.classList.remove('hidden');
+
+    const closeModal = () => {
+        modal.classList.add('hidden');
+    };
+
+    cancelBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+    };
+
+    yesBtn.onclick = async () => {
+        closeModal();
+        if (onConfirm) await onConfirm();
+    };
+}
+
 // Bind utility functions to window for backwards compatibility with unmigrated legacy code
 if (typeof window !== 'undefined') {
     window.formatTime = formatTime;
@@ -154,9 +205,11 @@ if (typeof window !== 'undefined') {
     window.getParentPath = getParentPath;
     window.getVideoDuration = getVideoDuration;
     window.showToast = showToast;
+    window.showDeleteConfirmModal = showDeleteConfirmModal;
     window.dateToStr = dateToStr;
     window.isToday = isToday;
     window.isFuture = isFuture;
     window.formatCalendarDate = formatCalendarDate;
     window.switchView = switchView;
 }
+

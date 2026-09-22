@@ -3,7 +3,8 @@
 
 import { ensureDB, getStore, STORE_NAME, PROGRESS_STORE } from './db.js';
 import { saveLectureProgress, getLectureProgress } from './progressService.js';
-import { formatTime, showToast } from './utils.js';
+import { formatTime, showToast, showDeleteConfirmModal } from './utils.js';
+
 
 // Dynamic Window Function Delegation Proxies
 const switchView = (...args) => typeof window !== 'undefined' && typeof window.switchView === 'function' ? window.switchView(...args) : null;

@@ -5,6 +5,7 @@ import {
     saveCourse as serviceSaveCourse,
     updateCourse as serviceUpdateCourse,
     deleteCourse as serviceDeleteCourse,
+    deleteSubfolder as serviceDeleteSubfolder,
     reorderCourses as serviceReorderCourses,
     toggleCourseRating as serviceToggleCourseRating,
     toggleCourseIgnored as serviceToggleCourseIgnored,
@@ -92,6 +93,18 @@ export function CourseProvider({ children }) {
             throw err;
         }
     }, []);
+
+    const deleteSubfolder = useCallback(async (courseId, subfolder) => {
+        try {
+            const updated = await serviceDeleteSubfolder(courseId, subfolder);
+            setCourses(prev => prev.map(c => String(c.id) === String(courseId) ? { ...updated } : c));
+            return updated;
+        } catch (err) {
+            console.error(`[CourseProvider] Error deleting subfolder ${subfolder} in course ${courseId}:`, err);
+            throw err;
+        }
+    }, []);
+
 
     const reorderCourses = useCallback(async (orderedCourseIds) => {
         try {
@@ -219,6 +232,7 @@ export function CourseProvider({ children }) {
         reloadCourses,
         updateCourse,
         deleteCourse,
+        deleteSubfolder,
         reorderCourses,
         setCourseRating,
         toggleCourseIgnored,
