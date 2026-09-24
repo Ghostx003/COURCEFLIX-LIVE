@@ -204,6 +204,21 @@ export default function LectureContextMenuModal() {
     };
   };
 
+  // Triggers Windows protocol handler silently in background without persistent servers
+  const triggerProtocol = (action, params) => {
+    try {
+      const queryString = new URLSearchParams(params).toString();
+      const url = `courseflix://${action}?${queryString}`;
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      setTimeout(() => iframe.remove(), 2500);
+    } catch {
+      // Ignore
+    }
+  };
+
   // Option 1: Open file location
   const handleOpenLocation = async () => {
     const { lecture, course } = menuState;
@@ -212,6 +227,10 @@ export default function LectureContextMenuModal() {
 
     const details = await extractDetails(lecture, course);
     setModalDetails(details);
+
+    // Silently launch Windows File Explorer via registered protocol
+    triggerProtocol('reveal', { file: details.fileName, path: details.relativePath });
+    showToast(`Opening "${details.fileName}" in File Explorer...`);
     setActiveModal('location');
   };
 
@@ -345,7 +364,9 @@ export default function LectureContextMenuModal() {
         if (el) el.remove();
       }
 
-      showToast(`Removed "${lecture.displayName}" from course syllabus`);
+      // Silently move to Windows Recycle Bin via protocol handler
+      triggerProtocol('recycle', { file: modalDetails.fileName, path: modalDetails.relativePath });
+      showToast(`Removed "${lecture.displayName}" and moved to Recycle Bin`);
     } catch (err) {
       console.error('[LectureContextMenu] Delete error:', err);
       showToast('Error removing lecture from course', true);
@@ -599,6 +620,14 @@ export default function LectureContextMenuModal() {
               <button
                 type="button"
                 className="secondary-btn"
+                onClick={() => triggerProtocol('reveal', { file: modalDetails.fileName, path: modalDetails.relativePath })}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <i className="fas fa-folder-open"></i> Open in Explorer
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
                 onClick={() => copyToClipboard(modalDetails.relativePath, 'Copied relative path to clipboard!')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
@@ -698,31 +727,9 @@ export default function LectureContextMenuModal() {
               <i className="fas fa-trash-alt"></i> Delete Lecture
             </h2>
 
-            <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.5', margin: '0 0 14px 0' }}>
-              Are you sure you want to remove <strong>"{modalDetails.title}"</strong> from this course syllabus?
+            <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.5', margin: '0 0 20px 0' }}>
+              Are you sure you want to delete <strong>"{modalDetails.title}"</strong>? This will remove the lecture from CourseFlix and send the video file directly to your <strong>Windows Recycle Bin</strong>.
             </p>
-
-            {/* Honest CMD & Recycle Bin limitation notice */}
-            <div
-              style={{
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: '10px',
-                padding: '12px 14px',
-                display: 'flex',
-                gap: '10px',
-                alignItems: 'flex-start',
-                fontSize: '0.82rem',
-                color: '#f87171',
-                lineHeight: '1.45',
-                marginBottom: '20px'
-              }}
-            >
-              <i className="fas fa-info-circle" style={{ fontSize: '1rem', marginTop: '2px', flexShrink: 0 }}></i>
-              <div>
-                <strong>Operating System Security Policy:</strong> Web applications running in Google Chrome cannot execute CMD commands or move files into the Windows Recycle Bin. Removing this lecture only deletes it from your CourseFlix syllabus. Your physical video file on disk remains untouched.
-              </div>
-            </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
@@ -738,7 +745,7 @@ export default function LectureContextMenuModal() {
                 onClick={confirmDeleteLecture}
                 style={{ backgroundColor: 'var(--accent-danger, #ef4444)', borderColor: 'var(--accent-danger, #ef4444)' }}
               >
-                <i className="fas fa-trash-alt" style={{ marginRight: '6px' }}></i> Remove from Course
+                <i className="fas fa-trash-alt" style={{ marginRight: '6px' }}></i> Delete to Recycle Bin
               </button>
             </div>
           </div>
