@@ -29,12 +29,15 @@ import CompletionModal from './components/modals/CompletionModal';
 import ModalOverlayModal from './components/modals/ModalOverlayModal';
 import ImportModalOverlayModal from './components/modals/ImportModalOverlayModal';
 import CustomCourseCreatorModal from './components/modals/CustomCourseCreatorModal';
+import LectureContextMenuModal from './components/modals/LectureContextMenuModal';
 import { initSettingsListeners } from './services/settingsService';
+import { initTabStudyTimer } from './services/tabStudyTimer';
 import './index.css';
 
 export default function App() {
   useEffect(() => {
     initSettingsListeners();
+    initTabStudyTimer();
 
     if (window.initCourseFlix && !window.courseFlixInitialized) {
       window.courseFlixInitialized = true;
@@ -197,6 +200,7 @@ export default function App() {
           <ModalOverlayModal />
           <ImportModalOverlayModal />
           <CustomCourseCreatorModal />
+          <LectureContextMenuModal />
           {/* Remaining fragments */}
           <div id="legacy-fragments">
             {/* Doubt Full Overlay */}

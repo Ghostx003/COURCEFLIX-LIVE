@@ -126,6 +126,7 @@ Object.defineProperties(globalThis, {
             currentCourse = (window.courses || []).find(c => String(c.id) === String(courseId));
             currentSubfolder = subfolder;
             if (!currentCourse) return;
+            window.currentCourse = currentCourse;
             switchView('player-view');
             if (lectureMenu) lectureMenu.classList.remove('hidden');
             if (document.getElementById('sidebar-toggle-btn')) document.getElementById('sidebar-toggle-btn').classList.remove('collapsed');
@@ -497,6 +498,7 @@ Object.defineProperties(globalThis, {
             document.getElementById('chapter-list').appendChild(chapterDiv);
              });
         }
+        window.renderChapterList = renderChapterList;
 
         // --- Autoplay Next Episode ---
         let pendingAutoplayLi = null;

@@ -2795,6 +2795,7 @@ window.initCourseFlix = async function() {
             currentCourse = courses.find(c => String(c.id) === String(courseId));
             currentSubfolder = subfolder;
             if (!currentCourse) return;
+            window.currentCourse = currentCourse;
             switchView('player-view');
             if (lectureMenu) lectureMenu.classList.remove('hidden');
             if (sidebarToggleBtn) sidebarToggleBtn.classList.remove('collapsed');
@@ -3170,6 +3171,7 @@ window.initCourseFlix = async function() {
             chapterListDiv.appendChild(chapterDiv);
              });
         }
+        window.renderChapterList = renderChapterList;
 
         // --- Autoplay Next Episode ---
         let pendingAutoplayLi = null;
