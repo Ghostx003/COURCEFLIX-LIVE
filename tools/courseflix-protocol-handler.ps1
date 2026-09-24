@@ -100,6 +100,41 @@ try {
             [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
         )
     }
+    elseif ($action -eq "share" -or $action -eq "quickshare") {
+        # Trigger native Windows Send with Quick Share
+        $shared = $false
+        try {
+            $parentDir = Split-Path -Path $targetFile -Parent
+            $leaf = Split-Path -Path $targetFile -Leaf
+            $shell = New-Object -ComObject Shell.Application
+            $folderObj = $shell.Namespace($parentDir)
+            if ($folderObj) {
+                $itemObj = $folderObj.ParseName($leaf)
+                if ($itemObj) {
+                    $verb = $itemObj.Verbs() | Where-Object { ($_.Name -replace '&','') -match 'Quick Share' }
+                    if ($verb) {
+                        $verb.DoIt()
+                        $shared = $true
+                    }
+                }
+            }
+        } catch {}
+
+        # Fallback: Launch Google NearbyShare executable with target file directly
+        if (-not $shared) {
+            $quickShareExes = @(
+                "C:\Program Files\Google\NearbyShare\nearby_share.exe",
+                "C:\Program Files\Google\NearbyShare\nearby_share_launcher.exe"
+            )
+            foreach ($exe in $quickShareExes) {
+                if (Test-Path $exe) {
+                    Start-Process $exe -ArgumentList "`"$targetFile`""
+                    $shared = $true
+                    break
+                }
+            }
+        }
+    }
 }
 catch {
     # Fail silently to avoid popups

@@ -231,7 +231,6 @@ export default function LectureContextMenuModal() {
     // Silently launch Windows File Explorer via registered protocol
     triggerProtocol('reveal', { file: details.fileName, path: details.relativePath });
     showToast(`Opening "${details.fileName}" in File Explorer...`);
-    setActiveModal('location');
   };
 
   // Option 2: Remove all bookmarks from this lecture
@@ -281,14 +280,21 @@ export default function LectureContextMenuModal() {
     setActiveModal('info');
   };
 
-  // Option 4: Share (Quick Share / Windows Native Share via Web Share API)
+  // Option 4: Send with Quick Share (Native Windows Quick Share + Web Share fallback)
   const handleShareLecture = async () => {
     const { lecture, course } = menuState;
     closeContextMenu();
     if (!lecture) return;
 
+    const details = await extractDetails(lecture, course);
+    setModalDetails(details);
+
+    // Silently launch native Windows "Send with Quick Share"
+    triggerProtocol('share', { file: details.fileName, path: details.relativePath });
+    showToast(`Opening Quick Share for "${details.fileName}"...`);
+
     try {
-      // If file handle is available, attempt native file share (which launches Windows Quick Share / Nearby Share)
+      // Fallback for non-Windows devices
       if (lecture.handle && typeof lecture.handle.getFile === 'function' && navigator.canShare) {
         const file = await lecture.handle.getFile();
         if (file && navigator.canShare({ files: [file] })) {
@@ -297,26 +303,10 @@ export default function LectureContextMenuModal() {
             title: lecture.displayName,
             text: `CourseFlix: ${lecture.displayName}`
           });
-          return;
         }
       }
-
-      // If file sharing is not supported or file is too large for browser share sheet
-      if (navigator.share) {
-        await navigator.share({
-          title: lecture.displayName,
-          text: `CourseFlix Lecture: ${lecture.displayName} (${formatTime(lecture.duration)})`
-        });
-      } else {
-        // Fallback: copy details
-        await navigator.clipboard.writeText(`${course?.title || 'Course'} - ${lecture.displayName}`);
-        showToast(`Copied "${lecture.displayName}" details to clipboard!`);
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.warn('[LectureContextMenu] Share error:', err);
-        showToast('Browser share limit or quick share not supported for this file size');
-      }
+    } catch {
+      // Ignore
     }
   };
 
@@ -528,8 +518,8 @@ export default function LectureContextMenuModal() {
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary, #212631)')}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
-            <i className="fas fa-share-nodes" style={{ color: '#8b5cf6', width: '16px' }}></i>
-            <span>Share Lecture</span>
+            <i className="fas fa-share-nodes" style={{ color: '#0ea5e9', width: '16px' }}></i>
+            <span>Send with Quick Share</span>
           </button>
 
           <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid var(--border-primary, rgba(255, 255, 255, 0.08))' }} />
@@ -591,27 +581,6 @@ export default function LectureContextMenuModal() {
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>File Name</div>
                 <div style={{ fontSize: '0.92rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>
                   {modalDetails.fileName}
-                </div>
-              </div>
-
-              {/* Browser Sandbox Limitation Notice */}
-              <div
-                style={{
-                  background: 'rgba(245, 158, 11, 0.12)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  display: 'flex',
-                  gap: '10px',
-                  alignItems: 'flex-start',
-                  fontSize: '0.82rem',
-                  color: '#fbbf24',
-                  lineHeight: '1.45'
-                }}
-              >
-                <i className="fas fa-shield-halved" style={{ fontSize: '1rem', marginTop: '2px', flexShrink: 0 }}></i>
-                <div>
-                  <strong>Browser Sandbox Policy:</strong> Web browsers (Google Chrome) strictly prevent websites from executing system commands to launch Windows File Explorer (<code>explorer.exe</code>) directly. You can locate this file in your course directory using the path above.
                 </div>
               </div>
             </div>
