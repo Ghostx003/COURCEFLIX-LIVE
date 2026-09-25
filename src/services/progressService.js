@@ -26,8 +26,21 @@ export function invalidateCourseProgressCache(courseId = null) {
     if (courseId !== undefined && courseId !== null) {
         courseProgressCache.delete(String(courseId));
         courseProgressCache.delete(Number(courseId));
+        if (typeof window !== 'undefined' && Array.isArray(window.courses)) {
+            const c = window.courses.find(x => String(x.id) === String(courseId));
+            if (c) {
+                delete c.stats;
+                delete c.subCourseStats;
+            }
+        }
     } else {
         courseProgressCache.clear();
+        if (typeof window !== 'undefined' && Array.isArray(window.courses)) {
+            window.courses.forEach(c => {
+                delete c.stats;
+                delete c.subCourseStats;
+            });
+        }
     }
 }
 
@@ -70,6 +83,10 @@ export async function loadAllProgress(force = false) {
             if (typeof window !== 'undefined') {
                 window.courseProgress = courseProgress;
                 window.invalidateCourseProgressCache = invalidateCourseProgressCache;
+                if (Array.isArray(window.courses)) {
+                    window.courses.forEach(c => calculateCourseProgress(c, true));
+                }
+                window.dispatchEvent(new CustomEvent('courseflix:progress-updated'));
             }
 
             return courseProgress;
@@ -136,13 +153,9 @@ export function calculateCourseProgress(course, forceRecalculate = false, target
             return course.subCourseStats[targetSubfolder];
         }
     } else {
-        // Fast-path: return memory-cached stats or course.stats
+        // Fast-path: return memory-cached stats
         if (!forceRecalculate && courseProgressCache.has(cId)) {
             return courseProgressCache.get(cId);
-        }
-        if (!forceRecalculate && course.stats) {
-            courseProgressCache.set(cId, course.stats);
-            return course.stats;
         }
     }
 
@@ -182,7 +195,8 @@ export function calculateCourseProgress(course, forceRecalculate = false, target
         }
 
         const dur = lecture.duration || 0;
-        const prog = getLectureProgress(course.id, lecture.id);
+        const actualCourseId = lecture.overrideCourseId || course.id;
+        const prog = getLectureProgress(actualCourseId, lecture.id);
         const isLecCompleted = !!(prog && prog.completed);
 
         // Course-wide tally
@@ -360,6 +374,8 @@ export async function saveLectureProgress(data) {
                 progress: progressRecord
             }
         }));
+
+        window.dispatchEvent(new CustomEvent('courseflix:data-updated'));
 
         if (typeof window.syncCourseflixSubjects === 'function') {
             window.syncCourseflixSubjects();

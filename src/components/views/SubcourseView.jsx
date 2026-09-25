@@ -9,6 +9,7 @@ import {
     isSubfolderPathHidden
 } from '../../utils/subcourseUtils.js';
 import { saveCourse, refreshCourse } from '../../services/courseService.js';
+import { calculateCourseProgress } from '../../services/progressService.js';
 import { showToast, showDeleteConfirmModal } from '../../services/utils.js';
 
 export default function SubcourseView() {
@@ -51,7 +52,11 @@ export default function SubcourseView() {
     // Find target course
     const course = useMemo(() => {
         if (!courseId || !Array.isArray(courses)) return null;
-        return courses.find(c => String(c.id) === String(courseId)) || null;
+        const found = courses.find(c => String(c.id) === String(courseId));
+        if (found) {
+            calculateCourseProgress(found, true);
+        }
+        return found || null;
     }, [courses, courseId]);
 
     // Extract immediate child subfolders

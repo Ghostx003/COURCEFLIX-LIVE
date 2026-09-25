@@ -1,6 +1,7 @@
 import React from 'react';
 import SubcourseCard from './SubcourseCard.jsx';
 import { isSubfolderPathHidden } from '../../utils/subcourseUtils.js';
+import { calculateCourseProgress } from '../../services/progressService.js';
 
 export default function SubcourseGrid({
     course,
@@ -40,7 +41,7 @@ export default function SubcourseGrid({
     return (
         <main id="subcourse-grid" className="grid-container">
             {visibleSubfolders.map(fullPath => {
-                const stats = course.subCourseStats?.[fullPath];
+                const stats = course.subCourseStats?.[fullPath] || calculateCourseProgress(course, false, fullPath);
                 return (
                     <SubcourseCard
                         key={fullPath}

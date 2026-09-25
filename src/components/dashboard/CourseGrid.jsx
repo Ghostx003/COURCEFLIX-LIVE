@@ -26,7 +26,7 @@ export default function CourseGrid({
     const progressMap = useMemo(() => {
         const map = new Map();
         courses.forEach(c => {
-            map.set(c.id, c.stats || calculateCourseProgress(c));
+            map.set(c.id, calculateCourseProgress(c));
         });
         return map;
     }, [courses]);

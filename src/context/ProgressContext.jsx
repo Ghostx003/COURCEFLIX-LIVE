@@ -24,6 +24,16 @@ export function ProgressProvider({ children }) {
     const [isLoaded, setIsLoaded] = useState(() => isProgressLoaded());
     const [progressVersion, setProgressVersion] = useState(0);
 
+    // Load all progress on mount
+    useEffect(() => {
+        loadAllProgress().then(() => {
+            setIsLoaded(true);
+            setProgressVersion(v => v + 1);
+        }).catch(err => {
+            console.error('[ProgressProvider] Failed to load progress on mount:', err);
+        });
+    }, []);
+
     // Subscribe to progress update events dispatched by progressService / legacy callers
     useEffect(() => {
         const handleProgressUpdated = () => {

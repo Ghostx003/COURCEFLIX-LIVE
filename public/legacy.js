@@ -430,6 +430,7 @@ window.initCourseFlix = async function() {
             const allProgress = await new Promise(resolve => getStore(PROGRESS_STORE, 'readonly').getAll().onsuccess = e => resolve(e.target.result || []));
             courseProgress = {};
             (allProgress || []).forEach(item => { courseProgress[item.id] = item; });
+            window.courseProgress = courseProgress;
             courseProgressCache.clear();
         }
         async function saveLectureProgress(data) {

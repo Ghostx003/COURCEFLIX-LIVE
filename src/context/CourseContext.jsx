@@ -15,6 +15,7 @@ import {
     updateCourseTitle as serviceUpdateCourseTitle,
     updateCourseFaculty as serviceUpdateCourseFaculty
 } from '../services/courseService.js';
+import { calculateCourseProgress, loadAllProgress } from '../services/progressService.js';
 
 const CourseContext = createContext(null);
 
@@ -31,8 +32,10 @@ export function CourseProvider({ children }) {
     const reloadCourses = useCallback(async () => {
         try {
             setLoading(true);
+            await loadAllProgress();
             const fetched = await serviceGetCourses();
-            setCourses(fetched || []);
+            (fetched || []).forEach(c => calculateCourseProgress(c, true));
+            setCourses(fetched ? fetched.map(c => ({ ...c })) : []);
             setError(null);
             return fetched;
         } catch (err) {
@@ -51,25 +54,36 @@ export function CourseProvider({ children }) {
         const handleCoursesLoaded = (e) => {
             // legacy.js already fetched from IDB — use the data it already has
             if (e && e.detail && Array.isArray(e.detail)) {
-                setCourses([...e.detail]);
+                e.detail.forEach(c => calculateCourseProgress(c, true));
+                setCourses(e.detail.map(c => ({ ...c })));
                 setLoading(false);
             }
             // else: ignore — our own reloadCourses() on mount will handle it
         };
 
         const handleDataUpdated = () => {
-            // Don't re-hit IndexedDB. If legacy already updated window.courses, reflect it directly.
+            // If courses exist, recompute stats and update state
             if (Array.isArray(window.courses)) {
-                setCourses([...window.courses]);
+                window.courses.forEach(c => calculateCourseProgress(c, true));
+                setCourses(window.courses.map(c => ({ ...c })));
+            }
+        };
+
+        const handleProgressUpdated = () => {
+            if (Array.isArray(window.courses)) {
+                window.courses.forEach(c => calculateCourseProgress(c, true));
+                setCourses(window.courses.map(c => ({ ...c })));
             }
         };
 
         window.addEventListener('courseflix:courses-loaded', handleCoursesLoaded);
         window.addEventListener('courseflix:data-updated', handleDataUpdated);
+        window.addEventListener('courseflix:progress-updated', handleProgressUpdated);
 
         return () => {
             window.removeEventListener('courseflix:courses-loaded', handleCoursesLoaded);
             window.removeEventListener('courseflix:data-updated', handleDataUpdated);
+            window.removeEventListener('courseflix:progress-updated', handleProgressUpdated);
         };
     }, [reloadCourses]);
 
