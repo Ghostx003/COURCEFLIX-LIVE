@@ -168,9 +168,13 @@ export function CourseProvider({ children }) {
                 if (subfolder) {
                     const subData = { ...(c.subCourseData || {}) };
                     subData[subfolder] = { ...(subData[subfolder] || {}), isIgnored: !!isIgnored };
-                    return { ...c, subCourseData: subData };
+                    const updated = { ...c, subCourseData: subData };
+                    delete updated.stats;
+                    return updated;
                 }
-                return { ...c, isIgnored: !!isIgnored };
+                const updated = { ...c, isIgnored: !!isIgnored };
+                delete updated.stats;
+                return updated;
             }));
             if (typeof window.updateTotalTimeLeftDisplay === 'function') {
                 window.updateTotalTimeLeftDisplay();

@@ -157,12 +157,17 @@ export function calculateCourseProgress(course, forceRecalculate = false, target
         if (!forceRecalculate && courseProgressCache.has(cId)) {
             return courseProgressCache.get(cId);
         }
+        if (!forceRecalculate && course.stats) {
+            courseProgressCache.set(cId, course.stats);
+            return course.stats;
+        }
     }
 
     // Default structure for empty courses
     if (!course.lectures || course.lectures.length === 0) {
-        const totalDur = course.totalDuration || 0;
-        const res = { completed: 0, total: course.videoCount || 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
+        const isCourseIgnored = course.isIgnored === true || course.isIgnored === 'true';
+        const totalDur = isCourseIgnored ? 0 : (course.totalDuration || 0);
+        const res = { completed: 0, total: isCourseIgnored ? 0 : (course.videoCount || 0), percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
         if (!targetSubfolder) {
             course.stats = res;
             courseProgressCache.set(cId, res);
@@ -170,16 +175,34 @@ export function calculateCourseProgress(course, forceRecalculate = false, target
         return res;
     }
 
+    const lecs = course.lectures;
+    const len = lecs.length;
+
+    // Calculate average lecture duration for unmeasured lectures
+    let totalKnownDur = 0;
+    let knownDurCount = 0;
+    for (let i = 0; i < len; i++) {
+        const d = lecs[i].duration || 0;
+        if (d > 0) {
+            totalKnownDur += d;
+            knownDurCount++;
+        }
+    }
+
+    let avgLectureDuration = 0;
+    if (knownDurCount > 0) {
+        avgLectureDuration = totalKnownDur / knownDurCount;
+    } else if ((course.totalDuration || 0) > 0 && len > 0) {
+        avgLectureDuration = course.totalDuration / len;
+    }
+
     let completed = 0;
     let timeCompleted = 0;
     let activeTotalLectures = 0;
     let activeTotalDuration = 0;
 
-    const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && s.isIgnored));
+    const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && (s.isIgnored === true || s.isIgnored === 'true')));
     const subCourseStatsMap = {};
-
-    const lecs = course.lectures;
-    const len = lecs.length;
 
     for (let i = 0; i < len; i++) {
         const lecture = lecs[i];
@@ -187,19 +210,21 @@ export function calculateCourseProgress(course, forceRecalculate = false, target
 
         if (hasIgnoredSubs && lecture.chapter) {
             for (const sub in course.subCourseData) {
-                if (course.subCourseData[sub]?.isIgnored && (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
+                const subItem = course.subCourseData[sub];
+                if ((subItem?.isIgnored === true || subItem?.isIgnored === 'true') && 
+                    (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
                     isSubfolderIgnored = true;
                     break;
                 }
             }
         }
 
-        const dur = lecture.duration || 0;
+        const dur = (lecture.duration && lecture.duration > 0) ? lecture.duration : avgLectureDuration;
         const actualCourseId = lecture.overrideCourseId || course.id;
         const prog = getLectureProgress(actualCourseId, lecture.id);
         const isLecCompleted = !!(prog && prog.completed);
 
-        // Course-wide tally
+        // Course-wide tally (skip ignored subfolders)
         if (!isSubfolderIgnored) {
             activeTotalLectures++;
             activeTotalDuration += dur;
@@ -229,21 +254,15 @@ export function calculateCourseProgress(course, forceRecalculate = false, target
         }
     }
 
-    const effectiveTotalDuration = activeTotalDuration > 0 ? activeTotalDuration : (course.totalDuration || 0);
+    const remainingDuration = Math.max(0, activeTotalDuration - timeCompleted);
     const percentage = activeTotalLectures > 0 ? (completed / activeTotalLectures) * 100 : 0;
-
-    if (activeTotalDuration === 0 && effectiveTotalDuration > 0 && activeTotalLectures > 0) {
-        timeCompleted = (completed / activeTotalLectures) * effectiveTotalDuration;
-    }
-
-    const remainingDuration = effectiveTotalDuration - timeCompleted;
 
     const courseResult = {
         completed,
         total: activeTotalLectures,
         percentage,
-        remainingDuration: Math.max(0, remainingDuration),
-        totalDuration: effectiveTotalDuration
+        remainingDuration,
+        totalDuration: activeTotalDuration
     };
 
     // Finalize subCourseStats

@@ -22,7 +22,7 @@ export function calculateTotalProgressStats(courses = [], getCourseProgressFn = 
     const courseBreakdown = [];
 
     (courses || []).forEach(course => {
-        if (!course || course.isIgnored) return;
+        if (!course || course.isIgnored === true || course.isIgnored === 'true') return;
 
         const prog = (typeof getCourseProgressFn === 'function')
             ? getCourseProgressFn(course)

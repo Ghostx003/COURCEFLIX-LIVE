@@ -297,7 +297,27 @@ export async function toggleCourseIgnored(courseId, isIgnored, subfolder = null)
         course.isIgnored = !!isIgnored;
     }
 
+    if (typeof window !== 'undefined' && typeof window.invalidateCourseProgressCache === 'function') {
+        window.invalidateCourseProgressCache(course.id);
+    }
+    delete course.stats;
+    calculateCourseProgress(course, true);
+
     await saveCourse(course);
+
+    if (typeof window !== 'undefined') {
+        if (Array.isArray(window.courses)) {
+            const idx = window.courses.findIndex(c => String(c.id) === String(course.id));
+            if (idx !== -1) {
+                window.courses[idx] = course;
+            }
+        }
+        if (typeof window.updateTotalTimeLeftDisplay === 'function') {
+            window.updateTotalTimeLeftDisplay();
+        }
+        window.dispatchEvent(new CustomEvent('courseflix:data-updated'));
+    }
+
     return !!isIgnored;
 }
 

@@ -1053,8 +1053,9 @@ window.initCourseFlix = async function() {
             }
 
             if (!course.lectures || course.lectures.length === 0) {
-                const totalDur = course.totalDuration || 0;
-                const res = { completed: 0, total: course.videoCount || 0, percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
+                const isCourseIgnored = course.isIgnored === true || course.isIgnored === 'true';
+                const totalDur = isCourseIgnored ? 0 : (course.totalDuration || 0);
+                const res = { completed: 0, total: isCourseIgnored ? 0 : (course.videoCount || 0), percentage: 0, remainingDuration: totalDur, totalDuration: totalDur };
                 if (!targetSubfolder) {
                     course.stats = res;
                     courseProgressCache.set(cId, res);
@@ -1062,33 +1063,55 @@ window.initCourseFlix = async function() {
                 return res;
             }
 
+            const lecs = course.lectures;
+            const len = lecs.length;
+
+            // Calculate average lecture duration for unmeasured lectures
+            let totalKnownDur = 0;
+            let knownDurCount = 0;
+            for (let i = 0; i < len; i++) {
+                const d = lecs[i].duration || 0;
+                if (d > 0) {
+                    totalKnownDur += d;
+                    knownDurCount++;
+                }
+            }
+
+            let avgLectureDuration = 0;
+            if (knownDurCount > 0) {
+                avgLectureDuration = totalKnownDur / knownDurCount;
+            } else if ((course.totalDuration || 0) > 0 && len > 0) {
+                avgLectureDuration = course.totalDuration / len;
+            }
+
             let completed = 0;
             let timeCompleted = 0;
             let activeTotalLectures = 0;
             let activeTotalDuration = 0;
             
-            const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && s.isIgnored));
+            const hasIgnoredSubs = !!(course.subCourseData && Object.values(course.subCourseData).some(s => s && (s.isIgnored === true || s.isIgnored === 'true')));
             const subCourseStatsMap = {};
 
-            const lecs = course.lectures;
-            const len = lecs.length;
             for (let i = 0; i < len; i++) {
                 const lecture = lecs[i];
                 let isSubfolderIgnored = false;
                 if (hasIgnoredSubs && lecture.chapter) {
                     for (const sub in course.subCourseData) {
-                         if (course.subCourseData[sub]?.isIgnored && (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
+                         const subItem = course.subCourseData[sub];
+                         if ((subItem?.isIgnored === true || subItem?.isIgnored === 'true') && 
+                             (lecture.chapter === sub || lecture.chapter.startsWith(sub + '/'))) {
                               isSubfolderIgnored = true;
                               break;
                          }
                     }
                 }
                 
-                const dur = lecture.duration || 0;
-                const prog = courseProgress[`${course.id}_${lecture.id}`];
+                const dur = (lecture.duration && lecture.duration > 0) ? lecture.duration : avgLectureDuration;
+                const actualCourseId = lecture.overrideCourseId || course.id;
+                const prog = courseProgress[`${actualCourseId}_${lecture.id}`] || courseProgress[`${course.id}_${lecture.id}`];
                 const isLecCompleted = !!(prog && prog.completed);
 
-                // Global course tally
+                // Global course tally (skip ignored subfolders)
                 if (!isSubfolderIgnored) {
                     activeTotalLectures++;
                     activeTotalDuration += dur;
@@ -1118,21 +1141,15 @@ window.initCourseFlix = async function() {
                 }
             }
 
-            const effectiveTotalDuration = activeTotalDuration > 0 ? activeTotalDuration : (course.totalDuration || 0);
+            const remainingDuration = Math.max(0, activeTotalDuration - timeCompleted);
             const percentage = activeTotalLectures > 0 ? (completed / activeTotalLectures) * 100 : 0;
-            
-            if (activeTotalDuration === 0 && effectiveTotalDuration > 0 && activeTotalLectures > 0) {
-                timeCompleted = (completed / activeTotalLectures) * effectiveTotalDuration;
-            }
-            
-            const remainingDuration = effectiveTotalDuration - timeCompleted;
 
             const courseResult = { 
                 completed, 
                 total: activeTotalLectures, 
                 percentage, 
-                remainingDuration: Math.max(0, remainingDuration), 
-                totalDuration: effectiveTotalDuration 
+                remainingDuration, 
+                totalDuration: activeTotalDuration 
             };
 
             // Finalize subCourseStats
@@ -1159,10 +1176,12 @@ window.initCourseFlix = async function() {
 
             return courseResult;
         }
+        window.calculateCourseProgress = calculateCourseProgress;
         
         function renderTimePillContent(totalSecondsLeft, pct) {
-            if (!totalTimeDisplay) return;
-            totalTimeDisplay.innerHTML = `<i class="fas fa-clock" style="font-size:0.9rem; margin-right:8px;"></i><span style="font-weight: 800; font-size: 0.95rem;">${formatTotalDuration(totalSecondsLeft)} Left</span>`;
+            const display = document.getElementById('total-time-left-display') || totalTimeDisplay;
+            if (!display) return;
+            display.innerHTML = `<i class="fas fa-clock" style="font-size:0.9rem; margin-right:8px;"></i><span style="font-weight: 800; font-size: 0.95rem;">${formatTotalDuration(totalSecondsLeft)} Left</span>`;
         }
 
         if (window.timePillRotationTimer) {
@@ -1179,10 +1198,20 @@ window.initCourseFlix = async function() {
             let totalCompletedLectures = 0;
             const courseBreakdown = [];
 
-            courses.forEach(course => {
-                if (course.isIgnored) return;
+            const totalTimeDisplay = document.getElementById('total-time-left-display');
+
+            const courseList = (typeof window !== 'undefined' && Array.isArray(window.courses) && window.courses.length > 0)
+                ? window.courses
+                : ((typeof courses !== 'undefined' && Array.isArray(courses)) ? courses : []);
+
+            if (typeof courses !== 'undefined' && Array.isArray(courses) && courseList !== courses) {
+                courses = courseList;
+            }
+
+            courseList.forEach(course => {
+                if (!course || course.isIgnored === true || course.isIgnored === 'true') return;
                 
-                const prog = calculateCourseProgress(course);
+                const prog = calculateCourseProgress(course, true);
                 const cTotalSec = prog.totalDuration || 0;
                 const cSecondsLeft = prog.remainingDuration || 0;
                 const cCompletedSec = Math.max(0, cTotalSec - cSecondsLeft);
@@ -1213,31 +1242,33 @@ window.initCourseFlix = async function() {
             
             const pct = totalLecturesCount > 0 ? Math.round((totalCompletedLectures / totalLecturesCount) * 100) : 0;
 
-            totalTimeDisplay.dataset.seconds = totalSecondsLeft;
-            totalTimeDisplay.dataset.completedSeconds = totalCompletedSeconds;
-            totalTimeDisplay.dataset.totalSeconds = totalSecondsCount;
-            totalTimeDisplay.dataset.lectures = pendingLectures;
-            totalTimeDisplay.dataset.completedLectures = totalCompletedLectures;
-            totalTimeDisplay.dataset.totalLectures = totalLecturesCount;
-            totalTimeDisplay.dataset.percentage = pct;
-            totalTimeDisplay.dataset.breakdown = JSON.stringify(courseBreakdown);
+            if (totalTimeDisplay) {
+                totalTimeDisplay.dataset.seconds = totalSecondsLeft;
+                totalTimeDisplay.dataset.completedSeconds = totalCompletedSeconds;
+                totalTimeDisplay.dataset.totalSeconds = totalSecondsCount;
+                totalTimeDisplay.dataset.lectures = pendingLectures;
+                totalTimeDisplay.dataset.completedLectures = totalCompletedLectures;
+                totalTimeDisplay.dataset.totalLectures = totalLecturesCount;
+                totalTimeDisplay.dataset.percentage = pct;
+                totalTimeDisplay.dataset.breakdown = JSON.stringify(courseBreakdown);
 
-            totalTimeDisplay.classList.remove('progress-red', 'progress-violet', 'progress-yellow', 'progress-cyan', 'progress-green');
-            if (pct < 30) {
-                totalTimeDisplay.classList.add('progress-violet');
-            } else if (pct < 60) {
-                totalTimeDisplay.classList.add('progress-yellow');
-            } else if (pct < 80) {
-                totalTimeDisplay.classList.add('progress-cyan');
-            } else {
-                totalTimeDisplay.classList.add('progress-green');
-            }
+                totalTimeDisplay.classList.remove('progress-red', 'progress-violet', 'progress-yellow', 'progress-cyan', 'progress-green');
+                if (pct < 30) {
+                    totalTimeDisplay.classList.add('progress-violet');
+                } else if (pct < 60) {
+                    totalTimeDisplay.classList.add('progress-yellow');
+                } else if (pct < 80) {
+                    totalTimeDisplay.classList.add('progress-cyan');
+                } else {
+                    totalTimeDisplay.classList.add('progress-green');
+                }
 
-            if (totalLecturesCount > 0 || totalSecondsLeft > 0) {
-                totalTimeDisplay.style.display = 'inline-flex';
-                renderTimePillContent(totalSecondsLeft, pct);
-            } else {
-                totalTimeDisplay.style.display = 'none';
+                if (totalLecturesCount > 0 || totalSecondsLeft > 0) {
+                    totalTimeDisplay.style.display = 'inline-flex';
+                    renderTimePillContent(totalSecondsLeft, pct);
+                } else {
+                    totalTimeDisplay.style.display = 'none';
+                }
             }
 
             const hoursStudiedDisplay = document.getElementById('hours-studied-display');
@@ -1262,6 +1293,7 @@ window.initCourseFlix = async function() {
                 courseBreakdown
             };
         }
+        window.updateTotalTimeLeftDisplay = updateTotalTimeLeftDisplay;
         
         function updateDailyGoalDisplay(dailyHours, speed, overrideTargetLectures = null) {
             const targetLectures = (overrideTargetLectures !== null && overrideTargetLectures !== undefined)
@@ -10287,24 +10319,33 @@ window.initCourseFlix = async function() {
             if (e.target.classList.contains('course-ignore-cb')) {
                 const courseId = e.target.dataset.id;
                 const subfolder = e.target.dataset.subfolder;
-                const courseList = (typeof courses !== 'undefined' ? courses : window.courses) || [];
-                const course = courseList.find(c => String(c.id) === String(courseId) || c.id === parseInt(courseId));
+                const isIgnored = !!e.target.checked;
                 
-                if (course) {
-                    if (subfolder) {
-                        course.subCourseData = course.subCourseData || {};
-                        course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
-                        course.subCourseData[subfolder].isIgnored = e.target.checked;
-                    } else {
-                        course.isIgnored = e.target.checked;
+                if (typeof window.courseService?.toggleCourseIgnored === 'function') {
+                    await window.courseService.toggleCourseIgnored(courseId, isIgnored, subfolder);
+                } else {
+                    const courseList = (window.courses && window.courses.length ? window.courses : courses) || [];
+                    const course = courseList.find(c => String(c.id) === String(courseId) || c.id === parseInt(courseId));
+                    
+                    if (course) {
+                        if (subfolder) {
+                            course.subCourseData = course.subCourseData || {};
+                            course.subCourseData[subfolder] = course.subCourseData[subfolder] || {};
+                            course.subCourseData[subfolder].isIgnored = isIgnored;
+                        } else {
+                            course.isIgnored = isIgnored;
+                        }
+                        if (typeof invalidateCourseProgressCache === 'function') {
+                            invalidateCourseProgressCache(course.id);
+                        }
+                        delete course.stats;
+                        calculateCourseProgress(course, true);
+                        try {
+                            await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
+                        } catch (err) {}
                     }
-                    if (typeof window.courseService?.saveCourse === 'function') {
-                        await window.courseService.saveCourse(course);
-                    } else {
-                        await new Promise(resolve => getStore(STORE_NAME, 'readwrite').put(course).onsuccess = resolve);
-                    }
-                    updateTotalTimeLeftDisplay(); // Re-calculate immediately
                 }
+                updateTotalTimeLeftDisplay(); // Re-calculate immediately
             }
         });
 

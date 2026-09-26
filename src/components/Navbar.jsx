@@ -47,6 +47,21 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    const updateTime = () => {
+      if (typeof window.updateTotalTimeLeftDisplay === 'function') {
+        window.updateTotalTimeLeftDisplay();
+      }
+    };
+    updateTime();
+    window.addEventListener('courseflix:data-updated', updateTime);
+    window.addEventListener('courseflix:courses-loaded', updateTime);
+    return () => {
+      window.removeEventListener('courseflix:data-updated', updateTime);
+      window.removeEventListener('courseflix:courses-loaded', updateTime);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleHash = () => {
       const current = window.location.hash.replace('#', '') || 'home-view';
       setActiveView(current);
