@@ -208,13 +208,25 @@ export default function CourseCard({
                         )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                            <label className="course-ignore-container" title="Ignore this course from your global remaining time">
+                            <label
+                                className="course-ignore-container"
+                                title="Ignore this course from your global remaining time"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                                onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            >
                                 <input
                                     type="checkbox"
                                     className="course-ignore-cb"
                                     data-id={course.id}
                                     checked={!!course.isIgnored}
-                                    onChange={(e) => onToggleIgnore ? onToggleIgnore(course.id, e.target.checked) : null}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                        e.stopPropagation();
+                                        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                        if (onToggleIgnore) onToggleIgnore(course.id, e.target.checked);
+                                    }}
                                 /> Ignore
                             </label>
 

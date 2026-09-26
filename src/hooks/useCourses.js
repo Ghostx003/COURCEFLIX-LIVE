@@ -156,30 +156,51 @@ function useStandaloneCourses() {
     }, []);
 
     const toggleCourseIgnored = useCallback(async (courseId, isIgnored, subfolder = null) => {
-        try {
-            await serviceToggleCourseIgnored(courseId, isIgnored, subfolder);
-            setCourses(prev => prev.map(c => {
-                if (String(c.id) !== String(courseId)) return c;
-                if (subfolder) {
-                    const subData = { ...(c.subCourseData || {}) };
-                    subData[subfolder] = { ...(subData[subfolder] || {}), isIgnored: !!isIgnored };
-                    const updated = { ...c, subCourseData: subData };
-                    delete updated.stats;
-                    return updated;
-                }
-                const updated = { ...c, isIgnored: !!isIgnored };
+        // 1. Optimistic immediate state update so UI responds instantly on first click
+        setCourses(prev => prev.map(c => {
+            if (String(c.id) !== String(courseId)) return c;
+            if (subfolder) {
+                const subData = { ...(c.subCourseData || {}) };
+                subData[subfolder] = { ...(subData[subfolder] || {}), isIgnored: !!isIgnored };
+                const updated = { ...c, subCourseData: subData };
                 delete updated.stats;
                 return updated;
-            }));
-            // Update time left display
-            if (typeof window.updateTotalTimeLeftDisplay === 'function') {
-                window.updateTotalTimeLeftDisplay();
             }
+            const updated = { ...c, isIgnored: !!isIgnored };
+            delete updated.stats;
+            return updated;
+        }));
+
+        // 2. Optimistically sync window.courses
+        if (typeof window !== 'undefined' && Array.isArray(window.courses)) {
+            const idx = window.courses.findIndex(c => String(c.id) === String(courseId));
+            if (idx !== -1) {
+                const target = window.courses[idx];
+                if (subfolder) {
+                    target.subCourseData = target.subCourseData || {};
+                    target.subCourseData[subfolder] = target.subCourseData[subfolder] || {};
+                    target.subCourseData[subfolder].isIgnored = !!isIgnored;
+                } else {
+                    target.isIgnored = !!isIgnored;
+                }
+                delete target.stats;
+            }
+        }
+
+        // 3. Immediately update time left display
+        if (typeof window.updateTotalTimeLeftDisplay === 'function') {
+            window.updateTotalTimeLeftDisplay();
+        }
+
+        // 4. Persist to IndexedDB in background
+        try {
+            await serviceToggleCourseIgnored(courseId, isIgnored, subfolder);
         } catch (err) {
             console.error(`[useCourses] Error toggling course ignored for ${courseId}:`, err);
+            reloadCourses();
             throw err;
         }
-    }, []);
+    }, [reloadCourses]);
 
     const toggleCourseSplitView = useCallback(async (courseId, isSplitView, subfolder = null) => {
         try {

@@ -210,14 +210,26 @@ export default function SubcourseCard({
                         )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                            <label className="course-ignore-container" title="Ignore this topic from your global remaining time">
+                            <label
+                                className="course-ignore-container"
+                                title="Ignore this topic from your global remaining time"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                                onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            >
                                 <input
                                     type="checkbox"
                                     className="course-ignore-cb"
                                     data-id={course.id}
                                     data-subfolder={fullPath}
                                     checked={!!subData.isIgnored}
-                                    onChange={(e) => onIgnoreToggle(fullPath, e.target.checked)}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                        e.stopPropagation();
+                                        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                        onIgnoreToggle(fullPath, e.target.checked);
+                                    }}
                                 /> Ignore
                             </label>
                             <div className="course-rating">

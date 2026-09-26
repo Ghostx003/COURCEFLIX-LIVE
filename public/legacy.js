@@ -10317,6 +10317,7 @@ window.initCourseFlix = async function() {
         // --- Ignore Checkbox Logic ---
         document.body.addEventListener('change', async (e) => {
             if (e.target.classList.contains('course-ignore-cb')) {
+                if (e.target.closest('#root')) return;
                 const courseId = e.target.dataset.id;
                 const subfolder = e.target.dataset.subfolder;
                 const isIgnored = !!e.target.checked;
